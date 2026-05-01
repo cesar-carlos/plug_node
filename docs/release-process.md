@@ -8,10 +8,11 @@ Padronizar como o workspace evolui e como os packages podem ser publicados de fo
 
 1. Desenvolver a feature ou correcao em branch propria.
 2. Rodar `npm run verify` localmente.
-3. Abrir PR usando o template do repositorio.
-4. Esperar o workflow `CI` passar no GitHub.
-5. Atualizar `CHANGELOG.md` se houver mudanca relevante para usuarios ou mantenedores.
-6. Versionar o package alvo com o fluxo do `n8n-node release` quando a publicacao for necessaria.
+3. Adicionar um changeset com `npm run changeset` quando a mudanca afetar comportamento de package.
+4. Abrir PR usando o template do repositorio.
+5. Esperar o workflow `CI` passar no GitHub.
+6. Deixar o workflow `Release Control` criar ou atualizar a PR de versionamento.
+7. Mesclar a PR de versionamento quando a release estiver pronta.
 
 ## Escopo de versionamento
 
@@ -26,6 +27,7 @@ Padronizar como o workspace evolui e como os packages podem ser publicados de fo
 
 - `npm ci`
 - `npm run verify`
+- `npm run changeset:status`
 - confirmar que a documentacao em `docs/` continua coerente
 - revisar `CHANGELOG.md`
 - validar que os `README.md` dos packages refletem o comportamento atual
@@ -33,4 +35,5 @@ Padronizar como o workspace evolui e como os packages podem ser publicados de fo
 ## Observacoes
 
 - O workflow de CI inclui um reparo explicito para bindings nativos opcionais no Linux.
+- O controle de versionamento usa `Changesets` com grupo fixo para manter os dois packages na mesma versao visivel.
 - A decisao sobre licenciamento do repositorio deve ser tratada separadamente antes de uma publicacao externa formal.

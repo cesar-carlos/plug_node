@@ -11,6 +11,7 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 - Workspace scaffolding for the public REST-only package and the internal REST+SOCKET package.
 - Shared auth, transport, socket, output, and n8n integration layers.
 - Repository automation with CI, contribution templates, CODEOWNERS, and security guidance.
+- Changesets-based version control, release workflow, and versioning documentation.
 
 ### Changed
 

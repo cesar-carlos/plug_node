@@ -50,6 +50,8 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npm run changeset
+npm run changeset:status
 ```
 
 ## Documentacao
@@ -61,6 +63,7 @@ npm run build
 - [Estrategia de testes](./docs/testing-strategy.md)
 - [Exemplos de workflow](./docs/workflow-examples.md)
 - [Processo de release](./docs/release-process.md)
+- [Estrategia de versionamento](./docs/versioning-strategy.md)
 - [Changelog](./CHANGELOG.md)
 
 ## Regras do projeto

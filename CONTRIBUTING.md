@@ -55,8 +55,17 @@ Read [AGENTS.md](./AGENTS.md) first, then use the real project rules under [`.cu
 
 - update docs when behavior or UX changes
 - add or update tests when logic changes
+- add a changeset with `npm run changeset` when package behavior changes
 - run `npm run verify`
 - keep commits focused and easy to review
+
+## Versioning
+
+- package versions follow `Semantic Versioning`
+- this monorepo uses `Changesets` for version control and changelog generation
+- `n8n-nodes-plug-client` and `n8n-nodes-plug-client-internal` are versioned together
+- docs-only or repository-only changes can skip a changeset when package behavior does not change
+- `Conventional Commits` are recommended for commit messages
 
 ## Notes
 

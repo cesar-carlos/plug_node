@@ -18,6 +18,7 @@ alwaysApply: true
 - Before concluding a long or multi-file task, run `npm run lint` plus the relevant automated tests, and resolve reported errors and warnings when they are caused by the current work.
 - Before concluding a refactor, run `npm run lint` plus the relevant automated tests; escalate to `npm run test` when shared contracts, core infrastructure, or cross-cutting behavior changed.
 - Run `npm run typecheck` when shared types, transport contracts, tsconfig-sensitive behavior, or broad refactors change TypeScript assumptions across files.
+- When a change affects package behavior, public node UX, runtime contracts, or releaseable package metadata, add a Changesets entry and keep package versioning aligned with SemVer.
 - If lint or tests cannot be run, or if failures remain outside the current scope, say so explicitly in the final handoff.
 - `shared` must not import from package-local `nodes` or `credentials`.
 - The public package must not import socket-only runtime dependencies.

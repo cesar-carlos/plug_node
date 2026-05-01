@@ -100,6 +100,7 @@ Arquivos de apoio:
 
 Tooling padronizado no workspace:
 
+- `@changesets/cli@2.31.0`
 - `@n8n/node-cli@0.28.0`
 - `typescript@5.9.3`
 - `eslint@9.39.4`
@@ -169,8 +170,10 @@ Comandos de qualidade do workspace:
 Automacao adicionada:
 
 - workflow CI em `.github/workflows/ci.yml`
+- workflow de versionamento em `.github/workflows/release.yml`
 - `.nvmrc` com `22.22.0`
 - `engines.node` no root do workspace
+- `Changesets` com grupo fixo para os dois packages
 
 ## Estado atual da implementacao
 

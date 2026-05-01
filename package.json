@@ -18,6 +18,8 @@
     "packages/*"
   ],
   "scripts": {
+    "changeset": "changeset",
+    "changeset:status": "changeset status --verbose",
     "sync-shared": "node ./scripts/sync-shared.mjs",
     "build": "npm run build --workspaces --if-present",
     "ci": "npm run verify",
@@ -26,8 +28,13 @@
     "format:check": "prettier --check .",
     "lint": "npm run lint --workspaces --if-present",
     "lint:fix": "npm run lint:fix --workspaces --if-present",
+    "release": "changeset publish",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0"
   }
 }
