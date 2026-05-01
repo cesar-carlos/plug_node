@@ -631,11 +631,13 @@ const serializeErrorForContinueOnFail = (error: unknown): IDataObject => {
   if (error instanceof PlugError) {
     return {
       message: error.message,
+      description: error.description,
       code: error.code,
       statusCode: error.statusCode,
       correlationId: error.correlationId,
       retryable: error.retryable,
       retryAfterSeconds: error.retryAfterSeconds,
+      technicalMessage: error.technicalMessage,
       details: error.details,
     };
   }

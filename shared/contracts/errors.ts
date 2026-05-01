@@ -4,6 +4,7 @@ export interface PlugErrorOptions {
   readonly correlationId?: string;
   readonly retryable?: boolean;
   readonly retryAfterSeconds?: number;
+  readonly description?: string;
   readonly technicalMessage?: string;
   readonly details?: Record<string, unknown>;
   readonly authRelated?: boolean;
@@ -15,6 +16,7 @@ export class PlugError extends Error {
   readonly correlationId?: string;
   readonly retryable: boolean;
   readonly retryAfterSeconds?: number;
+  readonly description?: string;
   readonly technicalMessage?: string;
   readonly details?: Record<string, unknown>;
   readonly authRelated: boolean;
@@ -27,6 +29,7 @@ export class PlugError extends Error {
     this.correlationId = options.correlationId;
     this.retryable = options.retryable ?? false;
     this.retryAfterSeconds = options.retryAfterSeconds;
+    this.description = options.description;
     this.technicalMessage = options.technicalMessage;
     this.details = options.details;
     this.authRelated = options.authRelated ?? false;

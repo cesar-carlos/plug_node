@@ -29,6 +29,12 @@ Verify the whole workspace before opening a pull request:
 npm run verify
 ```
 
+Run live E2E tests locally when you have a valid Plug environment:
+
+```bash
+npm run test:e2e
+```
+
 ## Project structure
 
 Important areas:
@@ -47,6 +53,7 @@ Read [AGENTS.md](./AGENTS.md) first, then use the real project rules under [`.cu
 - do not commit `node_modules`
 - do not commit `packages/*/dist`
 - do not commit `packages/*/generated`
+- do not commit `.env`
 - keep node UI labels and descriptions in English
 - keep internal documentation clear and consistent with implemented behavior
 - preserve the fixed Plug API base URL unless the project direction changes explicitly

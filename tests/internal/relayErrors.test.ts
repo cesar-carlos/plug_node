@@ -143,4 +143,42 @@ describe("executeRelayCommand app errors", () => {
       expect(transport.emittedEvents).toContain("relay:conversation.end");
     },
   );
+
+  it("adds a clearer message when the account is blocked", async () => {
+    const transport = new ErrorRelayTransport("ACCOUNT_BLOCKED");
+
+    await expect(
+      executeRelayCommand({
+        transport,
+        session,
+        command,
+        responseMode: "aggregatedJson",
+        timeoutMs: 5000,
+      }),
+    ).rejects.toMatchObject<Partial<PlugError>>({
+      code: "ACCOUNT_BLOCKED",
+      message: "The Plug account is blocked.",
+      description:
+        "The server closed the socket because the user or client account is blocked.",
+    });
+  });
+
+  it("adds a clearer message when agent access was revoked", async () => {
+    const transport = new ErrorRelayTransport("AGENT_ACCESS_REVOKED");
+
+    await expect(
+      executeRelayCommand({
+        transport,
+        session,
+        command,
+        responseMode: "aggregatedJson",
+        timeoutMs: 5000,
+      }),
+    ).rejects.toMatchObject<Partial<PlugError>>({
+      code: "AGENT_ACCESS_REVOKED",
+      message: "Client access to this agent was revoked.",
+      description:
+        "Ask the agent owner to approve access again or update the credential before retrying.",
+    });
+  });
 });

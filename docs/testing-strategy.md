@@ -17,8 +17,18 @@ A estrategia de testes do v1 busca validar os pontos de maior risco tecnico do p
 Cobertura atual:
 
 - renovacao de sessao com retry unico em erro de autenticacao
+- reuso de sessao autenticada entre execucoes do runner
+- deduplicacao de login concorrente
+- falha de refresh token propagada corretamente
+- erro HTTP de login por credencial invalida
+- erro HTTP de login por conta bloqueada
+- erro HTTP de refresh rejeitado
+- validacao de resposta malformada de login
 - normalizacao de output em `Execute SQL`
 - omissao opcional de `__plug`
+- output `Chunk Items` para relay socket
+- mapeamento de erro HTTP para validacao e retry guidance
+- mapeamento de erro RPC para `agent_offline` e `rate_limited`
 - encode/decode de `PayloadFrame`
 - coleta de chunks no relay socket
 - erros `ACCOUNT_BLOCKED` e `AGENT_ACCESS_REVOKED`
@@ -35,6 +45,45 @@ Arquivos:
 - `tests/internal/payloadFrameCodec.test.ts`
 - `tests/internal/relaySession.test.ts`
 - `tests/internal/relayErrors.test.ts`
+
+### E2E tests
+
+Estrutura adicionada:
+
+- `tests/e2e/rest.e2e.test.ts`
+- `tests/e2e/socket.e2e.test.ts`
+- `tests/e2e/helpers/e2eEnv.ts`
+- `tests/e2e/helpers/liveExecuteContext.ts`
+- `tests/e2e/vitest.config.mts`
+
+Objetivos:
+
+- validar login real com `.env`
+- validar login real diretamente em `loginClient`
+- validar refresh token real diretamente em `refreshClientSession`
+- validar refresh token adulterado e registrar o shape real de erro
+- validar o fluxo real de refresh do `createExecutionSessionRunner`
+- validar `Validate Context` em `REST`
+- validar `Validate Context` em `SOCKET`
+- executar queries SQL reais pelos dois canais
+- validar `multi_result` real com dois `SELECT` bem-sucedidos
+- validar o comportamento fail-fast de `multi_result` quando um statement falha por autorizacao
+- registrar o shape real de erro de autorizacao por recurso negado
+- registrar o shape real de erro de SQL invalida
+- exercitar o decode real do relay socket ate a saida JSON do node
+
+Comandos:
+
+- `npm run test:e2e`
+- `npm run test:e2e:rest`
+- `npm run test:e2e:socket`
+- `npm run test:coverage`
+
+Observacoes:
+
+- `E2E` nao entra em `npm run verify`
+- `.env` fica local e ignorado pelo Git
+- `.env.example` documenta o contrato esperado para as credenciais
 
 ## Validacoes de pacote
 
@@ -84,8 +133,9 @@ Ainda nao existem testes automatizados para todos os cenarios desejados no plano
 Itens recomendados para a proxima etapa:
 
 - ampliar fixtures de contrato com mais exemplos do Plug
-- testes de `Chunk Items`
+- cobertura de `denied_resources` e negacoes de permissao por tabela/view
 - testes de operacoes guiadas adicionais com mocks de `IExecuteFunctions`
+- cobertura E2E adicional para cenarios de erro do relay em ambiente real
 
 ## Criterios de aceite usados nesta entrega
 

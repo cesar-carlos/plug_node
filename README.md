@@ -50,6 +50,9 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npm run test:e2e
+npm run test:e2e:rest
+npm run test:e2e:socket
 npm run changeset
 npm run changeset:status
 ```
@@ -59,6 +62,7 @@ npm run changeset:status
 - [Resumo do projeto](./docs/project-summary.md)
 - [Arquitetura](./docs/architecture.md)
 - [Padroes de comunicacao](./docs/communication-patterns.md)
+- [Contratos de erro e autorizacao](./docs/error-and-authorization-contracts.md)
 - [Decisoes de UX](./docs/ux-decisions.md)
 - [Estrategia de testes](./docs/testing-strategy.md)
 - [Exemplos de workflow](./docs/workflow-examples.md)
@@ -73,6 +77,10 @@ Leia [AGENTS.md](./AGENTS.md) e depois as regras reais em [`.cursor/rules`](./.c
 ## Contribuicao
 
 Para contribuir, leia [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## E2E local
+
+Use [`.env.example`](./.env.example) como base para criar o seu `.env` local.
 
 ## Seguranca
 

@@ -6,7 +6,7 @@ import type {
   PlugCommandTransportResult,
   PlugResponseMode,
 } from "../contracts/api";
-import { PlugValidationError } from "../contracts/errors";
+import { PlugError } from "../contracts/errors";
 import { ensureSuccessfulNormalizedResponse } from "./rpcNormalization";
 import { isRecord } from "../utils/json";
 
@@ -48,8 +48,18 @@ const aggregateSocketSqlStream = (
         ? completePayload.terminal_status
         : undefined;
     if (status === "aborted" || status === "error") {
-      throw new PlugValidationError(
-        `Socket SQL stream completed with terminal_status=${status}`,
+      throw new PlugError(
+        status === "aborted"
+          ? "The socket SQL stream was aborted before completion."
+          : "The socket SQL stream ended with an error.",
+        {
+          code: status === "aborted" ? "SOCKET_STREAM_ABORTED" : "SOCKET_STREAM_ERROR",
+          description:
+            "Try again or reduce the query size. Large socket streams may need pagination or lower Max Rows.",
+          details: {
+            completePayload,
+          },
+        },
       );
     }
   }

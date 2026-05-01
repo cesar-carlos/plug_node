@@ -117,9 +117,18 @@ O node prioriza mensagens que ajudem a pessoa que esta configurando o workflow.
 Regras:
 
 - priorizar `user_message`
+- complementar com descricao curta e acionavel quando o contrato expuser apenas `reason` ou codigo
 - manter detalhes tecnicos em metadados
 - preservar `correlation_id` quando existir
 - sugerir retry apenas quando o contrato indicar isso
+- traduzir erros operacionais frequentes para linguagem do workflow
+
+Exemplos de traducao:
+
+- `agent_offline` -> agente offline, orientar reconexao
+- `ACCOUNT_BLOCKED` -> conta Plug bloqueada
+- `AGENT_ACCESS_REVOKED` -> acesso do client ao agente revogado
+- `result_too_large` -> orientar paginacao, `max_rows` menor ou socket
 
 ## Idioma da interface
 

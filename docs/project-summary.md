@@ -37,6 +37,7 @@ Principios adotados:
 - padrao de saida amigavel para n8n
 - toggle para incluir ou omitir metadados `__plug`
 - mensagens de erro focadas no `user_message` retornado pela API quando disponivel
+- registro formal dos contratos de erro e autorizacao usados pelo node
 
 ## Escopo v1
 
@@ -95,6 +96,9 @@ Arquivos de apoio:
   - indice para regras do projeto
 - `.cursor/rules`
   - fonte real das regras de arquitetura e codificacao
+- `docs/error-and-authorization-contracts.md`
+  - contrato documentado dos erros HTTP/RPC, autorizacao por `client_token`,
+    regras de `SELECT` e pontos do OpenRPC/plug_agente utilizados no node
 
 ## Lista final de packages
 

@@ -1,5 +1,19 @@
 <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="128" height="128" rx="28" fill="#E2E8F0"/>
-  <path d="M74.4 22C57.2 22 43.2 36 43.2 53.2V58.4H33.6C27.192 58.4 22 63.592 22 70C22 76.408 27.192 81.6 33.6 81.6H43.2V86.8C43.2 104 57.2 118 74.4 118C91.6 118 105.6 104 105.6 86.8C105.6 69.6 91.6 55.6 74.4 55.6H64.8V53.2C64.8 47.72 68.92 43.6 74.4 43.6C79.88 43.6 84 47.72 84 53.2V57.2H105.6V53.2C105.6 36 91.6 22 74.4 22Z" fill="#0F172A"/>
-  <circle cx="74.4" cy="86.8" r="10.8" fill="#38BDF8"/>
+  <g stroke="#F8FAFC" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M64 14L109 40V90L64 116L19 90V40L64 14Z" fill="#55B84F"/>
+    <path d="M64 14V116"/>
+    <path d="M19 40L64 66L109 40"/>
+    <path d="M28 36L49 49L64 38L83 50L100 40"/>
+    <path d="M35 49V73L53 77"/>
+    <path d="M93 49V73L75 77"/>
+    <path d="M28 76L43 79"/>
+    <path d="M100 76L85 79"/>
+    <path d="M43 79L50 91"/>
+    <path d="M85 79L78 91"/>
+  </g>
+  <circle cx="64" cy="38" r="6" fill="#55B84F" stroke="#F8FAFC" stroke-width="8"/>
+  <circle cx="53" cy="77" r="6" fill="#55B84F" stroke="#F8FAFC" stroke-width="8"/>
+  <circle cx="75" cy="77" r="6" fill="#55B84F" stroke="#F8FAFC" stroke-width="8"/>
+  <circle cx="50" cy="91" r="6" fill="#55B84F" stroke="#F8FAFC" stroke-width="8"/>
+  <circle cx="78" cy="91" r="6" fill="#55B84F" stroke="#F8FAFC" stroke-width="8"/>
 </svg>

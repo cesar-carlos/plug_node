@@ -1,13 +1,6 @@
 {
   "accessToken": "access-2",
   "refreshToken": "refresh-2",
-  "client": {
-    "id": "client-1",
-    "userId": "user-1",
-    "email": "client@example.com",
-    "name": "Plug",
-    "lastName": "Client",
-    "status": "active",
-    "role": "client"
-  }
+  "success": true,
+  "token": "access-2"
 }

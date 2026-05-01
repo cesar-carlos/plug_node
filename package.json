@@ -30,11 +30,18 @@
     "lint:fix": "npm run lint:fix --workspaces --if-present",
     "release": "changeset publish",
     "test": "npm run test --workspaces --if-present",
+    "test:coverage": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config vitest.config.mts --coverage",
+    "test:e2e": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts",
+    "test:e2e:rest": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/rest.e2e.test.ts",
+    "test:e2e:socket": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/socket.e2e.test.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
     "verify": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.31.0"
+    "@changesets/cli": "^2.31.0",
+    "@vitest/coverage-v8": "4.1.5",
+    "dotenv": "^17.4.2",
+    "vitest": "4.1.5"
   }
 }

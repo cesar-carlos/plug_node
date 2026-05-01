@@ -36,6 +36,97 @@ const rpcCompleteEvent = "relay:rpc.complete";
 const rpcStreamPullEvent = "relay:rpc.stream.pull";
 const rpcStreamPullResponseEvent = "relay:rpc.stream.pull_response";
 
+const createSocketAppError = (payload: unknown): PlugError => {
+  const appError = isRecord(payload) ? (payload as SocketAppErrorPayload) : {};
+  const code =
+    typeof appError.code === "string" && appError.code.trim() !== ""
+      ? appError.code
+      : "SOCKET_APP_ERROR";
+  const details = isRecord(appError.details) ? appError.details : undefined;
+
+  if (code === "ACCOUNT_BLOCKED") {
+    return new PlugError("The Plug account is blocked.", {
+      code,
+      description:
+        "The server closed the socket because the user or client account is blocked.",
+      details,
+      technicalMessage:
+        typeof appError.message === "string" ? appError.message : undefined,
+      authRelated: true,
+    });
+  }
+
+  if (code === "AGENT_ACCESS_REVOKED") {
+    return new PlugError("Client access to this agent was revoked.", {
+      code,
+      description:
+        "Ask the agent owner to approve access again or update the credential before retrying.",
+      details,
+      technicalMessage:
+        typeof appError.message === "string" ? appError.message : undefined,
+      authRelated: true,
+    });
+  }
+
+  return new PlugError(
+    typeof appError.message === "string" && appError.message.trim() !== ""
+      ? appError.message
+      : "Plug socket reported an application error.",
+    {
+      code,
+      details,
+    },
+  );
+};
+
+const createRelayControlError = (input: {
+  readonly code?: string;
+  readonly message?: string;
+  readonly statusCode?: number;
+  readonly details?: Record<string, unknown>;
+}): PlugError => {
+  const code =
+    typeof input.code === "string" && input.code.trim() !== ""
+      ? input.code
+      : "RELAY_ERROR";
+
+  if (code === "VALIDATION_ERROR" || input.statusCode === 400) {
+    return new PlugError("Plug rejected the socket request payload.", {
+      code,
+      statusCode: input.statusCode,
+      description: "Review the node fields and any advanced JSON before trying again.",
+      details: input.details,
+      technicalMessage: input.message,
+    });
+  }
+
+  if (code === "RATE_LIMITED" || input.statusCode === 429) {
+    return new PlugError("Plug rate limited the socket request.", {
+      code,
+      statusCode: input.statusCode,
+      description: "Wait a moment before trying this socket operation again.",
+      details: input.details,
+      technicalMessage: input.message,
+    });
+  }
+
+  if (input.statusCode === 503) {
+    return new PlugError("Plug socket transport is temporarily unavailable.", {
+      code,
+      statusCode: input.statusCode,
+      description: "The hub or agent may be overloaded. Try again shortly.",
+      details: input.details,
+      technicalMessage: input.message,
+    });
+  }
+
+  return new PlugError(input.message ?? "Socket relay request failed.", {
+    code,
+    statusCode: input.statusCode,
+    details: input.details,
+  });
+};
+
 export interface RelaySocketTransport {
   readonly connected: boolean;
   connect(): void;
@@ -78,21 +169,7 @@ const waitForSingleEvent = <TPayload>(
 
     const handleAppError = (payload: unknown): void => {
       cleanup();
-      const appError = isRecord(payload) ? (payload as SocketAppErrorPayload) : {};
-      reject(
-        new PlugError(
-          typeof appError.message === "string" && appError.message.trim() !== ""
-            ? appError.message
-            : "Plug socket reported an application error.",
-          {
-            code:
-              typeof appError.code === "string" && appError.code.trim() !== ""
-                ? appError.code
-                : "SOCKET_APP_ERROR",
-            details: isRecord(appError.details) ? appError.details : undefined,
-          },
-        ),
-      );
+      reject(createSocketAppError(payload));
     };
 
     const timer = setTimeout(() => {
@@ -147,8 +224,9 @@ const assertAcceptedPayload = (
     return payload;
   }
 
-  throw new PlugError(payload.error.message, {
+  throw createRelayControlError({
     code: payload.error.code,
+    message: payload.error.message,
     statusCode: payload.error.statusCode,
   });
 };
@@ -214,8 +292,9 @@ const requestRelayStreamPull = async (
 
   const response = await responsePromise;
   if (!response.success) {
-    throw new PlugError(response.error?.message ?? "relay:rpc.stream.pull failed", {
+    throw createRelayControlError({
       code: response.error?.code ?? "RELAY_STREAM_PULL_FAILED",
+      message: response.error?.message ?? "relay:rpc.stream.pull failed",
       statusCode: response.error?.statusCode,
       details: response.rateLimit ? { rateLimit: response.rateLimit } : undefined,
     });
@@ -260,13 +339,11 @@ export const executeRelayCommand = async (
     });
     const conversation = await conversationPromise;
     if (!conversation.success || !conversation.conversationId) {
-      throw new PlugError(
-        conversation.error?.message ?? "Failed to start relay conversation",
-        {
-          code: conversation.error?.code ?? "RELAY_CONVERSATION_START_FAILED",
-          statusCode: conversation.error?.statusCode,
-        },
-      );
+      throw createRelayControlError({
+        code: conversation.error?.code ?? "RELAY_CONVERSATION_START_FAILED",
+        message: conversation.error?.message ?? "Failed to start relay conversation",
+        statusCode: conversation.error?.statusCode,
+      });
     }
 
     conversationId = conversation.conversationId;
@@ -470,21 +547,7 @@ export const executeRelayCommand = async (
 
       const handleAppError = (payload: unknown): void => {
         cleanup();
-        const appError = isRecord(payload) ? (payload as SocketAppErrorPayload) : {};
-        reject(
-          new PlugError(
-            typeof appError.message === "string" && appError.message.trim() !== ""
-              ? appError.message
-              : "Plug socket reported an application error.",
-            {
-              code:
-                typeof appError.code === "string" && appError.code.trim() !== ""
-                  ? appError.code
-                  : "SOCKET_APP_ERROR",
-              details: isRecord(appError.details) ? appError.details : undefined,
-            },
-          ),
-        );
+        reject(createSocketAppError(payload));
       };
 
       const responseListener = (payload: unknown): void => {

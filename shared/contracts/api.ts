@@ -59,6 +59,14 @@ export interface PlugLoginResponse {
   readonly token?: string;
 }
 
+export interface PlugRefreshResponse {
+  readonly accessToken: string;
+  readonly refreshToken: string;
+  readonly success?: boolean;
+  readonly token?: string;
+  readonly client?: PlugClientProfile;
+}
+
 export interface PlugSession {
   readonly credentials: PlugCredentials;
   readonly accessToken: string;

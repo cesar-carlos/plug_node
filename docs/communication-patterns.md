@@ -56,6 +56,12 @@ Quando um erro de autenticacao elegivel acontece, o node:
 2. atualiza a sessao em memoria
 3. reexecuta a chamada uma unica vez
 
+Observacao importante do contrato real:
+
+- o refresh da API pode devolver apenas `accessToken` e `refreshToken`
+- o profile `client` pode nao voltar no body de refresh
+- o node preserva em memoria os dados `client` recebidos no login anterior
+
 ### Execucao de comando
 
 O canal REST usa:
@@ -146,7 +152,7 @@ Opcao adicional:
 Prioridades de exibicao:
 
 1. `error.data.user_message`
-2. mensagem principal do erro Plug
+2. mapeamento amigavel por `reason`, `code` e `status`
 3. fallback generico
 
 Metadados preservados quando disponiveis:
@@ -156,8 +162,35 @@ Metadados preservados quando disponiveis:
 - `correlation_id`
 - `retryable`
 - `Retry-After`
+- `reason`
+- `category`
 
 `technical_message` nao deve ser a mensagem principal para o usuario do node.
+
+Tratamentos especiais implementados:
+
+- `agent_offline` / `agent_disconnected_at_dispatch`
+  - orientar reconexao do agente
+- `missing_client_token` / `token_revoked`
+  - orientar revisao ou renovacao do `clientToken`
+- `sql_validation_failed`, `result_too_large`, `query_timeout`
+  - orientar revisao de SQL, paginacao, `max_rows` e timeout
+- `429`, `503` e RPC `-32013`
+  - preservar `Retry-After` ou `retry_after_ms` quando disponivel
+- `ACCOUNT_BLOCKED` e `AGENT_ACCESS_REVOKED`
+  - traduzir encerramentos forçados do socket para linguagem operacional
+
+Contrato de referencia registrado:
+
+- [Contratos de erro e autorizacao](./error-and-authorization-contracts.md)
+
+Esse documento consolida:
+
+- erros HTTP do proxy
+- erros JSON-RPC do agente
+- regras de `client_token`
+- restricoes de `SELECT`, paginacao e permissao por recurso
+- uso atual do OpenRPC publicado pelo agente
 
 ## Logs tecnicos do node
 
