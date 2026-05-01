@@ -1,0 +1,20 @@
+description: "Universal coding standards"
+globs: ["packages/**/*.ts", "shared/**/*.ts", "scripts/**/*.mjs", "**/*.test.ts", "**/*.spec.ts"]
+alwaysApply: true
+---
+
+# Coding Standards
+
+- This is a universal rule file. Keep language-specific guidance in dedicated stack rules such as `typescript.mdc`.
+- Prefer simple modules and small functions over clever abstractions.
+- Keep files focused on one responsibility. Split large node helpers, transport clients, or output mappers before they become hard to scan.
+- Use descriptive names from the Plug or n8n domain, such as `executeSqlCommand`, `decodePayloadFrame`, or `buildCredentialContext`.
+- Follow the project naming pattern consistently and prefer names that reveal feature plus responsibility.
+- Replace business-significant literals with named constants.
+- Comments should explain non-obvious intent or trade-offs, not restate the code.
+- When comments are necessary, write them in English.
+- Do not leave commented-out code, empty catch blocks, or unused exports behind.
+- Do not generate new standalone documentation files unless the user explicitly requests them. This project already has an explicit docs deliverable under `docs/`, so keep documentation there when requested.
+- Handle failures explicitly instead of swallowing or hiding them.
+- Avoid premature abstractions. Duplicate once if needed, then extract when the pattern is real.
+- Optimize for readability first: names, types, module boundaries, and control flow should help a reviewer understand the code quickly.

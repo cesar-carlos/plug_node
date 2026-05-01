@@ -1,0 +1,25 @@
+description: "Project-specific folder structure conventions for the Plug Client n8n workspace"
+globs: ["packages/**/*.ts", "shared/**/*.ts", "scripts/**/*.mjs"]
+alwaysApply: true
+---
+
+# Project Structure
+
+- This is a project-specific rule file. It defines where code lives in this repository.
+- Keep the workspace rooted around:
+  - `packages/n8n-nodes-plug-client-internal`
+  - `packages/n8n-nodes-plug-client`
+  - `shared`
+  - `docs`
+  - `scripts`
+- Each package should follow n8n conventions at the package root:
+  - `nodes/`
+  - `credentials/`
+  - package-local `package.json`
+  - package-local `tsconfig.json`
+- Keep package-local helpers near the node only when they are truly package-specific. Shared transport, auth, and normalization logic belongs in `shared`.
+- Organize `shared` by responsibility rather than by framework layers.
+- Keep generated copies of shared code clearly marked as generated and avoid editing them manually when a sync script owns them.
+- Keep documentation under `docs/`, especially project summary, architecture, communication patterns, UX decisions, and testing strategy.
+- Keep automation or sync helpers in `scripts/`.
+- Avoid inventing `src/app.ts`, `src/server.ts`, REST route folders, or backend bootstrap files for this repository.

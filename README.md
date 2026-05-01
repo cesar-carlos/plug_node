@@ -14,6 +14,10 @@ Entregar uma integracao focada em comandos, onde o usuario final informa apenas:
 
 O node cuida de login, refresh, relay socket, decode de `PayloadFrame`, `gzip` e normalizacao de resposta para JSON.
 
+A URL da API Plug fica fixa no projeto:
+
+- `https://plug-server.se7esistemassinop.com.br/api/v1`
+
 ## Pacotes
 
 - `packages/n8n-nodes-plug-client`

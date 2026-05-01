@@ -1,0 +1,18 @@
+description: "Universal testing strategy"
+globs: ["**/*.test.ts", "**/*.spec.ts"]
+alwaysApply: true
+---
+
+# Testing Standards
+
+- This is a universal rule file. Transport-specific test requirements live in the HTTP, WebSocket, and security rule files.
+- Follow the testing pyramid: many unit tests, targeted integration tests, plus transport-level tests for critical public interfaces.
+- Mirror the source structure in `tests/` or package-local test folders so the target module is obvious.
+- Unit-test shared auth, transport, normalization, and codec helpers in isolation.
+- Integration-test Plug contract handling, node execution helpers, and socket session behavior with isolated fixtures and mocks.
+- Add contract tests for critical public interfaces and compatibility shims.
+- Mock infrastructure boundaries in unit tests, but prefer real typed payload shapes over hand-wavy stubs.
+- Every intentional compatibility alias or migration shim must have a regression test so the exception stays localized.
+- Update or add tests whenever behavior, contracts, or compatibility shims change.
+- Use AAA naming and structure: `should return 404 when user does not exist`.
+- Reset data and mocks between tests; no test may depend on execution order.

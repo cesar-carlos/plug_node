@@ -1,0 +1,21 @@
+description: "Stack-specific security rules for the Plug Client n8n workspace"
+globs: ["packages/**/*.ts", "shared/**/*.ts", "scripts/**/*.mjs"]
+alwaysApply: true
+---
+
+# Security Best Practices
+
+- This is a stack-specific rule file for transport, token, and integration security in this workspace.
+- Treat credential values (`user`, `password`, `agentId`, `clientToken`) as secrets or secret-adjacent data. Never log them, echo them in thrown messages, or write them to docs fixtures.
+- Validate external data at the boundary before trusting it as a typed Plug response.
+- Keep refresh tokens in memory only for the current execution or socket session. Do not persist them across workflow runs in v1.
+- Authenticate `/consumers` with the current access token and close the socket after the execution finishes.
+- Enforce `PayloadFrame` safety checks before decoding:
+  - accepted `enc`
+  - accepted `cmp`
+  - compressed size limit
+  - decoded size limit
+  - gzip inflation ratio limit
+- Treat `signature` support as optional in v1 unless the target environment requires it. Do not fake or silently skip configured signature verification.
+- Prefer user-safe error messages. Surface `error.data.user_message` when available and keep low-level `technical_message` out of normal n8n output.
+- Log only safe metadata such as method names, correlation ids, and retry hints. Never log passwords, access tokens, refresh tokens, or raw client tokens.

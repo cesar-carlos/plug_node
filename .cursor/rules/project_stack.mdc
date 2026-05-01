@@ -1,0 +1,34 @@
+description: "Stack-specific libraries and conventions for the Plug Client n8n workspace"
+globs: ["packages/**/*.ts", "shared/**/*.ts", "scripts/**/*.mjs", "**/*.test.ts", "**/*.spec.ts"]
+alwaysApply: true
+---
+
+# Project Stack
+
+- This is a stack-specific rule file for the chosen libraries and ecosystem conventions.
+- Workspace tooling uses `npm workspaces`, `@n8n/node-cli`, `TypeScript`, `ESLint`, `Prettier`, `Vitest`, and `release-it`.
+- Use `npm run verify` as the default local quality gate before handing work off.
+- Target the workspace development environment at Node `22.22.0`, matching `.nvmrc` and CI.
+- Runtime integration targets `n8n` and `n8n-workflow`; keep package metadata aligned with official n8n package conventions.
+- The internal package may use `socket.io-client` for `/consumers` relay communication.
+- Use only the dependencies that match this project's real shape: an n8n node package, not an Express backend.
+- Prefer Node built-ins over extra runtime packages when they solve the problem cleanly:
+  - `node:crypto`
+  - `node:zlib`
+  - `node:buffer`
+- Prefer standard platform APIs for dates and ids:
+  - `Date`
+  - `Intl.DateTimeFormat`
+  - `crypto.randomUUID()`
+- Prefer lightweight internal helpers for troubleshooting over bringing in server-centric logging middleware.
+- Keep `Vitest` as the default test runner.
+- Do not add `supertest` unless the repository actually introduces an HTTP server that must be tested through request/response assertions.
+- Do not add `morgan`, `cors`, `helmet`, or `multer` unless the repository actually introduces an HTTP server or upload endpoint.
+- Do not add `jsonwebtoken` unless this repository must sign or verify JWTs locally. Current Plug usage only forwards bearer and refresh tokens returned by the API.
+- Do not add `dotenv` unless the repository introduces a standalone local process that reads runtime configuration from `.env`. The node itself relies on n8n credentials, not `.env` files.
+- Do not add `moment` for date formatting in v1. Prefer built-in date and `Intl` APIs.
+- Do not add `axios`, `zod`, `uuid`, `pako`, `ws`, `turbo`, or `lerna` unless a concrete requirement appears and the user agrees with the added complexity.
+- Prefer `crypto.randomUUID()` over bringing `uuid` into the project.
+- Prefer `this.helpers.httpRequest` in n8n execution code for HTTP calls instead of adding a custom HTTP client dependency.
+- Prefer small handwritten guards for the current Plug payload boundaries instead of adding a runtime schema library by default.
+- Keep third-party library usage behind small helpers when that improves reuse or testability.
