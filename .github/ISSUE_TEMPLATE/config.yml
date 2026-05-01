@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Project documentation
+    url: https://github.com/cesar-carlos/plug_node/tree/main/docs
+    about: Read the project documentation before opening an issue.
+  - name: Security reporting guidance
+    url: https://github.com/cesar-carlos/plug_node/blob/main/SECURITY.md
+    about: Follow the security policy for sensitive reports.

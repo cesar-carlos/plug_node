@@ -66,3 +66,7 @@ Leia [AGENTS.md](./AGENTS.md) e depois as regras reais em [`.cursor/rules`](./.c
 ## Contribuicao
 
 Para contribuir, leia [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Seguranca
+
+Leia [SECURITY.md](./SECURITY.md) para orientacoes de reporte e cuidados com credenciais, tokens e logs.
