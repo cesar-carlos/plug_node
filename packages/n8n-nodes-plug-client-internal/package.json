@@ -6,6 +6,15 @@
   "author": {
     "name": "Plug Node Team"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cesar-carlos/plug_node.git",
+    "directory": "packages/n8n-nodes-plug-client-internal"
+  },
+  "bugs": {
+    "url": "https://github.com/cesar-carlos/plug_node/issues"
+  },
+  "homepage": "https://github.com/cesar-carlos/plug_node/tree/main/packages/n8n-nodes-plug-client-internal#readme",
   "keywords": [
     "n8n-community-node-package",
     "n8n",

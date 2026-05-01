@@ -1,5 +1,7 @@
 # Plug Client n8n Workspace
 
+[![CI](https://github.com/cesar-carlos/plug_node/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cesar-carlos/plug_node/actions/workflows/ci.yml)
+
 Workspace para desenvolvimento do node Plug Client para n8n.
 
 ## Objetivo
@@ -58,6 +60,8 @@ npm run build
 - [Decisoes de UX](./docs/ux-decisions.md)
 - [Estrategia de testes](./docs/testing-strategy.md)
 - [Exemplos de workflow](./docs/workflow-examples.md)
+- [Processo de release](./docs/release-process.md)
+- [Changelog](./CHANGELOG.md)
 
 ## Regras do projeto
 

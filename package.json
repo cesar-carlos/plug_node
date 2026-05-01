@@ -2,6 +2,15 @@
   "name": "plug-node-workspace",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@11.3.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cesar-carlos/plug_node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cesar-carlos/plug_node/issues"
+  },
+  "homepage": "https://github.com/cesar-carlos/plug_node#readme",
   "engines": {
     "node": ">=22.22.0 <25"
   },
