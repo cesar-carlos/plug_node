@@ -62,3 +62,7 @@ npm run build
 ## Regras do projeto
 
 Leia [AGENTS.md](./AGENTS.md) e depois as regras reais em [`.cursor/rules`](./.cursor/rules).
+
+## Contribuicao
+
+Para contribuir, leia [CONTRIBUTING.md](./CONTRIBUTING.md).
