@@ -1,0 +1,33 @@
+name: Scan Public Package
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Publish
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Scan public package
+        run: npm run scan:public

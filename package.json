@@ -22,6 +22,7 @@
     "changeset": "changeset",
     "changeset:status": "changeset status --verbose",
     "pack:check": "node ./scripts/check-packages.mjs",
+    "scan:public": "npx @n8n/scan-community-package n8n-nodes-plug-database",
     "publish:packages": "npm publish --workspace n8n-nodes-plug-database --access public --provenance && npm publish --workspace n8n-nodes-plug-database-advanced --access public --provenance",
     "sync-shared": "node ./scripts/sync-shared.mjs",
     "build": "npm run build --workspaces --if-present",

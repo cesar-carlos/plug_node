@@ -52,6 +52,7 @@ Useful commands:
 npm run changeset
 npm run changeset:status
 npm run test:coverage
+npm run scan:public
 ```
 
 ## Documentation
@@ -65,6 +66,18 @@ npm run test:coverage
 - [Workflow examples](https://github.com/cesar-carlos/plug_node/blob/main/docs/workflow-examples.md)
 - [Release process](https://github.com/cesar-carlos/plug_node/blob/main/docs/release-process.md)
 - [Versioning strategy](https://github.com/cesar-carlos/plug_node/blob/main/docs/versioning-strategy.md)
+
+## Verification path
+
+For the verified community-node track, use only `n8n-nodes-plug-database`.
+
+After a GitHub Actions publish succeeds, run the dedicated `Scan Public Package` workflow or execute:
+
+```bash
+npm run scan:public
+```
+
+This runs the official `@n8n/scan-community-package` check against the published npm package.
 
 ## Project rules
 
