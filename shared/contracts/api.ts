@@ -1,5 +1,3 @@
-import type { PayloadFrameEnvelope } from "./payload-frame";
-
 export const DEFAULT_BASE_URL = "https://plug-server.se7esistemassinop.com.br/api/v1";
 export const DEFAULT_API_VERSION = "2.8";
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
@@ -361,9 +359,9 @@ export interface SocketTransportResult {
   readonly rawResponsePayload: unknown;
   readonly chunkPayloads: JsonObject[];
   readonly completePayload?: JsonObject;
-  readonly rawResponseFrame: PayloadFrameEnvelope;
-  readonly rawChunkFrames: PayloadFrameEnvelope[];
-  readonly rawCompleteFrame?: PayloadFrameEnvelope;
+  readonly rawResponseFrame: unknown;
+  readonly rawChunkFrames: unknown[];
+  readonly rawCompleteFrame?: unknown;
 }
 
 export type PlugCommandTransportResult =

@@ -16,6 +16,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "incremental": true,
+    "tsBuildInfoFile": "../../.tsbuildinfo/n8n-nodes-plug-database-advanced.tsbuildinfo",
     "declaration": true,
     "sourceMap": true,
     "skipLibCheck": true,

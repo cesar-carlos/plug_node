@@ -5,18 +5,18 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   PlugCredentials,
   PlugHttpRequester,
-} from "../../packages/n8n-nodes-plug-client/generated/shared/contracts/api";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 import {
   PlugError,
   PlugValidationError,
-} from "../../packages/n8n-nodes-plug-client/generated/shared/contracts/errors";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
 import {
   createExecutionSessionRunner,
   createHttpError,
   loginClient,
   refreshClientSession,
   withAutoRefreshSession,
-} from "../../packages/n8n-nodes-plug-client/generated/shared/auth/session";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/auth/session";
 
 const credentials: PlugCredentials = {
   user: "client@example.com",

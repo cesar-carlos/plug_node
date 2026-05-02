@@ -1,87 +1,77 @@
-# Plug Client n8n Workspace
+# Plug Database n8n Workspace
 
 [![CI](https://github.com/cesar-carlos/plug_node/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cesar-carlos/plug_node/actions/workflows/ci.yml)
+[![Publish](https://github.com/cesar-carlos/plug_node/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/cesar-carlos/plug_node/actions/workflows/publish.yml)
 
-Workspace para desenvolvimento do node Plug Client para n8n.
+![Plug Database logo](https://raw.githubusercontent.com/cesar-carlos/plug_node/main/assets/app_icons/plug_connect-blockchain-512px.png)
 
-## Objetivo
+This repository contains the Plug Database n8n community node workspace.
 
-Entregar uma integracao focada em comandos, onde o usuario final informa apenas:
+## Packages
+
+- `n8n-nodes-plug-database`
+  - public REST-only package
+  - candidate for n8n verification
+- `n8n-nodes-plug-database-advanced`
+  - advanced npm package
+  - REST + Socket relay support
+
+## User experience
+
+The node is designed to keep setup simple. End users only provide:
 
 - `User (email)`
 - `Password`
 - `Agent ID`
 - `Client Token`
-- `Channel = REST | SOCKET`
 
-O node cuida de login, refresh, relay socket, decode de `PayloadFrame`, `gzip` e normalizacao de resposta para JSON.
-
-A URL da API Plug fica fixa no projeto:
+The API base URL is fixed to:
 
 - `https://plug-server.se7esistemassinop.com.br/api/v1`
 
-## Pacotes
+The implementation handles login, token refresh, REST execution, Socket relay, binary frame decoding, gzip handling, and normalized JSON output.
 
-- `packages/n8n-nodes-plug-client`
-  - pacote publico
-  - somente REST
-- `packages/n8n-nodes-plug-client-internal`
-  - pacote principal
-  - REST + SOCKET relay
+## Local development
 
-## Desenvolvimento
-
-Node recomendado para o workspace:
+Recommended Node.js version:
 
 - `22.22.0`
 
-Comandos principais:
+Main commands:
 
 ```bash
 npm ci
 npm run verify
+npm run test:e2e
+npm run pack:check
 ```
 
-Comandos uteis:
+Useful commands:
 
 ```bash
-npm run format
-npm run lint
-npm run typecheck
-npm test
-npm run build
-npm run test:e2e
-npm run test:e2e:rest
-npm run test:e2e:socket
 npm run changeset
 npm run changeset:status
+npm run test:coverage
 ```
 
-## Documentacao
+## Documentation
 
-- [Resumo do projeto](./docs/project-summary.md)
-- [Arquitetura](./docs/architecture.md)
-- [Padroes de comunicacao](./docs/communication-patterns.md)
-- [Contratos de erro e autorizacao](./docs/error-and-authorization-contracts.md)
-- [Decisoes de UX](./docs/ux-decisions.md)
-- [Estrategia de testes](./docs/testing-strategy.md)
-- [Exemplos de workflow](./docs/workflow-examples.md)
-- [Processo de release](./docs/release-process.md)
-- [Estrategia de versionamento](./docs/versioning-strategy.md)
-- [Changelog](./CHANGELOG.md)
+- [Project summary](https://github.com/cesar-carlos/plug_node/blob/main/docs/project-summary.md)
+- [Architecture](https://github.com/cesar-carlos/plug_node/blob/main/docs/architecture.md)
+- [Communication patterns](https://github.com/cesar-carlos/plug_node/blob/main/docs/communication-patterns.md)
+- [Error and authorization contracts](https://github.com/cesar-carlos/plug_node/blob/main/docs/error-and-authorization-contracts.md)
+- [UX decisions](https://github.com/cesar-carlos/plug_node/blob/main/docs/ux-decisions.md)
+- [Testing strategy](https://github.com/cesar-carlos/plug_node/blob/main/docs/testing-strategy.md)
+- [Workflow examples](https://github.com/cesar-carlos/plug_node/blob/main/docs/workflow-examples.md)
+- [Release process](https://github.com/cesar-carlos/plug_node/blob/main/docs/release-process.md)
+- [Versioning strategy](https://github.com/cesar-carlos/plug_node/blob/main/docs/versioning-strategy.md)
 
-## Regras do projeto
+## Project rules
 
-Leia [AGENTS.md](./AGENTS.md) e depois as regras reais em [`.cursor/rules`](./.cursor/rules).
+Read [AGENTS.md](https://github.com/cesar-carlos/plug_node/blob/main/AGENTS.md) first, then the source rules in [`.cursor/rules`](https://github.com/cesar-carlos/plug_node/tree/main/.cursor/rules).
 
-## Contribuicao
+## Contributing and security
 
-Para contribuir, leia [CONTRIBUTING.md](./CONTRIBUTING.md).
-
-## E2E local
-
-Use [`.env.example`](./.env.example) como base para criar o seu `.env` local.
-
-## Seguranca
-
-Leia [SECURITY.md](./SECURITY.md) para orientacoes de reporte e cuidados com credenciais, tokens e logs.
+- [Contributing guide](https://github.com/cesar-carlos/plug_node/blob/main/CONTRIBUTING.md)
+- [Security policy](https://github.com/cesar-carlos/plug_node/blob/main/SECURITY.md)
+- [MIT License](https://github.com/cesar-carlos/plug_node/blob/main/LICENSE)

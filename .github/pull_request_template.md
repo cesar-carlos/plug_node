@@ -6,7 +6,7 @@
 ## Scope
 
 - [ ] Public REST-only package
-- [ ] Internal REST + SOCKET package
+- [ ] Advanced REST + Socket package
 - [ ] Shared core
 - [ ] Docs
 - [ ] Tests

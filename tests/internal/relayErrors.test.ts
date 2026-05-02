@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import type {
   PlugSession,
   RpcSingleCommand,
-} from "../../packages/n8n-nodes-plug-client-internal/generated/shared/contracts/api";
-import { PlugError } from "../../packages/n8n-nodes-plug-client-internal/generated/shared/contracts/errors";
+} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/api";
+import { PlugError } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/errors";
 import {
   executeRelayCommand,
   type RelaySocketTransport,
-} from "../../packages/n8n-nodes-plug-client-internal/generated/shared/socket/relaySession";
-import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-client-internal/generated/shared/socket/payloadFrameCodec";
+} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/relaySession";
+import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
 
 class ErrorRelayTransport implements RelaySocketTransport {
   connected = false;

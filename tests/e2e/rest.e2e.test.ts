@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PlugClient as PublicPlugClient } from "../../packages/n8n-nodes-plug-client/nodes/PlugClient/PlugClient.node";
+import { PlugDatabase as PublicPlugDatabase } from "../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/PlugDatabase.node";
 import { getPlugE2EConfig } from "./helpers/e2eEnv";
 import { getInfrastructureSkipReason } from "./helpers/environmentSkips";
 import { executeOrSkipInfrastructure } from "./helpers/executeOrSkip";
@@ -112,11 +112,11 @@ const expectStructuredErrorResponse = (
   };
 };
 
-describe.sequential("Plug Client REST E2E", () => {
+describe.sequential("Plug Database REST E2E", () => {
   it("validates the configured credentials and client token via REST", async ({
     skip,
   }) => {
-    const node = new PublicPlugClient();
+    const node = new PublicPlugDatabase();
     const context = createLiveExecuteContext({
       credentials: e2eConfig.credentials,
       parameters: {
@@ -142,7 +142,7 @@ describe.sequential("Plug Client REST E2E", () => {
 
   for (const query of e2eConfig.sqlQueries) {
     it(`executes smoke SQL over REST: ${compactQueryLabel(query)}`, async ({ skip }) => {
-      const node = new PublicPlugClient();
+      const node = new PublicPlugDatabase();
       const context = createLiveExecuteContext({
         credentials: e2eConfig.credentials,
         parameters: {
@@ -185,7 +185,7 @@ describe.sequential("Plug Client REST E2E", () => {
   it(`executes multi_result SQL over REST with two successful SELECT statements: ${compactQueryLabel(
     e2eConfig.multiResultSuccessSqlQuery,
   )}`, async ({ skip }) => {
-    const node = new PublicPlugClient();
+    const node = new PublicPlugDatabase();
     const context = createLiveExecuteContext({
       credentials: e2eConfig.credentials,
       parameters: {
@@ -250,7 +250,7 @@ describe.sequential("Plug Client REST E2E", () => {
   it(`fails the whole multi_result SQL over REST when one statement is denied: ${compactQueryLabel(
     e2eConfig.multiResultMixedSqlQuery,
   )}`, async ({ skip }) => {
-    const node = new PublicPlugClient();
+    const node = new PublicPlugDatabase();
     const context = createLiveExecuteContext({
       credentials: e2eConfig.credentials,
       parameters: {
@@ -304,7 +304,7 @@ describe.sequential("Plug Client REST E2E", () => {
   it(`returns a structured authorization error over REST: ${compactQueryLabel(
     e2eConfig.unauthorizedSqlQuery,
   )}`, async ({ skip }) => {
-    const node = new PublicPlugClient();
+    const node = new PublicPlugDatabase();
     const context = createLiveExecuteContext({
       credentials: e2eConfig.credentials,
       parameters: {
@@ -350,7 +350,7 @@ describe.sequential("Plug Client REST E2E", () => {
   it(`returns a structured SQL validation error over REST: ${compactQueryLabel(
     e2eConfig.invalidSqlQuery,
   )}`, async ({ skip }) => {
-    const node = new PublicPlugClient();
+    const node = new PublicPlugDatabase();
     const context = createLiveExecuteContext({
       credentials: e2eConfig.credentials,
       parameters: {

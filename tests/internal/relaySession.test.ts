@@ -4,13 +4,13 @@ import type {
   PlugSession,
   RelayConnectionReadyPayload,
   RpcSingleCommand,
-} from "../../packages/n8n-nodes-plug-client-internal/generated/shared/contracts/api";
-import { buildNodeOutputItems } from "../../packages/n8n-nodes-plug-client-internal/generated/shared/output/nodeOutput";
+} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/api";
+import { buildNodeOutputItems } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/output/nodeOutput";
 import {
   executeRelayCommand,
   type RelaySocketTransport,
-} from "../../packages/n8n-nodes-plug-client-internal/generated/shared/socket/relaySession";
-import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-client-internal/generated/shared/socket/payloadFrameCodec";
+} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/relaySession";
+import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
 
 class MockRelayTransport implements RelaySocketTransport {
   connected = false;

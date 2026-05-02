@@ -1,85 +1,34 @@
 # Contributing
 
-## Goal
+Thanks for contributing to the Plug Database workspace.
 
-This repository hosts the Plug Client workspace for n8n community and internal packages.
+## Before opening a pull request
 
-Please keep contributions aligned with the main product goal:
+1. Work from a dedicated branch.
+2. Run `npm ci`.
+3. Run `npm run verify`.
+4. Run `npm run test:e2e` when your change affects transport, authentication, or output behavior.
+5. Add a changeset with `npm run changeset` when package behavior changes.
 
-- make the node easy to use in n8n
-- preserve the 4-field credential flow
-- keep REST and SOCKET behavior consistent
-- prefer source changes over checked-in generated or build artifacts
+## Scope checklist
 
-## Setup
+- public package: `n8n-nodes-plug-database`
+- advanced package: `n8n-nodes-plug-database-advanced`
+- shared core
+- docs
+- CI / tooling
 
-Recommended Node.js version:
+## Rules
 
-- `22.22.0`
+- keep all public documentation in English
+- do not commit `dist/`, `generated/`, `.env`, or credential material
+- keep the public package free from runtime dependencies
+- preserve the simple credential experience:
+  - `User (email)`
+  - `Password`
+  - `Agent ID`
+  - `Client Token`
 
-Install dependencies:
+## Release-related changes
 
-```bash
-npm ci
-```
-
-Verify the whole workspace before opening a pull request:
-
-```bash
-npm run verify
-```
-
-Run live E2E tests locally when you have a valid Plug environment:
-
-```bash
-npm run test:e2e
-```
-
-## Project structure
-
-Important areas:
-
-- `packages/n8n-nodes-plug-client`
-- `packages/n8n-nodes-plug-client-internal`
-- `shared`
-- `tests`
-- `docs`
-- `.cursor/rules`
-
-Read [AGENTS.md](./AGENTS.md) first, then use the real project rules under [`.cursor/rules`](./.cursor/rules).
-
-## Contribution rules
-
-- do not commit `node_modules`
-- do not commit `packages/*/dist`
-- do not commit `packages/*/generated`
-- do not commit `.env`
-- keep node UI labels and descriptions in English
-- keep internal documentation clear and consistent with implemented behavior
-- preserve the fixed Plug API base URL unless the project direction changes explicitly
-
-## Pull request checklist
-
-- update docs when behavior or UX changes
-- add or update tests when logic changes
-- add a changeset with `npm run changeset` when package behavior changes
-- run `npm run verify`
-- keep commits focused and easy to review
-
-## Versioning
-
-- package versions follow `Semantic Versioning`
-- this monorepo uses `Changesets` for version control and changelog generation
-- `n8n-nodes-plug-client` and `n8n-nodes-plug-client-internal` are versioned together
-- docs-only or repository-only changes can skip a changeset when package behavior does not change
-- `Conventional Commits` are recommended for commit messages
-
-## Notes
-
-If you are changing transport, auth, relay, or output shaping, update these docs too:
-
-- `docs/project-summary.md`
-- `docs/architecture.md`
-- `docs/communication-patterns.md`
-- `docs/ux-decisions.md`
-- `docs/testing-strategy.md`
+Use GitHub Actions as the official publish path. Do not publish packages manually from a local machine for the verified package flow.

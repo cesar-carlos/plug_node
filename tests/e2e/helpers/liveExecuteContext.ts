@@ -5,7 +5,7 @@ import type {
   INodeExecutionData,
 } from "n8n-workflow";
 
-import type { PlugCredentials } from "../../../packages/n8n-nodes-plug-client/generated/shared/contracts/api";
+import type { PlugCredentials } from "../../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 
 export interface LiveExecuteContextOptions {
   readonly credentials: PlugCredentials;
@@ -15,9 +15,9 @@ export interface LiveExecuteContextOptions {
 }
 
 const defaultNode: INode = {
-  id: "plug-client-e2e-node",
-  name: "Plug Client E2E",
-  type: "plugClient",
+  id: "plug-database-e2e-node",
+  name: "Plug Database E2E",
+  type: "plugDatabase",
   typeVersion: 1,
   position: [0, 0],
   parameters: {},

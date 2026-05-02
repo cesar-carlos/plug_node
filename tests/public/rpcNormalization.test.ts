@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { NormalizedRpcItem } from "../../packages/n8n-nodes-plug-client/generated/shared/contracts/api";
-import { PlugError } from "../../packages/n8n-nodes-plug-client/generated/shared/contracts/errors";
-import { toPlugErrorFromRpcItem } from "../../packages/n8n-nodes-plug-client/generated/shared/output/rpcNormalization";
+import type { NormalizedRpcItem } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
+import { PlugError } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
+import { toPlugErrorFromRpcItem } from "../../packages/n8n-nodes-plug-database/generated/shared/output/rpcNormalization";
 
 describe("toPlugErrorFromRpcItem", () => {
   it("maps agent offline responses to a clearer user message", () => {

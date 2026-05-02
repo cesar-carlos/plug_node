@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a bug in the Plug Client workspace
+about: Report a bug in the Plug Database workspace
 title: "[Bug] "
 labels: bug
 assignees: ""
@@ -13,7 +13,7 @@ Describe the bug clearly.
 ## Affected area
 
 - [ ] Public REST-only package
-- [ ] Internal REST + SOCKET package
+- [ ] Advanced REST + Socket package
 - [ ] Shared core
 - [ ] Docs
 - [ ] CI / tooling
@@ -36,7 +36,7 @@ What happened instead?
 
 - Node.js version:
 - Package:
-- Channel: `REST` or `SOCKET`
+- Channel: `REST` or `Socket`
 
 ## Logs or payload details
 

@@ -7,9 +7,9 @@ import type {
   PlugCredentials,
   PlugHttpRequester,
   PlugSession,
-} from "../../packages/n8n-nodes-plug-client/generated/shared/contracts/api";
-import { loginClient } from "../../packages/n8n-nodes-plug-client/generated/shared/auth/session";
-import { executeRestCommand } from "../../packages/n8n-nodes-plug-client/generated/shared/rest/client";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
+import { loginClient } from "../../packages/n8n-nodes-plug-database/generated/shared/auth/session";
+import { executeRestCommand } from "../../packages/n8n-nodes-plug-database/generated/shared/rest/client";
 
 const credentials: PlugCredentials = {
   user: "client@example.com",

@@ -1,15 +1,15 @@
-description: "Project-specific architecture rules for the Plug Client n8n workspace"
+description: "Project-specific architecture rules for the Plug Database n8n workspace"
 globs: ["packages/**/*.ts", "shared/**/*.ts", "scripts/**/*.mjs"]
 alwaysApply: true
 ---
 
-# Plug Client Architecture
+# Plug Database Architecture
 
 - This is a project-specific rule file. It defines runtime flow and dependency direction for the `plug_node` workspace.
 - The product is an `n8n` integration, not a standalone API server. Do not introduce `Express`, `Fastify`, HTTP controllers, route files, or server bootstraps unless the user explicitly asks for local tooling around the node.
 - The workspace has two install targets:
-  - `packages/n8n-nodes-plug-client-internal`: primary package with `REST | SOCKET`
-  - `packages/n8n-nodes-plug-client`: public package with `REST` only
+  - `packages/n8n-nodes-plug-database-advanced`: advanced package with `REST | Socket`
+  - `packages/n8n-nodes-plug-database`: public package with `REST` only
 - Shared business and transport behavior belongs in `shared`, not duplicated across packages.
 - Keep the shared core organized by responsibility:
   - `auth`: login, refresh, auth-expiry retry
@@ -18,7 +18,7 @@ alwaysApply: true
   - `socket`: relay session and `PayloadFrame` handling
   - `output`: n8n item shaping and error shaping
 - n8n node files must stay thin. They gather credential and parameter values, call the shared core, and translate the result into n8n items.
-- The internal package may add socket-specific wiring, but socket protocol decisions still belong in shared modules instead of being embedded in the node file.
+- The advanced package may add socket-specific wiring, but socket protocol decisions still belong in shared modules instead of being embedded in the node file.
 - Credential values are the single source of truth for `user`, `password`, `agentId`, and `clientToken` in v1.
 - Prefer guided operations first and keep advanced JSON-RPC support behind explicit parameters instead of making raw payloads the default UX.
 - Socket support must follow the documented relay flow only:

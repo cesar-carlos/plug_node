@@ -342,7 +342,7 @@ const sharedProperties = (supportsSocket: boolean): INodeProperties[] => {
       description: "Choose whether the command should run over REST or the relay socket.",
       options: [
         { name: "REST", value: "rest" },
-        { name: "SOCKET", value: "socket" },
+        { name: "Socket", value: "socket" },
       ],
       displayOptions: {
         show: {
@@ -502,46 +502,39 @@ const sharedProperties = (supportsSocket: boolean): INodeProperties[] => {
     validateContextOptions,
   );
 
-  if (!supportsSocket) {
-    properties.unshift({
-      displayName: "Package Scope",
-      name: "packageScopeNotice",
-      type: "notice",
-      default: "",
-      displayOptions: {
-        show: {
-          operation: [...operationOptions.map((option) => option.value)],
-        },
-      },
-      description:
-        "This package is REST-only. Install the internal package when you need the relay socket channel.",
-    });
-  }
-
   return properties;
 };
 
+export interface PlugNodeDescriptionOptions {
+  readonly supportsSocket: boolean;
+  readonly displayName: string;
+  readonly technicalName: string;
+  readonly credentialName: string;
+  readonly iconBaseName: string;
+  readonly description: string;
+}
+
 export const buildPlugClientNodeDescription = (
-  supportsSocket: boolean,
+  options: PlugNodeDescriptionOptions,
 ): INodeTypeDescription => ({
-  displayName: "Plug Client",
-  name: "plugClient",
-  icon: "file:plugClient.svg",
+  displayName: options.displayName,
+  name: options.technicalName,
+  icon: `file:${options.iconBaseName}.svg`,
   group: ["transform"],
   version: 1,
   subtitle: '={{$parameter["operation"]}}',
-  description: "Consume the Plug client API over REST or relay socket.",
+  description: options.description,
   defaults: {
-    name: "Plug Client",
+    name: options.displayName,
   },
   usableAsTool: true,
   inputs: [NodeConnectionTypes.Main],
   outputs: [NodeConnectionTypes.Main],
   credentials: [
     {
-      name: "plugClientApi",
+      name: options.credentialName,
       required: true,
     },
   ],
-  properties: sharedProperties(supportsSocket),
+  properties: sharedProperties(options.supportsSocket),
 });

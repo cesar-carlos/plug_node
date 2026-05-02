@@ -9,14 +9,21 @@ import { buildPlugClientNodeDescription } from "../../generated/shared/n8n/plugC
 import { executePlugClientNode } from "../../generated/shared/n8n/plugClientExecution";
 import { executeSocketCommand } from "./socketRelayExecutor";
 
-export class PlugClient implements INodeType {
+export class PlugDatabaseAdvanced implements INodeType {
   description: INodeTypeDescription = {
-    ...buildPlugClientNodeDescription(true),
+    ...buildPlugClientNodeDescription({
+      supportsSocket: true,
+      displayName: "Plug Database Advanced",
+      technicalName: "plugDatabaseAdvanced",
+      credentialName: "plugDatabaseAdvancedApi",
+      iconBaseName: "plugDatabaseAdvanced",
+      description: "Run Plug Database commands over REST or Socket relay.",
+    }),
     subtitle: '={{$parameter["operation"]}}',
     usableAsTool: true,
     icon: {
-      light: "file:plugClient.svg",
-      dark: "file:plugClient.dark.svg",
+      light: "file:plugDatabaseAdvanced.svg",
+      dark: "file:plugDatabaseAdvanced.dark.svg",
     },
   };
 
@@ -24,6 +31,8 @@ export class PlugClient implements INodeType {
     try {
       return await executePlugClientNode(this, {
         supportsSocket: true,
+        credentialName: "plugDatabaseAdvancedApi",
+        nodeDisplayName: "Plug Database Advanced",
         socketExecutor: executeSocketCommand,
       });
     } catch (error: unknown) {
@@ -33,7 +42,9 @@ export class PlugClient implements INodeType {
             {
               json: {
                 error:
-                  error instanceof Error ? error.message : "Unknown Plug Client error",
+                  error instanceof Error
+                    ? error.message
+                    : "Unknown Plug Database Advanced error",
               },
               pairedItem: {
                 item: 0,

@@ -7,7 +7,7 @@ import type {
   INodeExecutionData,
 } from "n8n-workflow";
 
-import type { PlugCredentials } from "../../packages/n8n-nodes-plug-client/generated/shared/contracts/api";
+import type { PlugCredentials } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 
 export interface MockExecuteContextOptions {
   readonly credentials: PlugCredentials;
@@ -18,9 +18,9 @@ export interface MockExecuteContextOptions {
 }
 
 const defaultNode: INode = {
-  id: "plug-client-node",
-  name: "Plug Client",
-  type: "plugClient",
+  id: "plug-database-node",
+  name: "Plug Database",
+  type: "plugDatabase",
   typeVersion: 1,
   position: [0, 0],
   parameters: {},

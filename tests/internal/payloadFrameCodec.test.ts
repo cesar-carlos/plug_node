@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   decodePayloadFrame,
   encodePayloadFrame,
-} from "../../packages/n8n-nodes-plug-client-internal/generated/shared/socket/payloadFrameCodec";
+} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
 
 describe("payloadFrameCodec", () => {
   it("encodes and decodes JSON payloads", () => {

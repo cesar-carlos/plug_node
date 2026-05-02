@@ -8,14 +8,21 @@ import type {
 import { buildPlugClientNodeDescription } from "../../generated/shared/n8n/plugClientDescription";
 import { executePlugClientNode } from "../../generated/shared/n8n/plugClientExecution";
 
-export class PlugClient implements INodeType {
+export class PlugDatabase implements INodeType {
   description: INodeTypeDescription = {
-    ...buildPlugClientNodeDescription(false),
+    ...buildPlugClientNodeDescription({
+      supportsSocket: false,
+      displayName: "Plug Database",
+      technicalName: "plugDatabase",
+      credentialName: "plugDatabaseApi",
+      iconBaseName: "plugDatabase",
+      description: "Run Plug Database commands over REST.",
+    }),
     subtitle: '={{$parameter["operation"]}}',
     usableAsTool: true,
     icon: {
-      light: "file:plugClient.svg",
-      dark: "file:plugClient.dark.svg",
+      light: "file:plugDatabase.svg",
+      dark: "file:plugDatabase.dark.svg",
     },
   };
 
@@ -23,6 +30,8 @@ export class PlugClient implements INodeType {
     try {
       return await executePlugClientNode(this, {
         supportsSocket: false,
+        credentialName: "plugDatabaseApi",
+        nodeDisplayName: "Plug Database",
       });
     } catch (error: unknown) {
       if (this.continueOnFail()) {
@@ -31,7 +40,7 @@ export class PlugClient implements INodeType {
             {
               json: {
                 error:
-                  error instanceof Error ? error.message : "Unknown Plug Client error",
+                  error instanceof Error ? error.message : "Unknown Plug Database error",
               },
               pairedItem: {
                 item: 0,

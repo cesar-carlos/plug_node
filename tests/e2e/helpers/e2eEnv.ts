@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import { config as loadDotEnv } from "dotenv";
 
-import type { PlugCredentials } from "../../../packages/n8n-nodes-plug-client/generated/shared/contracts/api";
-import { DEFAULT_BASE_URL } from "../../../packages/n8n-nodes-plug-client/generated/shared/contracts/api";
+import type { PlugCredentials } from "../../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
+import { DEFAULT_BASE_URL } from "../../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 
 export interface PlugE2EConfig {
   readonly credentials: PlugCredentials;

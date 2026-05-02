@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildNodeOutputItems } from "../../packages/n8n-nodes-plug-client/generated/shared/output/nodeOutput";
-import type { PlugCommandTransportResult } from "../../packages/n8n-nodes-plug-client/generated/shared/contracts/api";
+import { buildNodeOutputItems } from "../../packages/n8n-nodes-plug-database/generated/shared/output/nodeOutput";
+import type { PlugCommandTransportResult } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 
 describe("buildNodeOutputItems", () => {
   it("returns one item per SQL row for aggregated JSON output", () => {

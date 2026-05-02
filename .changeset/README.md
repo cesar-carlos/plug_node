@@ -1,7 +1,10 @@
 # Changesets
 
-This directory stores release intents for the workspace packages.
+This directory stores release intent files for the published workspace packages.
 
-Use `npm run changeset` when a change should affect one or both published packages.
+Run `npm run changeset` whenever a change affects one or both npm packages:
 
-The public and internal Plug Client packages are versioned together through a fixed Changesets group so they keep the same release number.
+- `n8n-nodes-plug-database`
+- `n8n-nodes-plug-database-advanced`
+
+Both packages stay in the same fixed Changesets group so they share the same visible version.

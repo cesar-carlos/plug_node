@@ -1,29 +1,35 @@
 {
-  "name": "n8n-nodes-plug-client",
+  "name": "n8n-nodes-plug-database-advanced",
   "version": "0.1.0",
-  "description": "Public Plug Client n8n nodes with REST-only support",
+  "description": "Plug Database n8n nodes with REST and Socket relay support",
   "license": "MIT",
   "author": {
-    "name": "Plug Node Team"
+    "name": "cesar-carlos"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cesar-carlos/plug_node.git",
-    "directory": "packages/n8n-nodes-plug-client"
+    "directory": "packages/n8n-nodes-plug-database-advanced"
   },
   "bugs": {
     "url": "https://github.com/cesar-carlos/plug_node/issues"
   },
-  "homepage": "https://github.com/cesar-carlos/plug_node/tree/main/packages/n8n-nodes-plug-client#readme",
+  "homepage": "https://github.com/cesar-carlos/plug_node/tree/main/packages/n8n-nodes-plug-database-advanced#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "n8n-community-node-package",
     "n8n",
     "plug",
-    "rest"
+    "database",
+    "socket.io",
+    "relay"
   ],
   "scripts": {
-    "sync-shared": "node ../../scripts/sync-shared.mjs --package n8n-nodes-plug-client",
-    "prebuild": "npm run sync-shared",
+    "sync-shared": "node ../../scripts/sync-shared.mjs --package n8n-nodes-plug-database-advanced",
+    "clean": "node -e \"const fs=require('node:fs'); fs.rmSync('dist', { recursive: true, force: true }); fs.rmSync('../../.tsbuildinfo/n8n-nodes-plug-database-advanced.tsbuildinfo', { force: true });\"",
+    "prebuild": "npm run clean && npm run sync-shared",
     "build": "n8n-node build",
     "build:watch": "tsc --watch",
     "predev": "npm run sync-shared",
@@ -36,20 +42,24 @@
     "test:watch": "vitest",
     "typecheck": "tsc --pretty false --noEmit",
     "release": "n8n-node release",
-    "prepublishOnly": "n8n-node prerelease"
+    "prepublishOnly": "npm run clean && npm run sync-shared && npm run build"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "n8n": {
     "n8nNodesApiVersion": 1,
-    "strict": true,
+    "strict": false,
     "credentials": [
-      "dist/credentials/PlugClientApi.credentials.js"
+      "dist/credentials/PlugDatabaseAdvancedApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/PlugClient/PlugClient.node.js"
+      "dist/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node.js"
     ]
+  },
+  "dependencies": {
+    "socket.io-client": "4.8.3"
   },
   "devDependencies": {
     "@n8n/node-cli": "0.28.0",

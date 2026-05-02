@@ -1,4 +1,4 @@
-# Changelog
+# Plug Database Changelog
 
 All notable changes to this workspace will be documented in this file.
 
@@ -8,7 +8,7 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 ### Added
 
-- Workspace scaffolding for the public REST-only package and the internal REST+SOCKET package.
+- Workspace scaffolding for the public REST-only package and the advanced REST + Socket package.
 - Shared auth, transport, socket, output, and n8n integration layers.
 - Repository automation with CI, contribution templates, CODEOWNERS, and security guidance.
 - Changesets-based version control, release workflow, and versioning documentation.
@@ -21,5 +21,6 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 ### Added
 
-- Initial Plug Client n8n workspace structure.
+- Initial Plug Database n8n workspace structure.
+- Initial Plug Database workspace branding direction and package split.
 - Project documentation under `docs/`.

@@ -1,59 +1,26 @@
 # Security Policy
 
-## Supported scope
+## Supported packages
 
-This repository contains the Plug Client workspace for n8n packages and shared transport/auth logic.
+This repository contains two npm packages:
 
-Security-sensitive areas include:
+- `n8n-nodes-plug-database`
+- `n8n-nodes-plug-database-advanced`
 
-- authentication and refresh flows
-- credential handling
-- REST transport
-- relay socket transport
-- payload frame decoding
-- logging and metadata shaping
+Security issues affecting either package or the shared core should be reported privately.
 
 ## Reporting a vulnerability
 
-Please do not open public GitHub issues for security vulnerabilities.
+Please do not open a public GitHub issue for credential leaks, authentication weaknesses, authorization bypasses, or transport vulnerabilities.
 
-Use a private channel and include:
+Report security issues privately to the repository owner and include:
 
-- a clear description of the issue
-- affected files or package areas
+- affected package
+- affected version
+- impact summary
 - reproduction steps
-- impact assessment
-- whether secrets, tokens, or credentials are involved
+- sanitized payloads or logs
 
-If the issue relates to credentials or tokens:
+## Sensitive data handling
 
-- rotate affected credentials immediately
-- avoid posting real secrets in screenshots, logs, or issue text
-
-## Disclosure guidance
-
-- keep the report private until a fix is available
-- prefer the smallest reproducible example possible
-- share sanitized logs only
-
-## Repository-specific notes
-
-- `.env` files are ignored and must not be committed
-- `packages/*/dist` and `packages/*/generated` must not be committed
-- node UI text is public-facing and should not expose internal technical details
-- logs should never include passwords, access tokens, refresh tokens, or client tokens
-
-## Verification before merge
-
-For security-relevant changes, run:
-
-```bash
-npm run verify
-```
-
-And update the relevant documentation when behavior changes:
-
-- `docs/architecture.md`
-- `docs/communication-patterns.md`
-- `docs/ux-decisions.md`
-- `docs/testing-strategy.md`
+Never include real credentials, client tokens, access tokens, refresh tokens, or private SQL data in issues, pull requests, or logs.

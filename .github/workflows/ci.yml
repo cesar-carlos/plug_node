@@ -29,3 +29,6 @@ jobs:
 
       - name: Verify workspace
         run: npm run verify
+
+      - name: Validate npm tarballs
+        run: npm run pack:check

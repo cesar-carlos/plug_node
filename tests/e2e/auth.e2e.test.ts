@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { PlugError } from "../../packages/n8n-nodes-plug-client/generated/shared/contracts/errors";
+import { PlugError } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
 import {
   createExecutionSessionRunner,
   loginClient,
   refreshClientSession,
-} from "../../packages/n8n-nodes-plug-client/generated/shared/auth/session";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/auth/session";
 import { getPlugE2EConfig } from "./helpers/e2eEnv";
 import { getInfrastructureSkipReason } from "./helpers/environmentSkips";
 import { createLiveRequester } from "./helpers/liveRequester";
 
 const e2eConfig = getPlugE2EConfig();
 
-describe.sequential("Plug Client auth E2E", () => {
+describe.sequential("Plug Database auth E2E", () => {
   it("logs in with the real client credentials", async ({ skip }) => {
     try {
       const session = await loginClient(

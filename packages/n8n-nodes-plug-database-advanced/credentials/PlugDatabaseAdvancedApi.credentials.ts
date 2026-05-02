@@ -7,16 +7,16 @@ import type {
 
 import { DEFAULT_BASE_URL } from "../generated/shared/contracts/api";
 
-export class PlugClientApi implements ICredentialType {
-  name = "plugClientApi";
+export class PlugDatabaseAdvancedApi implements ICredentialType {
+  name = "plugDatabaseAdvancedApi";
 
-  displayName = "Plug Client API";
+  displayName = "Plug Database Advanced API";
 
   documentationUrl = "https://plug-server.se7esistemassinop.com.br/docs";
 
   icon: Icon = {
-    light: "file:../nodes/PlugClient/plugClient.svg",
-    dark: "file:../nodes/PlugClient/plugClient.dark.svg",
+    light: "file:../nodes/PlugDatabaseAdvanced/plugDatabaseAdvanced.svg",
+    dark: "file:../nodes/PlugDatabaseAdvanced/plugDatabaseAdvanced.dark.svg",
   };
 
   properties: INodeProperties[] = [
@@ -27,7 +27,7 @@ export class PlugClientApi implements ICredentialType {
       default: "",
       required: true,
       placeholder: "client@example.com",
-      description: "The Plug client login email.",
+      description: "The Plug Database client login email.",
     },
     {
       displayName: "Password",
@@ -38,7 +38,7 @@ export class PlugClientApi implements ICredentialType {
       },
       default: "",
       required: true,
-      description: "The Plug client password.",
+      description: "The Plug Database client password.",
     },
     {
       displayName: "Agent ID",

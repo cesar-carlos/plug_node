@@ -2,6 +2,7 @@
   "name": "plug-node-workspace",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "packageManager": "npm@11.3.0",
   "repository": {
     "type": "git",
@@ -20,6 +21,8 @@
   "scripts": {
     "changeset": "changeset",
     "changeset:status": "changeset status --verbose",
+    "pack:check": "node ./scripts/check-packages.mjs",
+    "publish:packages": "npm publish --workspace n8n-nodes-plug-database --access public --provenance && npm publish --workspace n8n-nodes-plug-database-advanced --access public --provenance",
     "sync-shared": "node ./scripts/sync-shared.mjs",
     "build": "npm run build --workspaces --if-present",
     "ci": "npm run verify",
@@ -28,7 +31,6 @@
     "format:check": "prettier --check .",
     "lint": "npm run lint --workspaces --if-present",
     "lint:fix": "npm run lint:fix --workspaces --if-present",
-    "release": "changeset publish",
     "test": "npm run test --workspaces --if-present",
     "test:coverage": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config vitest.config.mts --coverage",
     "test:e2e": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts",

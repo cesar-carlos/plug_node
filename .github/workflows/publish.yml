@@ -1,4 +1,4 @@
-name: Release Control
+name: Publish
 
 on:
   push:
@@ -11,9 +11,10 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 permissions:
   contents: write
   pull-requests: write
+  id-token: write
 
 jobs:
-  version-packages:
+  publish:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,14 +26,25 @@ jobs:
         with:
           node-version: 22.22.0
           cache: npm
+          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Create or update version PR
+      - name: Repair optional native bindings on Linux
+        run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
+
+      - name: Verify workspace
+        run: npm run verify
+
+      - name: Validate npm tarballs
+        run: npm run pack:check
+
+      - name: Create version PR or publish packages
         uses: changesets/action@v1
         with:
           version: npm run version-packages
+          publish: npm run publish:packages
           commit: "chore: version packages"
           title: "chore: version packages"
         env:

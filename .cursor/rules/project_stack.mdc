@@ -1,4 +1,4 @@
-description: "Stack-specific libraries and conventions for the Plug Client n8n workspace"
+description: "Stack-specific libraries and conventions for the Plug Database n8n workspace"
 globs: ["packages/**/*.ts", "shared/**/*.ts", "scripts/**/*.mjs", "**/*.test.ts", "**/*.spec.ts"]
 alwaysApply: true
 ---
@@ -10,7 +10,7 @@ alwaysApply: true
 - Use `npm run verify` as the default local quality gate before handing work off.
 - Target the workspace development environment at Node `22.22.0`, matching `.nvmrc` and CI.
 - Runtime integration targets `n8n` and `n8n-workflow`; keep package metadata aligned with official n8n package conventions.
-- The internal package may use `socket.io-client` for `/consumers` relay communication.
+- The advanced package may use `socket.io-client` for `/consumers` relay communication.
 - Use only the dependencies that match this project's real shape: an n8n node package, not an Express backend.
 - Prefer Node built-ins over extra runtime packages when they solve the problem cleanly:
   - `node:crypto`

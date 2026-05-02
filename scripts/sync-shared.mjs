@@ -40,7 +40,10 @@ for (const packageName of packageNames) {
   mkdirSync(targetRoot, { recursive: true });
   cpSync(sharedRoot, targetRoot, { recursive: true });
 
-  if (packageName === "n8n-nodes-plug-client") {
+  if (packageName === "n8n-nodes-plug-database") {
+    rmSync(path.join(targetRoot, "contracts", "payload-frame.ts"), {
+      force: true,
+    });
     rmSync(path.join(targetRoot, "socket"), { recursive: true, force: true });
   }
 

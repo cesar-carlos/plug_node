@@ -1,7 +1,7 @@
 import type {
   PlugCredentials,
   PlugHttpRequester,
-} from "../../../packages/n8n-nodes-plug-client/generated/shared/contracts/api";
+} from "../../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 
 const toResponseHeaders = (headers: Headers): Record<string, string> => {
   const normalized: Record<string, string> = {};

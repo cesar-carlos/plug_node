@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an improvement for the Plug Client workspace
+about: Suggest an improvement for the Plug Database workspace
 title: "[Feature] "
 labels: enhancement
 assignees: ""
@@ -21,7 +21,7 @@ Describe the expected behavior.
 ## Scope
 
 - [ ] Public REST-only package
-- [ ] Internal REST + SOCKET package
+- [ ] Advanced REST + Socket package
 - [ ] Shared core
 - [ ] Docs
 - [ ] CI / tooling

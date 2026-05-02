@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { executePlugClientNode } from "../../packages/n8n-nodes-plug-client/generated/shared/n8n/plugClientExecution";
-import type { PlugCredentials } from "../../packages/n8n-nodes-plug-client/generated/shared/contracts/api";
+import { executePlugClientNode } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugClientExecution";
+import type { PlugCredentials } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 import { createMockExecuteContext } from "../helpers/mockExecuteFunctions";
 
 const credentials: PlugCredentials = {

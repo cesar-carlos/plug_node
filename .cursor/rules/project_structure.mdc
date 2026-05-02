@@ -1,4 +1,4 @@
-description: "Project-specific folder structure conventions for the Plug Client n8n workspace"
+description: "Project-specific folder structure conventions for the Plug Database n8n workspace"
 globs: ["packages/**/*.ts", "shared/**/*.ts", "scripts/**/*.mjs"]
 alwaysApply: true
 ---
@@ -7,8 +7,8 @@ alwaysApply: true
 
 - This is a project-specific rule file. It defines where code lives in this repository.
 - Keep the workspace rooted around:
-  - `packages/n8n-nodes-plug-client-internal`
-  - `packages/n8n-nodes-plug-client`
+  - `packages/n8n-nodes-plug-database-advanced`
+  - `packages/n8n-nodes-plug-database`
   - `shared`
   - `docs`
   - `scripts`

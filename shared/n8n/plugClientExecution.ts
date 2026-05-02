@@ -37,6 +37,8 @@ export interface PlugSocketExecutor {
 
 export interface PlugClientNodeExecutionConfig {
   readonly supportsSocket: boolean;
+  readonly credentialName?: string;
+  readonly nodeDisplayName?: string;
   readonly socketExecutor?: PlugSocketExecutor;
 }
 
@@ -135,8 +137,13 @@ const buildHttpRequester = (
   };
 };
 
-const readCredentials = async (context: IExecuteFunctions): Promise<PlugCredentials> => {
-  const rawCredentials = await context.getCredentials("plugClientApi");
+const readCredentials = async (
+  context: IExecuteFunctions,
+  config: PlugClientNodeExecutionConfig,
+): Promise<PlugCredentials> => {
+  const rawCredentials = await context.getCredentials(
+    config.credentialName ?? "plugClientApi",
+  );
 
   return {
     user: String(rawCredentials.user ?? ""),
@@ -661,7 +668,7 @@ export const executePlugClientNode = async (
   const sourceItems = context.getInputData();
   const items =
     sourceItems.length > 0 ? sourceItems : [{ json: {} } as INodeExecutionData];
-  const credentials = await readCredentials(context);
+  const credentials = await readCredentials(context, config);
   const requester = buildHttpRequester(context);
   const sessionRunner = createExecutionSessionRunner(requester, credentials);
   const outputItems: INodeExecutionData[] = [];
@@ -721,7 +728,7 @@ export const executePlugClientNode = async (
           ? isRecord(error)
             ? JSON.stringify(error)
             : error
-          : new Error("Unknown Plug Client error");
+          : new Error(`Unknown ${config.nodeDisplayName ?? "Plug Client"} error`);
 
       throw new NodeOperationError(context.getNode(), nodeError, {
         itemIndex,
