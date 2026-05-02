@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-plug-database-advanced",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Plug Database n8n nodes with REST and Socket relay support",
   "license": "MIT",
   "author": {

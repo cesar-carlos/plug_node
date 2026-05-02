@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-plug-database",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Plug Database n8n nodes with REST-only support",
   "license": "MIT",
   "author": {
