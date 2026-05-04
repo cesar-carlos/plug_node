@@ -12,15 +12,15 @@ This repository contains the Plug Database n8n community node workspace.
 - `n8n-nodes-plug-database`
   - public REST-only package
   - candidate for n8n verification
-  - includes the SQL node, the client access node, and the user access node
+  - exposes one consolidated `Plug Database` node
 - `n8n-nodes-plug-database-advanced`
   - advanced npm package
   - REST + consumer socket support
-  - includes the SQL node, the client access node, and the user access node
+  - exposes one consolidated `Plug Database Advanced` node
 
 ## User experience
 
-The SQL node is designed to keep setup simple. End users only provide:
+The consolidated nodes are designed to keep setup simple. End users provide:
 
 - `User (email)`
 - `Password`
@@ -40,38 +40,32 @@ For the advanced SQL node:
 - the runtime probes socket capability once per execution and falls back to relay only when the newer transport does not answer
 - large socket streams are protected by local buffer guardrails to avoid runaway memory use during node execution
 
-The SQL node itself can override `Agent ID` and `Client Token` per workflow step. Resolution order is:
+Both consolidated nodes start with `Resource`, then `Operation`.
+
+Resources:
+
+- `SQL`
+- `Client Access`
+- `User Access`
+
+The SQL resource can override `Agent ID` and `Client Token` per workflow step. Resolution order is:
 
 - node field
 - credential default
 - validation error only when the selected operation requires the missing value
 
-The client access node uses a separate client-only credential with:
+The `Client Access` resource manages approved agents, access requests, and per-agent client tokens over REST.
 
-- `User (email)`
-- `Password`
+The `User Access` resource browses the agent catalog and manages owner-side approval and revocation flows over REST.
 
-It manages approved agents, access requests, and per-agent client tokens over REST.
-
-The user access node uses a separate user credential with:
-
-- `User (email)`
-- `Password`
-
-It browses the agent catalog and manages owner-side approval and revocation flows over REST.
+Legacy access-only nodes remain registered for workflow compatibility, but they are hidden from the node creator for new users.
 
 ## Example workflows
 
 - `Plug Database`
-  - run SQL against one approved agent with credential defaults or per-node overrides
-- `Plug Database Client Access`
-  - list client agents with `Return All`
-  - request access to multiple agents with native repeated `Agent ID` fields
-  - read, set, or clear a per-agent client token
-- `Plug Database User Access`
-  - browse the shared agent catalog with filters and `Return All`
-  - approve or reject client access requests as an owner
-  - list approved clients for an agent and revoke one client when needed
+  - choose `Resource = SQL` to run SQL against one approved agent with credential defaults or per-node overrides
+  - choose `Resource = Client Access` to list agents, request access, and manage per-agent client tokens
+  - choose `Resource = User Access` to browse the shared agent catalog and manage owner approvals
 
 ## Local development
 

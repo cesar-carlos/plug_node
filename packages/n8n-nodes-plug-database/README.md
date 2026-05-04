@@ -21,15 +21,11 @@ npm install n8n-nodes-plug-database
 ## Included nodes
 
 - `Plug Database`
-  - SQL/JSON-RPC execution over REST
-- `Plug Database Client Access`
-  - manages approved agents, access requests, and per-agent client tokens
-- `Plug Database User Access`
-  - browses the agent catalog and manages owner-side access approvals
+  - consolidated REST-only node with `Resource = SQL | Client Access | User Access`
 
 ## Supported operations
 
-SQL node:
+`Resource = SQL`:
 
 - `Validate Context`
 - `Execute SQL`
@@ -39,7 +35,7 @@ SQL node:
 - `Get Agent Profile`
 - `Get Client Token Policy`
 
-Client access node:
+`Resource = Client Access`:
 
 - `List Client Agents`
 - `Get Client Agent`
@@ -49,7 +45,7 @@ Client access node:
 - `Get Client Token`
 - `Set Client Token`
 
-User access node:
+`Resource = User Access`:
 
 - `List Agent Catalog`
 - `List Access Requests`
@@ -73,16 +69,6 @@ The SQL node can override `Agent ID` and `Client Token` per node. Resolution ord
 - credential default
 - validation error only when the selected operation requires the missing value
 
-The client access credential asks for:
-
-- `User (email)`
-- `Password`
-
-The user access credential asks for:
-
-- `User (email)`
-- `Password`
-
 The package uses the fixed API base URL:
 
 - `https://plug-server.se7esistemassinop.com.br/api/v1`
@@ -103,11 +89,13 @@ Both access nodes also support:
 
 ## Quick examples
 
-- Use `Plug Database Client Access` to request access to several agents with repeated `Agent ID` rows instead of raw JSON arrays.
-- Use `Plug Database Client Access` with `Return All` to fetch the full approved-agent list in one step.
-- Use `Plug Database` with credential defaults for the common agent, then override `Agent ID` or `Client Token` only in the steps that need a different target.
-- Use `Plug Database User Access` to review pending access requests, then approve or reject each request by `Request ID`.
-- Use `Plug Database User Access` to list clients approved for one agent and revoke a single `Client ID` when necessary.
+- Use `Plug Database` with `Resource = Client Access` to request access to several agents with repeated `Agent ID` rows instead of raw JSON arrays.
+- Use `Plug Database` with `Resource = Client Access` and `Return All` to fetch the full approved-agent list in one step.
+- Use `Plug Database` with `Resource = SQL` and credential defaults for the common agent, then override `Agent ID` or `Client Token` only in the steps that need a different target.
+- Use `Plug Database` with `Resource = User Access` to review pending access requests, then approve or reject each request by `Request ID`.
+- Use `Plug Database` with `Resource = User Access` to list clients approved for one agent and revoke a single `Client ID` when necessary.
+
+Legacy access-only nodes remain published for compatibility with existing workflows, but are hidden from the node creator for new users.
 
 ## Limitations
 

@@ -1,5 +1,11 @@
 # n8n-nodes-plug-database-advanced
 
+## 1.1.1
+
+### Patch Changes
+
+- Consolidate the public nodes around Resource-based navigation while keeping legacy access nodes hidden for compatibility.
+
 ## 1.1.0
 
 ### Minor Changes

@@ -1,6 +1,9 @@
 import type { INodeProperties, INodeTypeDescription } from "n8n-workflow";
 import { NodeConnectionTypes } from "n8n-workflow";
 
+import { buildPlugClientAccessProperties } from "./plugClientAccessDescription";
+import { buildPlugUserAccessProperties } from "./plugUserAccessDescription";
+
 const operationOptions = [
   {
     name: "Validate Context",
@@ -322,7 +325,21 @@ const validateContextOptions: INodeProperties = {
   ],
 };
 
-const sharedProperties = (supportsSocket: boolean): INodeProperties[] => {
+const addResourceDisplayOption = (
+  property: INodeProperties,
+  resource: string,
+): INodeProperties => ({
+  ...property,
+  displayOptions: {
+    ...property.displayOptions,
+    show: {
+      ...(property.displayOptions?.show ?? {}),
+      resource: [resource],
+    },
+  },
+});
+
+export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties[] => {
   const properties: INodeProperties[] = [
     {
       displayName: "Operation",
@@ -582,5 +599,39 @@ export const buildPlugClientNodeDescription = (
       required: true,
     },
   ],
-  properties: sharedProperties(options.supportsSocket),
+  properties: [
+    {
+      displayName: "Resource",
+      name: "resource",
+      type: "options",
+      default: "sql",
+      description: "Choose which Plug capability group this node should expose.",
+      options: [
+        {
+          name: "SQL",
+          value: "sql",
+          description: "Run SQL and JSON-RPC commands against a Plug agent.",
+        },
+        {
+          name: "Client Access",
+          value: "clientAccess",
+          description: "Manage client-to-agent access and client tokens.",
+        },
+        {
+          name: "User Access",
+          value: "userAccess",
+          description: "Review catalog, approvals, and owned agent access.",
+        },
+      ],
+    },
+    ...buildPlugSqlProperties(options.supportsSocket).map((property) =>
+      addResourceDisplayOption(property, "sql"),
+    ),
+    ...buildPlugClientAccessProperties().map((property) =>
+      addResourceDisplayOption(property, "clientAccess"),
+    ),
+    ...buildPlugUserAccessProperties().map((property) =>
+      addResourceDisplayOption(property, "userAccess"),
+    ),
+  ],
 });

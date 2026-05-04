@@ -124,6 +124,64 @@ export interface PlugUserAccessNodeDescriptionOptions {
   readonly description: string;
 }
 
+export const buildPlugUserAccessProperties = (): INodeProperties[] => [
+  {
+    displayName: "Operation",
+    name: "operation",
+    type: "options",
+    default: "listAgentCatalog",
+    options: [...operationOptions],
+  },
+  {
+    displayName: "Include Plug Metadata",
+    name: "includePlugMetadata",
+    type: "boolean",
+    default: true,
+    description:
+      "Whether to include the __plug object with operation and pagination metadata.",
+  },
+  ...buildCatalogPaginationProperties(),
+  {
+    displayName: "Request ID",
+    name: "requestId",
+    type: "string",
+    default: "",
+    required: true,
+    description: "The client access request identifier.",
+    displayOptions: {
+      show: {
+        operation: ["approveAccessRequest", "rejectAccessRequest"],
+      },
+    },
+  },
+  {
+    displayName: "Agent ID",
+    name: "agentId",
+    type: "string",
+    default: "",
+    required: true,
+    description: "The Plug agent identifier.",
+    displayOptions: {
+      show: {
+        operation: ["listAgentClients", "revokeAgentClientAccess"],
+      },
+    },
+  },
+  {
+    displayName: "Client ID",
+    name: "clientId",
+    type: "string",
+    default: "",
+    required: true,
+    description: "The Plug client identifier approved for this agent.",
+    displayOptions: {
+      show: {
+        operation: ["revokeAgentClientAccess"],
+      },
+    },
+  },
+];
+
 export const buildPlugUserAccessNodeDescription = (
   options: PlugUserAccessNodeDescriptionOptions,
 ): INodeTypeDescription => ({
@@ -146,61 +204,5 @@ export const buildPlugUserAccessNodeDescription = (
       required: true,
     },
   ],
-  properties: [
-    {
-      displayName: "Operation",
-      name: "operation",
-      type: "options",
-      default: "listAgentCatalog",
-      options: [...operationOptions],
-    },
-    {
-      displayName: "Include Plug Metadata",
-      name: "includePlugMetadata",
-      type: "boolean",
-      default: true,
-      description:
-        "Whether to include the __plug object with operation and pagination metadata.",
-    },
-    ...buildCatalogPaginationProperties(),
-    {
-      displayName: "Request ID",
-      name: "requestId",
-      type: "string",
-      default: "",
-      required: true,
-      description: "The client access request identifier.",
-      displayOptions: {
-        show: {
-          operation: ["approveAccessRequest", "rejectAccessRequest"],
-        },
-      },
-    },
-    {
-      displayName: "Agent ID",
-      name: "agentId",
-      type: "string",
-      default: "",
-      required: true,
-      description: "The Plug agent identifier.",
-      displayOptions: {
-        show: {
-          operation: ["listAgentClients", "revokeAgentClientAccess"],
-        },
-      },
-    },
-    {
-      displayName: "Client ID",
-      name: "clientId",
-      type: "string",
-      default: "",
-      required: true,
-      description: "The Plug client identifier approved for this agent.",
-      displayOptions: {
-        show: {
-          operation: ["revokeAgentClientAccess"],
-        },
-      },
-    },
-  ],
+  properties: buildPlugUserAccessProperties(),
 });

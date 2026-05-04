@@ -17,6 +17,7 @@ export class PlugDatabaseAdvancedClientAccess implements INodeType {
       iconBaseName: "plugDatabaseAdvancedClientAccess",
       description: "Manage client-to-agent access and client tokens over REST.",
     }),
+    hidden: true,
     subtitle: '={{$parameter["operation"]}}',
     usableAsTool: true,
     icon: {

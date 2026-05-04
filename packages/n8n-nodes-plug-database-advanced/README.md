@@ -21,15 +21,11 @@ npm install n8n-nodes-plug-database-advanced
 ## Included nodes
 
 - `Plug Database Advanced`
-  - SQL/JSON-RPC execution over REST or Socket
-- `Plug Database Advanced Client Access`
-  - manages approved agents, access requests, and per-agent client tokens
-- `Plug Database Advanced User Access`
-  - browses the agent catalog and manages owner-side access approvals
+  - consolidated node with `Resource = SQL | Client Access | User Access`
 
 ## Supported operations
 
-SQL node:
+`Resource = SQL`:
 
 - `Validate Context`
 - `Execute SQL`
@@ -39,7 +35,7 @@ SQL node:
 - `Get Agent Profile`
 - `Get Client Token Policy`
 
-Client access node:
+`Resource = Client Access`:
 
 - `List Client Agents`
 - `Get Client Agent`
@@ -49,7 +45,7 @@ Client access node:
 - `Get Client Token`
 - `Set Client Token`
 
-User access node:
+`Resource = User Access`:
 
 - `List Agent Catalog`
 - `List Access Requests`
@@ -72,16 +68,6 @@ The SQL node can override `Agent ID` and `Client Token` per node. Resolution ord
 - node field
 - credential default
 - validation error only when the selected operation requires the missing value
-
-The client access credential asks for:
-
-- `User (email)`
-- `Password`
-
-The user access credential asks for:
-
-- `User (email)`
-- `Password`
 
 The package uses the fixed API base URL:
 
@@ -106,18 +92,20 @@ Both access nodes also support:
 
 ## Quick examples
 
-- Use `Plug Database Advanced Client Access` to manage approved client agents and per-agent client tokens over REST.
-- Use `Plug Database Advanced User Access` to browse the agent catalog and approve or reject client access requests.
-- Use `Plug Database Advanced` with credential defaults for the common target, then override `Agent ID` or `Client Token` only in the socket or REST steps that need a different agent.
-- Use `Plug Database Advanced` when the workflow needs consumer socket execution or `Chunk Items` on SQL execution.
+- Use `Plug Database Advanced` with `Resource = Client Access` to manage approved client agents and per-agent client tokens over REST.
+- Use `Plug Database Advanced` with `Resource = User Access` to browse the agent catalog and approve or reject client access requests.
+- Use `Plug Database Advanced` with `Resource = SQL` and credential defaults for the common target, then override `Agent ID` or `Client Token` only in the socket or REST steps that need a different agent.
+- Use `Plug Database Advanced` with `Resource = SQL` when the workflow needs consumer socket execution or `Chunk Items` on SQL execution.
 
 ## Socket compatibility
 
-- New executions with `Channel = Socket` prefer `agents:command` on `/consumers`.
+- New executions with `Resource = SQL` and `Channel = Socket` prefer `agents:command` on `/consumers`.
 - Older saved advanced workflows that were already using relay remain compatible without adding a new user-facing option.
 - When the server does not answer the newer consumer socket transport, the runtime falls back to relay for single-command flows.
 - `Execute Batch` over socket requires `agents:command`; when the server does not support it, use `REST` or upgrade the server.
 - Large socket streams are protected by local buffer guardrails so the node fails clearly instead of letting memory grow without bounds.
+
+Legacy access-only nodes remain published for compatibility with existing workflows, but are hidden from the node creator for new users.
 
 ## Documentation
 

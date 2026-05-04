@@ -18,6 +18,7 @@ export class PlugDatabaseUserAccess implements INodeType {
       description:
         "Browse the Plug agent catalog and manage client access approvals over REST.",
     }),
+    hidden: true,
     subtitle: '={{$parameter["operation"]}}',
     usableAsTool: true,
     icon: {

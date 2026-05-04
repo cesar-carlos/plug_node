@@ -204,6 +204,139 @@ export interface PlugClientAccessNodeDescriptionOptions {
   readonly description: string;
 }
 
+export const buildPlugClientAccessProperties = (): INodeProperties[] => [
+  {
+    displayName: "Operation",
+    name: "operation",
+    type: "options",
+    default: "listClientAgents",
+    options: [...operationOptions],
+  },
+  {
+    displayName: "Include Plug Metadata",
+    name: "includePlugMetadata",
+    type: "boolean",
+    default: true,
+    description:
+      "Whether to include the __plug object with operation and pagination metadata.",
+  },
+  ...buildPaginationProperties(
+    ["listClientAgents"],
+    clientAgentStatusOptions,
+    "Agent Status",
+  ),
+  {
+    displayName: "Refresh Live Agent State",
+    name: "refresh",
+    type: "boolean",
+    default: false,
+    description:
+      "Whether Plug should refresh online agents in the current page from the live socket profile before responding.",
+    displayOptions: {
+      show: {
+        operation: ["listClientAgents"],
+      },
+    },
+  },
+  {
+    displayName: "Agent ID",
+    name: "agentId",
+    type: "string",
+    default: "",
+    required: true,
+    description: "The Plug agent identifier.",
+    displayOptions: {
+      show: {
+        operation: [...detailOperations],
+      },
+    },
+  },
+  {
+    displayName: "Agent ID",
+    name: "revokeAgentId",
+    type: "string",
+    default: "",
+    required: true,
+    description: "The Plug agent identifier.",
+    displayOptions: {
+      show: {
+        operation: ["revokeAgentAccess"],
+        revokeMode: ["single"],
+      },
+    },
+  },
+  ...buildPaginationProperties(
+    ["listAccessRequests"],
+    accessRequestStatusOptions,
+    "Request Status",
+  ),
+  buildAgentIdListProperty(
+    "agentIds",
+    "Agent IDs",
+    "One or more Plug agent IDs to request access for.",
+    ["requestAgentAccess"],
+  ),
+  {
+    displayName: "Revoke Mode",
+    name: "revokeMode",
+    type: "options",
+    default: "single",
+    options: [
+      {
+        name: "Single Agent",
+        value: "single",
+      },
+      {
+        name: "Batch",
+        value: "batch",
+      },
+    ],
+    displayOptions: {
+      show: {
+        operation: ["revokeAgentAccess"],
+      },
+    },
+  },
+  buildAgentIdListProperty(
+    "revokeAgentIds",
+    "Agent IDs",
+    "One or more Plug agent IDs to revoke.",
+    ["revokeAgentAccess"],
+    {
+      revokeMode: ["batch"],
+    },
+  ),
+  {
+    displayName: "Client Token",
+    name: "clientToken",
+    type: "string",
+    default: "",
+    required: true,
+    typeOptions: {
+      password: true,
+    },
+    description: "The bearer token stored for this client and agent pair.",
+    displayOptions: {
+      show: {
+        operation: ["setClientToken"],
+        clearStoredClientToken: [false],
+      },
+    },
+  },
+  {
+    displayName: "Clear Stored Client Token",
+    name: "clearStoredClientToken",
+    type: "boolean",
+    default: false,
+    description: "Whether to clear the stored client token instead of replacing it.",
+    displayOptions: {
+      show: {
+        operation: ["setClientToken"],
+      },
+    },
+  },
+];
+
 export const buildPlugClientAccessNodeDescription = (
   options: PlugClientAccessNodeDescriptionOptions,
 ): INodeTypeDescription => ({
@@ -226,136 +359,5 @@ export const buildPlugClientAccessNodeDescription = (
       required: true,
     },
   ],
-  properties: [
-    {
-      displayName: "Operation",
-      name: "operation",
-      type: "options",
-      default: "listClientAgents",
-      options: [...operationOptions],
-    },
-    {
-      displayName: "Include Plug Metadata",
-      name: "includePlugMetadata",
-      type: "boolean",
-      default: true,
-      description:
-        "Whether to include the __plug object with operation and pagination metadata.",
-    },
-    ...buildPaginationProperties(
-      ["listClientAgents"],
-      clientAgentStatusOptions,
-      "Agent Status",
-    ),
-    {
-      displayName: "Refresh Live Agent State",
-      name: "refresh",
-      type: "boolean",
-      default: false,
-      description:
-        "Whether Plug should refresh online agents in the current page from the live socket profile before responding.",
-      displayOptions: {
-        show: {
-          operation: ["listClientAgents"],
-        },
-      },
-    },
-    {
-      displayName: "Agent ID",
-      name: "agentId",
-      type: "string",
-      default: "",
-      required: true,
-      description: "The Plug agent identifier.",
-      displayOptions: {
-        show: {
-          operation: [...detailOperations],
-        },
-      },
-    },
-    {
-      displayName: "Agent ID",
-      name: "revokeAgentId",
-      type: "string",
-      default: "",
-      required: true,
-      description: "The Plug agent identifier.",
-      displayOptions: {
-        show: {
-          operation: ["revokeAgentAccess"],
-          revokeMode: ["single"],
-        },
-      },
-    },
-    ...buildPaginationProperties(
-      ["listAccessRequests"],
-      accessRequestStatusOptions,
-      "Request Status",
-    ),
-    buildAgentIdListProperty(
-      "agentIds",
-      "Agent IDs",
-      "One or more Plug agent IDs to request access for.",
-      ["requestAgentAccess"],
-    ),
-    {
-      displayName: "Revoke Mode",
-      name: "revokeMode",
-      type: "options",
-      default: "single",
-      options: [
-        {
-          name: "Single Agent",
-          value: "single",
-        },
-        {
-          name: "Batch",
-          value: "batch",
-        },
-      ],
-      displayOptions: {
-        show: {
-          operation: ["revokeAgentAccess"],
-        },
-      },
-    },
-    buildAgentIdListProperty(
-      "revokeAgentIds",
-      "Agent IDs",
-      "One or more Plug agent IDs to revoke.",
-      ["revokeAgentAccess"],
-      {
-        revokeMode: ["batch"],
-      },
-    ),
-    {
-      displayName: "Client Token",
-      name: "clientToken",
-      type: "string",
-      default: "",
-      required: true,
-      typeOptions: {
-        password: true,
-      },
-      description: "The bearer token stored for this client and agent pair.",
-      displayOptions: {
-        show: {
-          operation: ["setClientToken"],
-          clearStoredClientToken: [false],
-        },
-      },
-    },
-    {
-      displayName: "Clear Stored Client Token",
-      name: "clearStoredClientToken",
-      type: "boolean",
-      default: false,
-      description: "Whether to clear the stored client token instead of replacing it.",
-      displayOptions: {
-        show: {
-          operation: ["setClientToken"],
-        },
-      },
-    },
-  ],
+  properties: buildPlugClientAccessProperties(),
 });

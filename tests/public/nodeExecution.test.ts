@@ -26,6 +26,152 @@ const loadFixture = <T>(name: string): T =>
   ) as T;
 
 describe("executePlugClientNode", () => {
+  it("routes the consolidated node to client access operations", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        resource: "clientAccess",
+        operation: "listClientAgents",
+        includePlugMetadata: true,
+        status: "active",
+        search: "alpha",
+        page: 1,
+        pageSize: 50,
+        refresh: false,
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            agents: [
+              {
+                agentId: "agent-1",
+                name: "Agent Alpha",
+                status: "active",
+                profileVersion: 4,
+                isHubConnected: true,
+                hasClientToken: true,
+                createdAt: "2026-01-01T00:00:00.000Z",
+                updatedAt: "2026-01-02T00:00:00.000Z",
+              },
+            ],
+            agentIds: ["agent-1"],
+            count: 1,
+            total: 1,
+            page: 1,
+            pageSize: 50,
+          },
+        },
+      ],
+    });
+
+    const result = await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(result[0][0].json).toMatchObject({
+      agentId: "agent-1",
+      __plug: {
+        operation: "listClientAgents",
+        kind: "list",
+      },
+    });
+    expect(context.httpRequestMock.mock.calls[1][0].url).toContain("/client/me/agents");
+  });
+
+  it("routes the consolidated node to user access operations", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        resource: "userAccess",
+        operation: "listAgentCatalog",
+        includePlugMetadata: true,
+        status: "active",
+        search: "alpha",
+        page: 1,
+        pageSize: 50,
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            accessToken: "access-1",
+            refreshToken: "refresh-1",
+            user: {
+              id: "user-1",
+              email: "owner@example.com",
+              role: "user",
+            },
+          },
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            agents: [
+              {
+                agentId: "agent-1",
+                name: "Agent Alpha",
+                status: "active",
+                profileVersion: 4,
+                createdAt: "2026-01-01T00:00:00.000Z",
+                updatedAt: "2026-01-02T00:00:00.000Z",
+              },
+            ],
+            count: 1,
+            total: 1,
+            page: 1,
+            pageSize: 50,
+          },
+        },
+      ],
+    });
+
+    const result = await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(result[0][0].json).toMatchObject({
+      agentId: "agent-1",
+      __plug: {
+        operation: "listAgentCatalog",
+        kind: "list",
+      },
+    });
+    expect(context.httpRequestMock.mock.calls[0][0].url).toContain("/auth/login");
+  });
+
+  it("rejects mixed resources in the same consolidated node execution", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        resource: ["sql", "clientAccess"],
+        operation: ["validateContext", "listClientAgents"],
+        includePlugMetadata: true,
+        validateContextOptions: {
+          timeoutMs: 5000,
+        },
+      },
+      inputData: [{ json: { row: 1 } }, { json: { row: 2 } }],
+      responses: [],
+    });
+
+    await expect(
+      executePlugClientNode(context, {
+        supportsSocket: false,
+      }),
+    ).rejects.toThrow(
+      "Resource must stay the same for every item in one node execution.",
+    );
+  });
+
   it("reuses a single login across multiple items in the same execution", async () => {
     const context = createMockExecuteContext({
       credentials,

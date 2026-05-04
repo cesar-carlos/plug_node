@@ -26,8 +26,9 @@ export class PlugDatabaseAdvancedApi implements ICredentialType {
       type: "string",
       default: "",
       required: true,
-      placeholder: "client@example.com",
-      description: "The Plug Database client login email.",
+      placeholder: "user@example.com",
+      description:
+        "The Plug account email used by the consolidated Plug Database Advanced node.",
     },
     {
       displayName: "Password",
@@ -38,7 +39,8 @@ export class PlugDatabaseAdvancedApi implements ICredentialType {
       },
       default: "",
       required: true,
-      description: "The Plug Database client password.",
+      description:
+        "The Plug account password used by the consolidated Plug Database Advanced node.",
     },
     {
       displayName: "Default Agent ID",
@@ -46,7 +48,7 @@ export class PlugDatabaseAdvancedApi implements ICredentialType {
       type: "string",
       default: "",
       description:
-        "Optional default Plug agent identifier used when the node does not override Agent ID.",
+        "Optional default Plug agent identifier used by SQL operations when the node does not override Agent ID.",
     },
     {
       displayName: "Default Client Token",
@@ -57,7 +59,7 @@ export class PlugDatabaseAdvancedApi implements ICredentialType {
       },
       default: "",
       description:
-        "Optional default client token used when the node does not override Client Token.",
+        "Optional default client token used by SQL operations when the node does not override Client Token.",
     },
   ];
 

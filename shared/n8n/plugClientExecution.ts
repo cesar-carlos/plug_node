@@ -25,6 +25,8 @@ import {
   createExecutionSessionRunner,
   type PlugExecutionSessionRunner,
 } from "../auth/session";
+import { executePlugClientAccessNode } from "./plugClientAccessExecution";
+import { executePlugUserAccessNode } from "./plugUserAccessExecution";
 import { buildNodeOutputItems } from "../output/nodeOutput";
 import { executeRestCommand } from "../rest/client";
 import { isRecord, parseOptionalJsonArray, parseOptionalJsonObject } from "../utils/json";
@@ -749,7 +751,7 @@ const serializeErrorForContinueOnFail = (error: unknown): IDataObject => {
   };
 };
 
-export const executePlugClientNode = async (
+const executePlugSqlNode = async (
   context: IExecuteFunctions,
   config: PlugClientNodeExecutionConfig,
 ): Promise<INodeExecutionData[][]> => {
@@ -825,4 +827,49 @@ export const executePlugClientNode = async (
   }
 
   return [outputItems];
+};
+
+type PlugUnifiedResource = "sql" | "clientAccess" | "userAccess";
+
+const resolveUnifiedResource = (
+  context: IExecuteFunctions,
+  itemIndex: number,
+): PlugUnifiedResource =>
+  context.getNodeParameter("resource", itemIndex, "sql") as PlugUnifiedResource;
+
+export const executePlugClientNode = async (
+  context: IExecuteFunctions,
+  config: PlugClientNodeExecutionConfig,
+): Promise<INodeExecutionData[][]> => {
+  const resource = resolveUnifiedResource(context, 0);
+  const sourceItems = context.getInputData();
+  const itemCount = sourceItems.length > 0 ? sourceItems.length : 1;
+
+  for (let itemIndex = 1; itemIndex < itemCount; itemIndex += 1) {
+    const nextResource = resolveUnifiedResource(context, itemIndex);
+    if (nextResource !== resource) {
+      throw new PlugValidationError(
+        "Resource must stay the same for every item in one node execution.",
+      );
+    }
+  }
+
+  switch (resource) {
+    case "sql":
+      return executePlugSqlNode(context, config);
+    case "clientAccess":
+      return executePlugClientAccessNode(context, {
+        credentialName: config.credentialName,
+        nodeDisplayName: config.nodeDisplayName,
+      });
+    case "userAccess":
+      return executePlugUserAccessNode(context, {
+        credentialName: config.credentialName,
+        nodeDisplayName: config.nodeDisplayName,
+      });
+    default: {
+      const exhaustiveCheck: never = resource;
+      throw new PlugValidationError(`Unsupported Plug resource: ${exhaustiveCheck}`);
+    }
+  }
 };
