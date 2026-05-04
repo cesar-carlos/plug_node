@@ -39,6 +39,7 @@
     "pretest": "npm run sync-shared",
     "test": "vitest run",
     "test:watch": "vitest",
+    "pretypecheck": "npm run sync-shared",
     "typecheck": "tsc --pretty false --noEmit",
     "release": "n8n-node release",
     "prepublishOnly": "npm run clean && npm run sync-shared && npm run build"
@@ -51,10 +52,14 @@
     "n8nNodesApiVersion": 1,
     "strict": true,
     "credentials": [
-      "dist/credentials/PlugDatabaseApi.credentials.js"
+      "dist/credentials/PlugDatabaseApi.credentials.js",
+      "dist/credentials/PlugDatabaseClientApi.credentials.js",
+      "dist/credentials/PlugDatabaseUserApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/PlugDatabase/PlugDatabase.node.js"
+      "dist/nodes/PlugDatabase/PlugDatabase.node.js",
+      "dist/nodes/PlugDatabaseClientAccess/PlugDatabaseClientAccess.node.js",
+      "dist/nodes/PlugDatabaseUserAccess/PlugDatabaseUserAccess.node.js"
     ]
   },
   "devDependencies": {

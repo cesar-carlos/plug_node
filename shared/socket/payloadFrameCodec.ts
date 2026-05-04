@@ -121,6 +121,13 @@ export const encodePayloadFrame = (
 
 export const decodePayloadFrame = <TData = unknown>(
   value: unknown,
+  options?: {
+    readonly validateSignature?: (input: {
+      readonly frame: PayloadFrameEnvelope;
+      readonly compressedBytes: Buffer;
+      readonly decodedBytes: Buffer;
+    }) => void;
+  },
 ): DecodedPayloadFrame<TData> => {
   const frame = assertValidFrameShape(value);
   const compressedBytes = payloadToBuffer(frame.payload);
@@ -157,6 +164,12 @@ export const decodePayloadFrame = <TData = unknown>(
       "PayloadFrame exceeded the allowed gzip inflation ratio",
     );
   }
+
+  options?.validateSignature?.({
+    frame,
+    compressedBytes,
+    decodedBytes,
+  });
 
   let parsed: TData;
   try {

@@ -1,7 +1,7 @@
 {
   "name": "n8n-nodes-plug-database-advanced",
   "version": "1.0.0",
-  "description": "Plug Database n8n nodes with REST and Socket relay support",
+  "description": "Plug Database n8n nodes with REST and consumer socket support",
   "license": "MIT",
   "author": {
     "name": "cesar-carlos"
@@ -24,7 +24,8 @@
     "plug",
     "database",
     "socket.io",
-    "relay"
+    "relay",
+    "consumer-socket"
   ],
   "scripts": {
     "sync-shared": "node ../../scripts/sync-shared.mjs --package n8n-nodes-plug-database-advanced",
@@ -40,6 +41,7 @@
     "pretest": "npm run sync-shared",
     "test": "vitest run",
     "test:watch": "vitest",
+    "pretypecheck": "npm run sync-shared",
     "typecheck": "tsc --pretty false --noEmit",
     "release": "n8n-node release",
     "prepublishOnly": "npm run clean && npm run sync-shared && npm run build"
@@ -52,10 +54,14 @@
     "n8nNodesApiVersion": 1,
     "strict": false,
     "credentials": [
-      "dist/credentials/PlugDatabaseAdvancedApi.credentials.js"
+      "dist/credentials/PlugDatabaseAdvancedApi.credentials.js",
+      "dist/credentials/PlugDatabaseAdvancedClientApi.credentials.js",
+      "dist/credentials/PlugDatabaseAdvancedUserApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node.js"
+      "dist/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node.js",
+      "dist/nodes/PlugDatabaseAdvancedClientAccess/PlugDatabaseAdvancedClientAccess.node.js",
+      "dist/nodes/PlugDatabaseAdvancedUserAccess/PlugDatabaseAdvancedUserAccess.node.js"
     ]
   },
   "dependencies": {

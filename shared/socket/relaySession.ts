@@ -139,6 +139,7 @@ export interface RelaySocketTransport {
 export interface ExecuteRelayCommandInput {
   readonly transport: RelaySocketTransport;
   readonly session: PlugSession;
+  readonly agentId: string;
   readonly command: RpcSingleCommand;
   readonly timeoutMs?: number;
   readonly payloadFrameCompression?: PayloadFrameCompression;
@@ -324,7 +325,7 @@ export const executeRelayCommand = async (
       normalizeConnectionReady,
     );
     plugLogger.debug("transport.socket.connected", {
-      agentId: input.session.credentials.agentId,
+      agentId: input.agentId,
       socketId: connectionReady.id,
     });
 
@@ -335,7 +336,7 @@ export const executeRelayCommand = async (
       normalizeConversationStarted,
     );
     input.transport.emit(conversationStartEvent, {
-      agentId: input.session.credentials.agentId,
+      agentId: input.agentId,
     });
     const conversation = await conversationPromise;
     if (!conversation.success || !conversation.conversationId) {
@@ -348,7 +349,7 @@ export const executeRelayCommand = async (
 
     conversationId = conversation.conversationId;
     plugLogger.debug("transport.socket.conversation_started", {
-      agentId: input.session.credentials.agentId,
+      agentId: input.agentId,
       conversationId,
     });
     const outboundFrame = encodePayloadFrame(command, {
@@ -577,7 +578,7 @@ export const executeRelayCommand = async (
 
     const accepted = await acceptedStatePromise;
     plugLogger.debug("transport.socket.request_accepted", {
-      agentId: input.session.credentials.agentId,
+      agentId: input.agentId,
       conversationId,
       requestId: accepted.requestId,
     });
@@ -585,7 +586,8 @@ export const executeRelayCommand = async (
 
     return {
       channel: "socket",
-      agentId: input.session.credentials.agentId,
+      socketMode: "relay",
+      agentId: input.agentId,
       requestId: accepted.requestId,
       notification: false,
       conversationId,

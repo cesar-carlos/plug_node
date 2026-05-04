@@ -1,9 +1,13 @@
 import type {
-  PlugCredentials,
+  PlugAnyLoginResponse,
+  PlugEmailPasswordCredentials,
+  PlugClientAuthCredentials,
   PlugHttpRequester,
   PlugLoginResponse,
   PlugRefreshResponse,
   PlugSession,
+  PlugUserAuthCredentials,
+  PlugUserLoginResponse,
 } from "../contracts/api";
 import { DEFAULT_REQUEST_TIMEOUT_MS } from "../contracts/api";
 import { PlugError, PlugValidationError } from "../contracts/errors";
@@ -11,11 +15,43 @@ import { plugLogger } from "../logging/plugLogger";
 import { isRecord } from "../utils/json";
 import { buildApiUrl } from "../utils/url";
 
-const loginPath = "/client-auth/login";
-const refreshPath = "/client-auth/refresh";
+interface PlugAuthEndpointConfig<
+  TCredentials extends PlugEmailPasswordCredentials,
+  TLoginResponse extends PlugAnyLoginResponse,
+> {
+  readonly loginPath: string;
+  readonly refreshPath: string;
+  readonly profileKey: "client" | "user";
+  readonly profileLabel: string;
+}
 
-export interface PlugExecutionSessionRunner {
-  <T>(callback: (session: PlugSession) => Promise<T>): Promise<T>;
+const clientAuthConfig: PlugAuthEndpointConfig<
+  PlugClientAuthCredentials,
+  PlugLoginResponse
+> = {
+  loginPath: "/client-auth/login",
+  refreshPath: "/client-auth/refresh",
+  profileKey: "client",
+  profileLabel: "client",
+};
+
+const userAuthConfig: PlugAuthEndpointConfig<
+  PlugUserAuthCredentials,
+  PlugUserLoginResponse
+> = {
+  loginPath: "/auth/login",
+  refreshPath: "/auth/refresh",
+  profileKey: "user",
+  profileLabel: "user",
+};
+
+export interface PlugExecutionSessionRunner<
+  TCredentials extends PlugEmailPasswordCredentials = PlugEmailPasswordCredentials,
+  TLoginResponse extends PlugAnyLoginResponse = PlugLoginResponse,
+> {
+  <T>(
+    callback: (session: PlugSession<TCredentials, TLoginResponse>) => Promise<T>,
+  ): Promise<T>;
 }
 
 const toHeaderRecord = (
@@ -335,53 +371,88 @@ const assertTokenPair = (
   };
 };
 
-const assertLoginResponse = (body: unknown): PlugLoginResponse => {
+const assertLoginResponse = <TLoginResponse extends PlugAnyLoginResponse>(
+  body: unknown,
+  authConfig: PlugAuthEndpointConfig<PlugEmailPasswordCredentials, TLoginResponse>,
+): TLoginResponse => {
   const tokenPair = assertTokenPair(body, "login");
   if (!isRecord(body)) {
     throw new PlugValidationError("Plug login returned a non-object response");
   }
 
-  if (!isRecord(body.client)) {
-    throw new PlugValidationError("Plug login response is missing client data");
+  const profile = body[authConfig.profileKey];
+  if (!isRecord(profile)) {
+    throw new PlugValidationError(
+      `Plug login response is missing ${authConfig.profileLabel} data`,
+    );
   }
 
   return {
-    ...(body as unknown as PlugLoginResponse),
+    ...(body as unknown as TLoginResponse),
     ...tokenPair,
-  };
+  } as TLoginResponse;
 };
 
-const assertRefreshResponse = (
+const getLoginResponseProfile = (
+  response: PlugAnyLoginResponse,
+  profileKey: "client" | "user",
+): Record<string, unknown> => {
+  if (profileKey === "client") {
+    if (!("client" in response) || !isRecord(response.client)) {
+      throw new PlugValidationError("Plug login response is missing client data");
+    }
+
+    return response.client;
+  }
+
+  if (!("user" in response) || !isRecord(response.user)) {
+    throw new PlugValidationError("Plug login response is missing user data");
+  }
+
+  return response.user;
+};
+
+const assertRefreshResponse = <TLoginResponse extends PlugAnyLoginResponse>(
   body: unknown,
-  previousLoginResponse: PlugLoginResponse,
-): PlugLoginResponse => {
+  previousLoginResponse: TLoginResponse,
+  authConfig: PlugAuthEndpointConfig<PlugEmailPasswordCredentials, TLoginResponse>,
+): TLoginResponse => {
   const tokenPair = assertTokenPair(body, "refresh");
 
   if (!isRecord(body)) {
     throw new PlugValidationError("Plug refresh returned a non-object response");
   }
 
+  const previousProfile = getLoginResponseProfile(
+    previousLoginResponse,
+    authConfig.profileKey,
+  );
+  const nextProfile = isRecord(body[authConfig.profileKey])
+    ? body[authConfig.profileKey]
+    : previousProfile;
+
   return {
     ...(body as unknown as PlugRefreshResponse),
     ...tokenPair,
-    client: isRecord(body.client)
-      ? (body.client as PlugLoginResponse["client"])
-      : previousLoginResponse.client,
-  };
+    [authConfig.profileKey]: nextProfile,
+  } as TLoginResponse;
 };
 
-export const loginClient = async (
+const loginWithEmailPassword = async <
+  TCredentials extends PlugEmailPasswordCredentials,
+  TLoginResponse extends PlugAnyLoginResponse,
+>(
   requester: PlugHttpRequester,
-  credentials: PlugCredentials,
-): Promise<PlugSession> => {
+  credentials: TCredentials,
+  authConfig: PlugAuthEndpointConfig<TCredentials, TLoginResponse>,
+): Promise<PlugSession<TCredentials, TLoginResponse>> => {
   plugLogger.debug("auth.login.start", {
-    agentId: credentials.agentId,
     baseUrl: credentials.baseUrl,
   });
 
   const response = await requester<unknown>({
     method: "POST",
-    url: buildApiUrl(credentials.baseUrl, loginPath),
+    url: buildApiUrl(credentials.baseUrl, authConfig.loginPath),
     headers: {
       "content-type": "application/json",
     },
@@ -401,9 +472,8 @@ export const loginClient = async (
     );
   }
 
-  const loginResponse = assertLoginResponse(response.body);
+  const loginResponse = assertLoginResponse(response.body, authConfig);
   plugLogger.debug("auth.login.success", {
-    agentId: credentials.agentId,
     statusCode: response.statusCode,
   });
 
@@ -415,17 +485,21 @@ export const loginClient = async (
   };
 };
 
-export const refreshClientSession = async (
+const refreshExecutionSession = async <
+  TCredentials extends PlugEmailPasswordCredentials,
+  TLoginResponse extends PlugAnyLoginResponse,
+>(
   requester: PlugHttpRequester,
-  session: PlugSession,
-): Promise<PlugSession> => {
+  session: PlugSession<TCredentials, TLoginResponse>,
+  authConfig: PlugAuthEndpointConfig<TCredentials, TLoginResponse>,
+): Promise<PlugSession<TCredentials, TLoginResponse>> => {
   plugLogger.debug("auth.refresh.start", {
-    agentId: session.credentials.agentId,
+    baseUrl: session.credentials.baseUrl,
   });
 
   const response = await requester<unknown>({
     method: "POST",
-    url: buildApiUrl(session.credentials.baseUrl, refreshPath),
+    url: buildApiUrl(session.credentials.baseUrl, authConfig.refreshPath),
     headers: {
       "content-type": "application/json",
     },
@@ -444,9 +518,13 @@ export const refreshClientSession = async (
     );
   }
 
-  const refreshed = assertRefreshResponse(response.body, session.loginResponse);
+  const refreshed = assertRefreshResponse(
+    response.body,
+    session.loginResponse,
+    authConfig,
+  );
   plugLogger.debug("auth.refresh.success", {
-    agentId: session.credentials.agentId,
+    baseUrl: session.credentials.baseUrl,
     statusCode: response.statusCode,
   });
   return {
@@ -457,8 +535,50 @@ export const refreshClientSession = async (
   };
 };
 
+export const loginClient = async <TCredentials extends PlugClientAuthCredentials>(
+  requester: PlugHttpRequester,
+  credentials: TCredentials,
+): Promise<PlugSession<TCredentials, PlugLoginResponse>> =>
+  loginWithEmailPassword(
+    requester,
+    credentials,
+    clientAuthConfig as PlugAuthEndpointConfig<TCredentials, PlugLoginResponse>,
+  );
+
+export const loginUser = async <TCredentials extends PlugUserAuthCredentials>(
+  requester: PlugHttpRequester,
+  credentials: TCredentials,
+): Promise<PlugSession<TCredentials, PlugUserLoginResponse>> =>
+  loginWithEmailPassword(
+    requester,
+    credentials,
+    userAuthConfig as PlugAuthEndpointConfig<TCredentials, PlugUserLoginResponse>,
+  );
+
+export const refreshClientSession = async <
+  TCredentials extends PlugClientAuthCredentials,
+>(
+  requester: PlugHttpRequester,
+  session: PlugSession<TCredentials, PlugLoginResponse>,
+): Promise<PlugSession<TCredentials, PlugLoginResponse>> =>
+  refreshExecutionSession(
+    requester,
+    session,
+    clientAuthConfig as PlugAuthEndpointConfig<TCredentials, PlugLoginResponse>,
+  );
+
+export const refreshUserSession = async <TCredentials extends PlugUserAuthCredentials>(
+  requester: PlugHttpRequester,
+  session: PlugSession<TCredentials, PlugUserLoginResponse>,
+): Promise<PlugSession<TCredentials, PlugUserLoginResponse>> =>
+  refreshExecutionSession(
+    requester,
+    session,
+    userAuthConfig as PlugAuthEndpointConfig<TCredentials, PlugUserLoginResponse>,
+  );
+
 export const buildAuthorizedHeaders = (
-  session: PlugSession,
+  session: PlugSession<PlugEmailPasswordCredentials, PlugAnyLoginResponse>,
   headers?: Record<string, string>,
 ): Record<string, string> => ({
   ...(headers ?? {}),
@@ -476,29 +596,50 @@ export const createHttpError = (
   return createApiHttpError(statusCode, body, headers, "api");
 };
 
-export const withAutoRefreshSession = async <T>(
+export const withAutoRefreshSession = async <
+  T,
+  TCredentials extends PlugEmailPasswordCredentials,
+  TLoginResponse extends PlugAnyLoginResponse,
+>(
   requester: PlugHttpRequester,
-  credentials: PlugCredentials,
-  callback: (session: PlugSession) => Promise<T>,
+  credentials: TCredentials,
+  callback: (session: PlugSession<TCredentials, TLoginResponse>) => Promise<T>,
+  authConfig?: PlugAuthEndpointConfig<TCredentials, TLoginResponse>,
 ): Promise<T> => {
-  const runWithSession = createExecutionSessionRunner(requester, credentials);
+  const runWithSession = createExecutionSessionRunner(
+    requester,
+    credentials,
+    authConfig,
+  );
   return runWithSession(callback);
 };
 
-export const createExecutionSessionRunner = (
+export const createExecutionSessionRunner = <
+  TCredentials extends PlugEmailPasswordCredentials,
+  TLoginResponse extends PlugAnyLoginResponse = PlugLoginResponse,
+>(
   requester: PlugHttpRequester,
-  credentials: PlugCredentials,
-): PlugExecutionSessionRunner => {
-  let currentSession: PlugSession | undefined;
-  let inFlightLogin: Promise<PlugSession> | undefined;
+  credentials: TCredentials,
+  authConfig?: PlugAuthEndpointConfig<TCredentials, TLoginResponse>,
+): PlugExecutionSessionRunner<TCredentials, TLoginResponse> => {
+  const effectiveAuthConfig =
+    authConfig ??
+    (clientAuthConfig as unknown as PlugAuthEndpointConfig<TCredentials, TLoginResponse>);
 
-  const ensureSession = async (): Promise<PlugSession> => {
+  let currentSession: PlugSession<TCredentials, TLoginResponse> | undefined;
+  let inFlightLogin: Promise<PlugSession<TCredentials, TLoginResponse>> | undefined;
+
+  const ensureSession = async (): Promise<PlugSession<TCredentials, TLoginResponse>> => {
     if (currentSession) {
       return currentSession;
     }
 
     if (!inFlightLogin) {
-      inFlightLogin = loginClient(requester, credentials);
+      inFlightLogin = loginWithEmailPassword(
+        requester,
+        credentials,
+        effectiveAuthConfig,
+      );
     }
 
     try {
@@ -509,7 +650,9 @@ export const createExecutionSessionRunner = (
     }
   };
 
-  return async <T>(callback: (session: PlugSession) => Promise<T>): Promise<T> => {
+  return async <T>(
+    callback: (session: PlugSession<TCredentials, TLoginResponse>) => Promise<T>,
+  ): Promise<T> => {
     const firstSession = await ensureSession();
 
     try {
@@ -520,15 +663,31 @@ export const createExecutionSessionRunner = (
       }
 
       plugLogger.warn("auth.retry_after_expiry", {
-        agentId: credentials.agentId,
+        baseUrl: credentials.baseUrl,
         code: error.code,
         statusCode: error.statusCode,
         correlationId: error.correlationId,
       });
 
-      const refreshedSession = await refreshClientSession(requester, firstSession);
+      const refreshedSession = await refreshExecutionSession(
+        requester,
+        firstSession,
+        effectiveAuthConfig,
+      );
       currentSession = refreshedSession;
       return callback(refreshedSession);
     }
   };
 };
+
+export const createUserExecutionSessionRunner = <
+  TCredentials extends PlugUserAuthCredentials,
+>(
+  requester: PlugHttpRequester,
+  credentials: TCredentials,
+): PlugExecutionSessionRunner<TCredentials, PlugUserLoginResponse> =>
+  createExecutionSessionRunner(
+    requester,
+    credentials,
+    userAuthConfig as PlugAuthEndpointConfig<TCredentials, PlugUserLoginResponse>,
+  );

@@ -1,6 +1,7 @@
 import type {
   AgentCommandRequestBody,
   BuiltCommandRequest,
+  PlugClientAuthCredentials,
   PlugCommandTransportResult,
   PlugHttpRequester,
   PlugSession,
@@ -54,11 +55,11 @@ const isNotificationResponse = (
 
 export const executeRestCommand = async (
   requester: PlugHttpRequester,
-  session: PlugSession,
+  session: PlugSession<PlugClientAuthCredentials>,
   commandRequest: BuiltCommandRequest,
 ): Promise<PlugCommandTransportResult> => {
   plugLogger.debug("transport.rest.request", {
-    agentId: session.credentials.agentId,
+    agentId: commandRequest.agentId,
     method: Array.isArray(commandRequest.command)
       ? "batch"
       : commandRequest.command.method,
@@ -67,7 +68,7 @@ export const executeRestCommand = async (
   });
 
   const body: AgentCommandRequestBody = {
-    agentId: session.credentials.agentId,
+    agentId: commandRequest.agentId,
     command: commandRequest.command,
     ...(commandRequest.timeoutMs !== undefined
       ? { timeoutMs: commandRequest.timeoutMs }

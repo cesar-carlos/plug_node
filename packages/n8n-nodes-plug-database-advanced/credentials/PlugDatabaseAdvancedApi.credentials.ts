@@ -41,23 +41,23 @@ export class PlugDatabaseAdvancedApi implements ICredentialType {
       description: "The Plug Database client password.",
     },
     {
-      displayName: "Agent ID",
+      displayName: "Default Agent ID",
       name: "agentId",
       type: "string",
       default: "",
-      required: true,
-      description: "The Plug agent identifier used for every command in this node.",
+      description:
+        "Optional default Plug agent identifier used when the node does not override Agent ID.",
     },
     {
-      displayName: "Client Token",
+      displayName: "Default Client Token",
       name: "clientToken",
       type: "string",
       typeOptions: {
         password: true,
       },
       default: "",
-      required: true,
-      description: "The client token injected into supported Plug commands.",
+      description:
+        "Optional default client token used when the node does not override Client Token.",
     },
   ];
 

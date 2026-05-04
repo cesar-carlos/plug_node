@@ -16,7 +16,7 @@ const sanitizeMetadata = (metadata?: JsonObject): JsonObject | undefined => {
 };
 
 const writeLog = (
-  level: "debug" | "warn",
+  level: "debug" | "info" | "warn",
   event: string,
   metadata?: JsonObject,
 ): void => {
@@ -28,12 +28,20 @@ const writeLog = (
     return;
   }
 
+  if (level === "info") {
+    LoggerProxy.info(message, payload);
+    return;
+  }
+
   LoggerProxy.debug(message, payload);
 };
 
 export const plugLogger = {
   debug(event: string, metadata?: JsonObject): void {
     writeLog("debug", event, metadata);
+  },
+  info(event: string, metadata?: JsonObject): void {
+    writeLog("info", event, metadata);
   },
   warn(event: string, metadata?: JsonObject): void {
     writeLog("warn", event, metadata);

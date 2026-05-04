@@ -101,6 +101,7 @@ describe("buildNodeOutputItems", () => {
   it("returns one item per socket chunk in chunkItems mode", () => {
     const result: PlugCommandTransportResult = {
       channel: "socket",
+      socketMode: "relay",
       agentId: "agent-1",
       requestId: "request-1",
       notification: false,
@@ -189,6 +190,7 @@ describe("buildNodeOutputItems", () => {
       {
         __plug: {
           channel: "socket",
+          socketMode: "relay",
           agentId: "agent-1",
           requestId: "request-1",
           conversationId: "conversation-1",
@@ -201,6 +203,7 @@ describe("buildNodeOutputItems", () => {
       {
         __plug: {
           channel: "socket",
+          socketMode: "relay",
           agentId: "agent-1",
           requestId: "request-1",
           conversationId: "conversation-1",
@@ -216,6 +219,7 @@ describe("buildNodeOutputItems", () => {
   it("can omit metadata from socket chunkItems output", () => {
     const result: PlugCommandTransportResult = {
       channel: "socket",
+      socketMode: "relay",
       agentId: "agent-1",
       requestId: "request-1",
       notification: false,

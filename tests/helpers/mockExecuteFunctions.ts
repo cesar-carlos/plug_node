@@ -7,14 +7,22 @@ import type {
   INodeExecutionData,
 } from "n8n-workflow";
 
-import type { PlugCredentials } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
+import type {
+  PlugClientAuthCredentials,
+  PlugCredentials,
+  PlugUserAuthCredentials,
+} from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 
 export interface MockExecuteContextOptions {
-  readonly credentials: PlugCredentials;
+  readonly credentials:
+    | PlugCredentials
+    | PlugClientAuthCredentials
+    | PlugUserAuthCredentials;
   readonly parameters: Record<string, unknown>;
   readonly responses: unknown[];
   readonly inputData?: INodeExecutionData[];
   readonly continueOnFail?: boolean;
+  readonly nodeTypeVersion?: number;
 }
 
 const defaultNode: INode = {
@@ -45,14 +53,22 @@ export const createMockExecuteContext = (
     continueOnFail: () => options.continueOnFail ?? false,
     getInputData: () => options.inputData ?? [],
     getCredentials: vi.fn(async () => options.credentials),
-    getNode: () => defaultNode,
+    getNode: () => ({
+      ...defaultNode,
+      typeVersion: options.nodeTypeVersion ?? defaultNode.typeVersion,
+    }),
     getNodeParameter: (
       name: string,
-      _itemIndex: number,
+      itemIndex: number,
       fallbackValue?: unknown,
     ): unknown => {
       if (name in options.parameters) {
-        return options.parameters[name];
+        const value = options.parameters[name];
+        if (Array.isArray(value)) {
+          return value[itemIndex] ?? fallbackValue;
+        }
+
+        return value;
       }
 
       return fallbackValue;

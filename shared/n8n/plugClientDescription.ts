@@ -6,18 +6,17 @@ const operationOptions = [
     name: "Validate Context",
     value: "validateContext",
     description:
-      "Checks login, agent access, and the configured client token end to end.",
+      "Checks login, agent access, and the resolved client token end to end.",
   },
   {
     name: "Execute SQL",
     value: "executeSql",
-    description: "Runs a single sql.execute command against the configured agent.",
+    description: "Runs a single sql.execute command against the resolved agent.",
   },
   {
     name: "Execute Batch",
     value: "executeBatch",
-    description:
-      "Runs a single sql.executeBatch command. This operation is REST-only in v1.",
+    description: "Runs a single sql.executeBatch command.",
   },
   {
     name: "Cancel SQL",
@@ -32,12 +31,12 @@ const operationOptions = [
   {
     name: "Get Agent Profile",
     value: "getAgentProfile",
-    description: "Reads the agent profile with the configured client token.",
+    description: "Reads the agent profile with the resolved client token.",
   },
   {
     name: "Get Client Token Policy",
     value: "getClientTokenPolicy",
-    description: "Reads the policy for the configured client token.",
+    description: "Reads the policy for the resolved client token.",
   },
 ] as const;
 
@@ -50,13 +49,18 @@ const operationsWithInputMode = [
   "getClientTokenPolicy",
 ];
 
-const socketEligibleOperations = [
+const socketEligibleOperationsV1 = [
   "validateContext",
   "executeSql",
   "cancelSql",
   "discoverRpc",
   "getAgentProfile",
   "getClientTokenPolicy",
+];
+
+const socketEligibleOperationsV2 = [
+  ...socketEligibleOperationsV1,
+  "executeBatch",
 ];
 
 const buildResponseModeProperty = (supportsSocket: boolean): INodeProperties => ({
@@ -334,22 +338,44 @@ const sharedProperties = (supportsSocket: boolean): INodeProperties[] => {
   ];
 
   if (supportsSocket) {
-    properties.push({
-      displayName: "Channel",
-      name: "channel",
-      type: "options",
-      default: "rest",
-      description: "Choose whether the command should run over REST or the relay socket.",
-      options: [
-        { name: "REST", value: "rest" },
-        { name: "Socket", value: "socket" },
-      ],
-      displayOptions: {
-        show: {
-          operation: [...socketEligibleOperations],
+    properties.push(
+      {
+        displayName: "Channel",
+        name: "channel",
+        type: "options",
+        default: "rest",
+        description:
+          "Choose whether the command should run over REST or the Plug consumer socket.",
+        options: [
+          { name: "REST", value: "rest" },
+          { name: "Socket", value: "socket" },
+        ],
+        displayOptions: {
+          show: {
+            "@version": [1],
+            operation: [...socketEligibleOperationsV1],
+          },
         },
       },
-    });
+      {
+        displayName: "Channel",
+        name: "channel",
+        type: "options",
+        default: "rest",
+        description:
+          "Choose whether the command should run over REST or the Plug consumer socket.",
+        options: [
+          { name: "REST", value: "rest" },
+          { name: "Socket", value: "socket" },
+        ],
+        displayOptions: {
+          show: {
+            "@version": [2],
+            operation: [...socketEligibleOperationsV2],
+          },
+        },
+      },
+    );
   }
 
   properties.push(
@@ -372,6 +398,25 @@ const sharedProperties = (supportsSocket: boolean): INodeProperties[] => {
     },
     {
       ...buildResponseModeProperty(supportsSocket),
+    },
+    {
+      displayName: "Agent ID",
+      name: "agentId",
+      type: "string",
+      default: "",
+      description:
+        "Optional override for the target Plug agent. Falls back to Default Agent ID from the credential when empty.",
+    },
+    {
+      displayName: "Client Token",
+      name: "clientToken",
+      type: "string",
+      default: "",
+      typeOptions: {
+        password: true,
+      },
+      description:
+        "Optional override for the Plug client token. Falls back to Default Client Token from the credential when empty.",
     },
     {
       ...buildIncludeMetadataProperty(),
@@ -486,7 +531,7 @@ const sharedProperties = (supportsSocket: boolean): INodeProperties[] => {
       placeholder:
         '{\n  "jsonrpc": "2.0",\n  "method": "sql.execute",\n  "params": {\n    "sql": "SELECT 1"\n  }\n}',
       description:
-        "Enter a single JSON-RPC command object. The credential client token is injected automatically where supported.",
+        "Enter a single JSON-RPC command object. The resolved client token from the node override or credential default is injected automatically where supported.",
       displayOptions: {
         show: {
           operation: operationsWithInputMode,
@@ -512,6 +557,8 @@ export interface PlugNodeDescriptionOptions {
   readonly credentialName: string;
   readonly iconBaseName: string;
   readonly description: string;
+  readonly version?: number | number[];
+  readonly defaultVersion?: number;
 }
 
 export const buildPlugClientNodeDescription = (
@@ -521,7 +568,10 @@ export const buildPlugClientNodeDescription = (
   name: options.technicalName,
   icon: `file:${options.iconBaseName}.svg`,
   group: ["transform"],
-  version: 1,
+  version: options.version ?? 1,
+  ...(options.defaultVersion !== undefined
+    ? { defaultVersion: options.defaultVersion }
+    : {}),
   subtitle: '={{$parameter["operation"]}}',
   description: options.description,
   defaults: {

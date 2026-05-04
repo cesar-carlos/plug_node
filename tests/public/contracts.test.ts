@@ -48,6 +48,7 @@ describe("Plug contract fixtures", () => {
 
     const request: BuiltCommandRequest = {
       operation: "getClientTokenPolicy",
+      agentId: "agent-1",
       channel: "rest",
       responseMode: "aggregatedJson",
       command: {

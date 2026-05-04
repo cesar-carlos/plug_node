@@ -7,7 +7,8 @@ import type {
 
 import { buildPlugClientNodeDescription } from "../../generated/shared/n8n/plugClientDescription";
 import { executePlugClientNode } from "../../generated/shared/n8n/plugClientExecution";
-import { executeSocketCommand } from "./socketRelayExecutor";
+import { createSocketCommandExecutor } from "./socketCommandExecutor";
+import { executeSocketCommand as executeLegacySocketCommand } from "./socketRelayExecutor";
 
 export class PlugDatabaseAdvanced implements INodeType {
   description: INodeTypeDescription = {
@@ -17,7 +18,9 @@ export class PlugDatabaseAdvanced implements INodeType {
       technicalName: "plugDatabaseAdvanced",
       credentialName: "plugDatabaseAdvancedApi",
       iconBaseName: "plugDatabaseAdvanced",
-      description: "Run Plug Database commands over REST or Socket relay.",
+      description: "Run Plug Database commands over REST or Socket.",
+      version: [1, 2],
+      defaultVersion: 2,
     }),
     subtitle: '={{$parameter["operation"]}}',
     usableAsTool: true,
@@ -28,12 +31,17 @@ export class PlugDatabaseAdvanced implements INodeType {
   };
 
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+    const socketCommandExecutor = createSocketCommandExecutor(
+      executeLegacySocketCommand,
+    );
+
     try {
       return await executePlugClientNode(this, {
         supportsSocket: true,
         credentialName: "plugDatabaseAdvancedApi",
         nodeDisplayName: "Plug Database Advanced",
-        socketExecutor: executeSocketCommand,
+        socketExecutor: socketCommandExecutor.execute,
+        legacySocketExecutor: executeLegacySocketCommand,
       });
     } catch (error: unknown) {
       if (this.continueOnFail()) {
@@ -55,6 +63,8 @@ export class PlugDatabaseAdvanced implements INodeType {
       }
 
       throw error;
+    } finally {
+      socketCommandExecutor.close();
     }
   }
 }

@@ -8,12 +8,15 @@ import { NodeOperationError } from "n8n-workflow";
 
 import { DEFAULT_API_VERSION, DEFAULT_BASE_URL } from "../contracts/api";
 import type {
+  BridgeCommand,
   BuiltCommandRequest,
   JsonObject,
   PlugChannel,
   PlugCommandTransportResult,
-  PlugCredentials,
+  PlugCredentialDefaults,
+  PlugResolvedExecutionContext,
   PlugResponseMode,
+  PlugSocketImplementation,
   RpcSingleCommand,
   SqlExecuteBatchCommandItem,
 } from "../contracts/api";
@@ -28,9 +31,11 @@ import { isRecord, parseOptionalJsonArray, parseOptionalJsonObject } from "../ut
 
 export interface PlugSocketExecutor {
   (input: {
-    readonly session: import("../contracts/api").PlugSession;
-    readonly command: RpcSingleCommand;
+    readonly session: import("../contracts/api").PlugSession<PlugCredentialDefaults>;
+    readonly agentId: string;
+    readonly command: BridgeCommand;
     readonly timeoutMs?: number;
+    readonly payloadFrameCompression?: import("../contracts/api").PayloadFrameCompression;
     readonly responseMode: PlugResponseMode;
   }): Promise<PlugCommandTransportResult>;
 }
@@ -40,6 +45,7 @@ export interface PlugClientNodeExecutionConfig {
   readonly credentialName?: string;
   readonly nodeDisplayName?: string;
   readonly socketExecutor?: PlugSocketExecutor;
+  readonly legacySocketExecutor?: PlugSocketExecutor;
 }
 
 const retryableOperations = new Set([
@@ -98,6 +104,19 @@ const getResponseMode = (
 const getIncludeMetadata = (context: IExecuteFunctions, itemIndex: number): boolean =>
   context.getNodeParameter("includePlugMetadata", itemIndex, true) as boolean;
 
+const operationsRequiringClientToken = new Set([
+  "validateContext",
+  "executeSql",
+  "executeBatch",
+  "getAgentProfile",
+  "getClientTokenPolicy",
+]);
+
+const resolveSocketImplementation = (
+  context: IExecuteFunctions,
+): PlugSocketImplementation =>
+  context.getNode().typeVersion >= 2 ? "agentsCommand" : "relay";
+
 const buildHttpRequester = (
   context: IExecuteFunctions,
 ): import("../contracts/api").PlugHttpRequester => {
@@ -140,7 +159,7 @@ const buildHttpRequester = (
 const readCredentials = async (
   context: IExecuteFunctions,
   config: PlugClientNodeExecutionConfig,
-): Promise<PlugCredentials> => {
+): Promise<PlugCredentialDefaults> => {
   const rawCredentials = await context.getCredentials(
     config.credentialName ?? "plugClientApi",
   );
@@ -148,15 +167,15 @@ const readCredentials = async (
   return {
     user: String(rawCredentials.user ?? ""),
     password: String(rawCredentials.password ?? ""),
-    agentId: String(rawCredentials.agentId ?? ""),
-    clientToken: String(rawCredentials.clientToken ?? ""),
+    agentId: toOptionalString(rawCredentials.agentId),
+    clientToken: toOptionalString(rawCredentials.clientToken),
     baseUrl: DEFAULT_BASE_URL,
   };
 };
 
 const applyCommandDefaults = (
   command: RpcSingleCommand,
-  credentials: PlugCredentials,
+  executionContext: PlugResolvedExecutionContext,
   apiVersion?: string,
   meta?: JsonObject,
 ): RpcSingleCommand => {
@@ -172,7 +191,7 @@ const applyCommandDefaults = (
       ...nextCommand,
       params: {
         ...nextCommand.params,
-        client_token: credentials.clientToken,
+        client_token: executionContext.resolvedClientToken,
       },
     };
   }
@@ -182,7 +201,7 @@ const applyCommandDefaults = (
       ...nextCommand,
       params: {
         ...nextCommand.params,
-        client_token: credentials.clientToken,
+        client_token: executionContext.resolvedClientToken,
       },
     };
   }
@@ -195,7 +214,7 @@ const applyCommandDefaults = (
       ...nextCommand,
       params: {
         ...(nextCommand.params ?? {}),
-        client_token: credentials.clientToken,
+        client_token: executionContext.resolvedClientToken,
       },
     };
   }
@@ -203,10 +222,46 @@ const applyCommandDefaults = (
   return nextCommand;
 };
 
+const resolveExecutionContext = (
+  context: IExecuteFunctions,
+  itemIndex: number,
+  credentialDefaults: PlugCredentialDefaults,
+  operation: string,
+): PlugResolvedExecutionContext => {
+  const nodeAgentId = toOptionalString(
+    context.getNodeParameter("agentId", itemIndex, ""),
+  );
+  const nodeClientToken = toOptionalString(
+    context.getNodeParameter("clientToken", itemIndex, ""),
+  );
+  const resolvedAgentId = nodeAgentId ?? credentialDefaults.agentId;
+  const resolvedClientToken = nodeClientToken ?? credentialDefaults.clientToken;
+
+  if (!resolvedAgentId) {
+    throw new PlugValidationError(
+      "Agent ID is required. Set it on the node or configure Default Agent ID in the credential.",
+    );
+  }
+
+  if (operationsRequiringClientToken.has(operation) && !resolvedClientToken) {
+    throw new PlugValidationError(
+      "Client Token is required for this operation. Set it on the node or configure Default Client Token in the credential.",
+    );
+  }
+
+  return {
+    user: credentialDefaults.user,
+    password: credentialDefaults.password,
+    baseUrl: credentialDefaults.baseUrl,
+    resolvedAgentId,
+    ...(resolvedClientToken ? { resolvedClientToken } : {}),
+  };
+};
+
 const buildGuidedSqlCommand = (
   context: IExecuteFunctions,
   itemIndex: number,
-  credentials: PlugCredentials,
+  executionContext: PlugResolvedExecutionContext,
 ): BuiltCommandRequest => {
   const sql = context.getNodeParameter("sql", itemIndex) as string;
   const namedParamsJson = context.getNodeParameter(
@@ -276,13 +331,14 @@ const buildGuidedSqlCommand = (
         },
       },
     },
-    credentials,
+    executionContext,
     apiVersion,
     meta,
   );
 
   return {
     operation: "executeSql",
+    agentId: executionContext.resolvedAgentId,
     channel: "rest",
     responseMode: "aggregatedJson",
     command,
@@ -293,7 +349,7 @@ const buildGuidedSqlCommand = (
 const buildGuidedBatchCommand = (
   context: IExecuteFunctions,
   itemIndex: number,
-  credentials: PlugCredentials,
+  executionContext: PlugResolvedExecutionContext,
 ): BuiltCommandRequest => {
   const batchCommandsJson = context.getNodeParameter(
     "batchCommandsJson",
@@ -346,13 +402,14 @@ const buildGuidedBatchCommand = (
         },
       },
     },
-    credentials,
+    executionContext,
     apiVersion,
     meta,
   );
 
   return {
     operation: "executeBatch",
+    agentId: executionContext.resolvedAgentId,
     channel: "rest",
     responseMode: "aggregatedJson",
     command,
@@ -363,7 +420,7 @@ const buildGuidedBatchCommand = (
 const buildGuidedCancelCommand = (
   context: IExecuteFunctions,
   itemIndex: number,
-  credentials: PlugCredentials,
+  executionContext: PlugResolvedExecutionContext,
 ): BuiltCommandRequest => {
   const executionId = toOptionalString(
     context.getNodeParameter("cancelExecutionId", itemIndex, ""),
@@ -394,10 +451,11 @@ const buildGuidedCancelCommand = (
           ...(requestId ? { request_id: requestId } : {}),
         },
       },
-      credentials,
+      executionContext,
       apiVersion,
       meta,
     ),
+    agentId: executionContext.resolvedAgentId,
     timeoutMs,
   };
 };
@@ -405,7 +463,7 @@ const buildGuidedCancelCommand = (
 const buildGuidedDiscoverCommand = (
   context: IExecuteFunctions,
   itemIndex: number,
-  credentials: PlugCredentials,
+  executionContext: PlugResolvedExecutionContext,
 ): BuiltCommandRequest => {
   const paramsJson = context.getNodeParameter(
     "discoverParamsJson",
@@ -427,10 +485,11 @@ const buildGuidedDiscoverCommand = (
         method: "rpc.discover",
         ...(params ? { params } : {}),
       },
-      credentials,
+      executionContext,
       apiVersion,
       meta,
     ),
+    agentId: executionContext.resolvedAgentId,
     timeoutMs,
   };
 };
@@ -438,7 +497,7 @@ const buildGuidedDiscoverCommand = (
 const buildGuidedProfileCommand = (
   context: IExecuteFunctions,
   itemIndex: number,
-  credentials: PlugCredentials,
+  executionContext: PlugResolvedExecutionContext,
   operation: "getAgentProfile" | "getClientTokenPolicy",
 ): BuiltCommandRequest => {
   const options = toCollection(context, "profileOptions", itemIndex);
@@ -454,10 +513,11 @@ const buildGuidedProfileCommand = (
       {
         method: operationMethodMap[operation],
       } as RpcSingleCommand,
-      credentials,
+      executionContext,
       apiVersion,
       meta,
     ),
+    agentId: executionContext.resolvedAgentId,
     timeoutMs,
   };
 };
@@ -465,7 +525,7 @@ const buildGuidedProfileCommand = (
 const buildValidateContextCommand = (
   context: IExecuteFunctions,
   itemIndex: number,
-  credentials: PlugCredentials,
+  executionContext: PlugResolvedExecutionContext,
 ): BuiltCommandRequest => {
   const options = toCollection(context, "validateContextOptions", itemIndex);
   const timeoutMs = toOptionalPositiveNumber(options.timeoutMs);
@@ -478,9 +538,10 @@ const buildValidateContextCommand = (
       {
         method: "client_token.getPolicy",
       },
-      credentials,
+      executionContext,
       DEFAULT_API_VERSION,
     ),
+    agentId: executionContext.resolvedAgentId,
     timeoutMs,
   };
 };
@@ -488,7 +549,7 @@ const buildValidateContextCommand = (
 const buildAdvancedCommand = (
   context: IExecuteFunctions,
   itemIndex: number,
-  credentials: PlugCredentials,
+  executionContext: PlugResolvedExecutionContext,
   operation: string,
 ): BuiltCommandRequest => {
   const advancedCommandJson = context.getNodeParameter(
@@ -531,10 +592,11 @@ const buildAdvancedCommand = (
     responseMode: "aggregatedJson",
     command: applyCommandDefaults(
       parsed as unknown as RpcSingleCommand,
-      credentials,
+      executionContext,
       apiVersion,
       meta,
     ),
+    agentId: executionContext.resolvedAgentId,
     timeoutMs,
   };
 };
@@ -542,10 +604,16 @@ const buildAdvancedCommand = (
 const buildBuiltCommandRequest = (
   context: IExecuteFunctions,
   itemIndex: number,
-  credentials: PlugCredentials,
+  credentialDefaults: PlugCredentialDefaults,
   config: PlugClientNodeExecutionConfig,
 ): BuiltCommandRequest => {
   const operation = context.getNodeParameter("operation", itemIndex) as string;
+  const executionContext = resolveExecutionContext(
+    context,
+    itemIndex,
+    credentialDefaults,
+    operation,
+  );
   const channel = config.supportsSocket
     ? (context.getNodeParameter("channel", itemIndex, "rest") as PlugChannel)
     : "rest";
@@ -556,27 +624,39 @@ const buildBuiltCommandRequest = (
 
   const builtRequest =
     operation === "validateContext"
-      ? buildValidateContextCommand(context, itemIndex, credentials)
+      ? buildValidateContextCommand(context, itemIndex, executionContext)
       : inputMode === "advanced"
-        ? buildAdvancedCommand(context, itemIndex, credentials, operation)
+        ? buildAdvancedCommand(context, itemIndex, executionContext, operation)
         : operation === "executeSql"
-          ? buildGuidedSqlCommand(context, itemIndex, credentials)
+          ? buildGuidedSqlCommand(context, itemIndex, executionContext)
           : operation === "executeBatch"
-            ? buildGuidedBatchCommand(context, itemIndex, credentials)
+            ? buildGuidedBatchCommand(context, itemIndex, executionContext)
             : operation === "cancelSql"
-              ? buildGuidedCancelCommand(context, itemIndex, credentials)
+              ? buildGuidedCancelCommand(context, itemIndex, executionContext)
               : operation === "discoverRpc"
-                ? buildGuidedDiscoverCommand(context, itemIndex, credentials)
+                ? buildGuidedDiscoverCommand(context, itemIndex, executionContext)
                 : buildGuidedProfileCommand(
                     context,
                     itemIndex,
-                    credentials,
+                    executionContext,
                     operation as "getAgentProfile" | "getClientTokenPolicy",
                   );
 
   return {
     ...builtRequest,
-    channel: operation === "executeBatch" || !config.supportsSocket ? "rest" : channel,
+    channel:
+      operation === "executeBatch" &&
+      (!config.supportsSocket || resolveSocketImplementation(context) === "relay")
+        ? "rest"
+        : !config.supportsSocket
+          ? "rest"
+          : channel,
+    ...(channel === "socket" && config.supportsSocket
+      ? {
+          socketImplementation: resolveSocketImplementation(context),
+          payloadFrameCompression: "default" as const,
+        }
+      : {}),
     responseMode:
       operation === "validateContext"
         ? "aggregatedJson"
@@ -586,28 +666,36 @@ const buildBuiltCommandRequest = (
 
 const executeBuiltRequest = async (
   requester: import("../contracts/api").PlugHttpRequester,
-  sessionRunner: PlugExecutionSessionRunner,
+  sessionRunner: PlugExecutionSessionRunner<PlugCredentialDefaults>,
   builtRequest: BuiltCommandRequest,
   config: PlugClientNodeExecutionConfig,
 ): Promise<PlugCommandTransportResult> =>
   sessionRunner(async (session) => {
     if (builtRequest.channel === "socket") {
-      if (!config.supportsSocket || !config.socketExecutor) {
+      const socketImplementation = builtRequest.socketImplementation ?? "relay";
+      const socketExecutor =
+        socketImplementation === "relay"
+          ? config.legacySocketExecutor ?? config.socketExecutor
+          : config.socketExecutor;
+
+      if (!config.supportsSocket || !socketExecutor) {
         throw new PlugValidationError(
           "This package does not support the socket channel.",
         );
       }
 
-      if (Array.isArray(builtRequest.command)) {
+      if (socketImplementation === "relay" && Array.isArray(builtRequest.command)) {
         throw new PlugValidationError(
           "Socket channel requires a single JSON-RPC command.",
         );
       }
 
-      return config.socketExecutor({
+      return socketExecutor({
         session,
+        agentId: builtRequest.agentId,
         command: builtRequest.command,
         timeoutMs: builtRequest.timeoutMs,
+        payloadFrameCompression: builtRequest.payloadFrameCompression,
         responseMode: builtRequest.responseMode,
       });
     }
@@ -724,11 +812,11 @@ export const executePlugClientNode = async (
       }
 
       const nodeError =
-        error instanceof Error || typeof error === "string" || isRecord(error)
-          ? isRecord(error)
+        error instanceof Error || typeof error === "string"
+          ? error
+          : isRecord(error)
             ? JSON.stringify(error)
-            : error
-          : new Error(`Unknown ${config.nodeDisplayName ?? "Plug Client"} error`);
+            : new Error(`Unknown ${config.nodeDisplayName ?? "Plug Client"} error`);
 
       throw new NodeOperationError(context.getNode(), nodeError, {
         itemIndex,

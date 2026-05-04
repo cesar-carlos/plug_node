@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { executePlugClientNode } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugClientExecution";
 import type { PlugCredentials } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
@@ -11,6 +11,12 @@ const credentials: PlugCredentials = {
   password: "secret",
   agentId: "agent-1",
   clientToken: "client-token",
+  baseUrl: "https://plug-server.example.com/api/v1",
+};
+
+const credentialsWithoutDefaults: PlugCredentials = {
+  user: "client@example.com",
+  password: "secret",
   baseUrl: "https://plug-server.example.com/api/v1",
 };
 
@@ -108,6 +114,653 @@ describe("executePlugClientNode", () => {
         method: "client_token.getPolicy",
         params: {
           client_token: credentials.clientToken,
+        },
+      },
+    });
+  });
+
+  it("prefers node overrides over credential defaults", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "validateContext",
+        agentId: "agent-override",
+        clientToken: "token-override",
+        includePlugMetadata: true,
+        validateContextOptions: {
+          timeoutMs: 5000,
+        },
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-override",
+            requestId: "request-1",
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: "rpc-1",
+                success: true,
+                result: {
+                  policy: "approved",
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(context.httpRequestMock.mock.calls[1][0].body).toMatchObject({
+      agentId: "agent-override",
+      command: {
+        method: "client_token.getPolicy",
+        params: {
+          client_token: "token-override",
+        },
+      },
+    });
+  });
+
+  it("supports executeSql overrides across multiple workflow items", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeSql",
+        inputMode: "guided",
+        responseMode: "aggregatedJson",
+        includePlugMetadata: true,
+        agentId: ["agent-1", "agent-2"],
+        clientToken: ["token-1", "token-2"],
+        sql: "SELECT 1",
+        namedParamsJson: "",
+        sqlOptions: {},
+      },
+      inputData: [{ json: { row: 1 } }, { json: { row: 2 } }],
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-1",
+            requestId: "request-1",
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: "rpc-1",
+                success: true,
+                result: {
+                  rows: [{ id: 1 }],
+                },
+              },
+            },
+          },
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-2",
+            requestId: "request-2",
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: "rpc-2",
+                success: true,
+                result: {
+                  rows: [{ id: 2 }],
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const result = await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(result[0]).toHaveLength(2);
+    expect(context.httpRequestMock.mock.calls[1][0].body).toMatchObject({
+      agentId: "agent-1",
+      command: {
+        method: "sql.execute",
+        params: {
+          client_token: "token-1",
+        },
+      },
+    });
+    expect(context.httpRequestMock.mock.calls[2][0].body).toMatchObject({
+      agentId: "agent-2",
+      command: {
+        method: "sql.execute",
+        params: {
+          client_token: "token-2",
+        },
+      },
+    });
+  });
+
+  it("allows discoverRpc without a resolved client token", async () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        ...credentialsWithoutDefaults,
+        agentId: "agent-1",
+      },
+      parameters: {
+        operation: "discoverRpc",
+        inputMode: "guided",
+        includePlugMetadata: true,
+        discoverOptions: {},
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-1",
+            requestId: "request-1",
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: "rpc-1",
+                success: true,
+                result: {
+                  methods: ["rpc.discover"],
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const result = await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(result[0][0].json).toHaveProperty("result.methods");
+    expect(context.httpRequestMock.mock.calls[1][0].body).toMatchObject({
+      agentId: "agent-1",
+      command: {
+        method: "rpc.discover",
+      },
+    });
+  });
+
+  it("allows cancelSql without a resolved client token", async () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        ...credentialsWithoutDefaults,
+        agentId: "agent-1",
+      },
+      parameters: {
+        operation: "cancelSql",
+        inputMode: "guided",
+        includePlugMetadata: true,
+        cancelExecutionId: "exec-1",
+        cancelRequestId: "",
+        cancelOptions: {},
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-1",
+            requestId: "request-1",
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: "rpc-1",
+                success: true,
+                result: {
+                  cancelled: true,
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const result = await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(result[0][0].json).toHaveProperty("result.cancelled", true);
+    expect(context.httpRequestMock.mock.calls[1][0].body).toMatchObject({
+      agentId: "agent-1",
+      command: {
+        method: "sql.cancel",
+      },
+    });
+  });
+
+  it("fails clearly when Agent ID cannot be resolved", async () => {
+    const context = createMockExecuteContext({
+      credentials: credentialsWithoutDefaults,
+      parameters: {
+        operation: "discoverRpc",
+        inputMode: "guided",
+        includePlugMetadata: true,
+        discoverOptions: {},
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+      ],
+    });
+
+    await expect(
+      executePlugClientNode(context, {
+        supportsSocket: false,
+      }),
+    ).rejects.toThrow(
+      "Agent ID is required. Set it on the node or configure Default Agent ID in the credential.",
+    );
+  });
+
+  it("fails clearly when Client Token is required but cannot be resolved", async () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        ...credentialsWithoutDefaults,
+        agentId: "agent-1",
+      },
+      parameters: {
+        operation: "validateContext",
+        includePlugMetadata: true,
+        validateContextOptions: {
+          timeoutMs: 5000,
+        },
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+      ],
+    });
+
+    await expect(
+      executePlugClientNode(context, {
+        supportsSocket: false,
+      }),
+    ).rejects.toThrow(
+      "Client Token is required for this operation. Set it on the node or configure Default Client Token in the credential.",
+    );
+  });
+
+  it("injects the resolved token and agent when using raw JSON-RPC over socket", async () => {
+    let receivedInput:
+      | {
+          readonly agentId: string;
+          readonly command: import("../../packages/n8n-nodes-plug-database/generated/shared/contracts/api").RpcSingleCommand;
+        }
+      | undefined;
+
+    const socketExecutor = async (input: {
+      readonly session: import("../../packages/n8n-nodes-plug-database/generated/shared/contracts/api").PlugSession<PlugCredentials>;
+      readonly agentId: string;
+      readonly command: import("../../packages/n8n-nodes-plug-database/generated/shared/contracts/api").RpcSingleCommand;
+      readonly timeoutMs?: number;
+      readonly responseMode: import("../../packages/n8n-nodes-plug-database/generated/shared/contracts/api").PlugResponseMode;
+    }) => {
+      receivedInput = {
+        agentId: input.agentId,
+        command: input.command,
+      };
+
+      return {
+        channel: "socket" as const,
+        socketMode: "relay" as const,
+        agentId: input.agentId,
+        requestId: "request-1",
+        notification: false as const,
+        conversationId: "conversation-1",
+        accepted: {
+          success: true as const,
+          conversationId: "conversation-1",
+          requestId: "request-1",
+        },
+        connectionReady: {
+          id: "socket-1",
+          message: "ready",
+          user: { id: "client-1" },
+        },
+        response: {
+          type: "single" as const,
+          success: true,
+          item: {
+            id: "rpc-1",
+            success: true,
+            result: {
+              policy: "approved",
+            },
+          },
+        },
+        rawResponsePayload: {
+          policy: "approved",
+        },
+        chunkPayloads: [],
+        rawResponseFrame: {
+          payload: {
+            event: "relay:rpc.response",
+          },
+        },
+        rawChunkFrames: [],
+      };
+    };
+
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "getClientTokenPolicy",
+        channel: "socket",
+        inputMode: "advanced",
+        responseMode: "rawJsonRpc",
+        agentId: "agent-socket",
+        clientToken: "token-socket",
+        includePlugMetadata: true,
+        advancedCommandJson:
+          '{ "jsonrpc": "2.0", "method": "client_token.getPolicy", "params": {} }',
+        profileOptions: {},
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+      ],
+    });
+
+    const result = await executePlugClientNode(context, {
+      supportsSocket: true,
+      socketExecutor,
+    });
+
+    expect(result[0][0].json).toMatchObject({
+      __plug: {
+        channel: "socket",
+        socketMode: "relay",
+        agentId: "agent-socket",
+      },
+    });
+    expect(receivedInput).toMatchObject({
+      agentId: "agent-socket",
+      command: {
+        method: "client_token.getPolicy",
+        params: {
+          client_token: "token-socket",
+        },
+      },
+    });
+  });
+
+  it("uses agents:command as the default socket path for version 2 nodes", async () => {
+    const socketExecutor = vi.fn(async (input) => ({
+      channel: "socket" as const,
+      socketMode: "agentsCommand" as const,
+      agentId: input.agentId,
+      requestId: "request-1",
+      notification: false as const,
+      connectionReady: {
+        id: "socket-1",
+        message: "ready",
+        user: { id: "client-1" },
+      },
+      response: {
+        type: "single" as const,
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            policy: "approved",
+          },
+        },
+      },
+      rawResponsePayload: {
+        policy: "approved",
+      },
+      chunkPayloads: [],
+      rawChunkFrames: [],
+    }));
+    const legacySocketExecutor = vi.fn(async () => {
+      throw new Error("legacy executor should not run for version 2 socket nodes");
+    });
+
+    const context = createMockExecuteContext({
+      credentials,
+      nodeTypeVersion: 2,
+      parameters: {
+        operation: "getClientTokenPolicy",
+        channel: "socket",
+        inputMode: "guided",
+        responseMode: "rawJsonRpc",
+        includePlugMetadata: true,
+        profileOptions: {},
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+      ],
+    });
+
+    const result = await executePlugClientNode(context, {
+      supportsSocket: true,
+      socketExecutor,
+      legacySocketExecutor,
+    });
+
+    expect(result[0][0].json).toMatchObject({
+      __plug: {
+        channel: "socket",
+        socketMode: "agentsCommand",
+      },
+    });
+    expect(socketExecutor).toHaveBeenCalledTimes(1);
+    expect(legacySocketExecutor).not.toHaveBeenCalled();
+    expect(socketExecutor.mock.calls[0][0]).toMatchObject({
+      agentId: "agent-1",
+      payloadFrameCompression: "default",
+      command: {
+        method: "client_token.getPolicy",
+        params: {
+          client_token: "client-token",
+        },
+      },
+    });
+  });
+
+  it("keeps socket workflows on relay for version 1 nodes without new metadata", async () => {
+    const socketExecutor = vi.fn(async () => {
+      throw new Error("agents:command executor should not run for version 1 socket nodes");
+    });
+    const legacySocketExecutor = vi.fn(async (input) => ({
+      channel: "socket" as const,
+      socketMode: "relay" as const,
+      agentId: input.agentId,
+      requestId: "request-1",
+      notification: false as const,
+      conversationId: "conversation-1",
+      accepted: {
+        success: true as const,
+        conversationId: "conversation-1",
+        requestId: "request-1",
+      },
+      connectionReady: {
+        id: "socket-1",
+        message: "ready",
+        user: { id: "client-1" },
+      },
+      response: {
+        type: "single" as const,
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            policy: "approved",
+          },
+        },
+      },
+      rawResponsePayload: {
+        policy: "approved",
+      },
+      chunkPayloads: [],
+      rawResponseFrame: {
+        payload: {
+          event: "relay:rpc.response",
+        },
+      },
+      rawChunkFrames: [],
+    }));
+
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "getClientTokenPolicy",
+        channel: "socket",
+        inputMode: "guided",
+        responseMode: "rawJsonRpc",
+        includePlugMetadata: true,
+        profileOptions: {},
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+      ],
+    });
+
+    const result = await executePlugClientNode(context, {
+      supportsSocket: true,
+      socketExecutor,
+      legacySocketExecutor,
+    });
+
+    expect(result[0][0].json).toMatchObject({
+      __plug: {
+        channel: "socket",
+        socketMode: "relay",
+      },
+    });
+    expect(socketExecutor).not.toHaveBeenCalled();
+    expect(legacySocketExecutor).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows executeBatch over the version 2 socket transport", async () => {
+    const socketExecutor = vi.fn(async (input) => ({
+      channel: "socket" as const,
+      socketMode: "agentsCommand" as const,
+      agentId: input.agentId,
+      requestId: "request-1",
+      notification: false as const,
+      connectionReady: {
+        id: "socket-1",
+        message: "ready",
+        user: { id: "client-1" },
+      },
+      response: {
+        type: "single" as const,
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            summary: "ok",
+          },
+        },
+      },
+      rawResponsePayload: {
+        summary: "ok",
+      },
+      chunkPayloads: [],
+      rawChunkFrames: [],
+    }));
+
+    const context = createMockExecuteContext({
+      credentials,
+      nodeTypeVersion: 2,
+      parameters: {
+        operation: "executeBatch",
+        channel: "socket",
+        inputMode: "guided",
+        responseMode: "rawJsonRpc",
+        includePlugMetadata: true,
+        batchCommandsJson: '[{"sql":"SELECT 1"},{"sql":"SELECT 2"}]',
+        batchOptions: {},
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+      ],
+    });
+
+    await executePlugClientNode(context, {
+      supportsSocket: true,
+      socketExecutor,
+    });
+
+    expect(socketExecutor).toHaveBeenCalledTimes(1);
+    expect(socketExecutor.mock.calls[0][0]).toMatchObject({
+      payloadFrameCompression: "default",
+      command: {
+        method: "sql.executeBatch",
+        params: {
+          client_token: "client-token",
+          commands: [{ sql: "SELECT 1" }, { sql: "SELECT 2" }],
         },
       },
     });

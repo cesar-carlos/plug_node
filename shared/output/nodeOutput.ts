@@ -14,7 +14,14 @@ const toMetadata = (result: PlugCommandTransportResult): JsonObject => ({
   channel: result.channel,
   agentId: result.agentId,
   requestId: result.requestId,
-  ...(result.channel === "socket" ? { conversationId: result.conversationId } : {}),
+  ...(result.channel === "socket"
+    ? {
+        socketMode: result.socketMode,
+        ...("conversationId" in result && result.conversationId
+          ? { conversationId: result.conversationId }
+          : {}),
+      }
+    : {}),
 });
 
 const cloneRows = (rows: unknown[]): unknown[] => rows.map((row) => row);

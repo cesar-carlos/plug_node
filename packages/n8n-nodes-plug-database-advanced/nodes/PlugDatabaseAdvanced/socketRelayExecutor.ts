@@ -1,6 +1,7 @@
 import { io, type Socket } from "socket.io-client";
 
 import type { PlugSocketExecutor } from "../../generated/shared/n8n/plugClientExecution";
+import { PlugValidationError } from "../../generated/shared/contracts/errors";
 import {
   executeRelayCommand,
   type RelaySocketTransport,
@@ -41,6 +42,10 @@ class SocketIoRelayTransport implements RelaySocketTransport {
 }
 
 export const executeSocketCommand: PlugSocketExecutor = async (input) => {
+  if (Array.isArray(input.command)) {
+    throw new PlugValidationError("Socket relay requires a single JSON-RPC command.");
+  }
+
   const socket = io(
     deriveSocketNamespaceUrl(input.session.credentials.baseUrl, "/consumers"),
     {
@@ -59,6 +64,7 @@ export const executeSocketCommand: PlugSocketExecutor = async (input) => {
     return await executeRelayCommand({
       transport,
       session: input.session,
+      agentId: input.agentId,
       command: input.command,
       timeoutMs: input.timeoutMs,
       responseMode: input.responseMode,
