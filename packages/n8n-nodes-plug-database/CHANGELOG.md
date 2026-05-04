@@ -1,5 +1,11 @@
 # n8n-nodes-plug-database
 
+## 1.1.0
+
+### Minor Changes
+
+- Add client and user access nodes, SQL agent and token overrides, and the new consumer socket transport with relay compatibility fallback.
+
 ## 1.0.0
 
 ### Major Changes
