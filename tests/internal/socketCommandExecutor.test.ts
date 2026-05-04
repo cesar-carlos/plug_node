@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { PlugSession, RelayConnectionReadyPayload } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/api";
+import type {
+  PlugSession,
+  RelayConnectionReadyPayload,
+} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/api";
 import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
 
 const createdSockets: MockSocket[] = [];
@@ -139,9 +142,8 @@ describe("ConsumerSocketExecutionManager", () => {
   });
 
   it("reuses one /consumers socket across multiple commands in the same execution", async () => {
-    const { ConsumerSocketExecutionManager } = await import(
-      "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvanced/socketCommandExecutor"
-    );
+    const { ConsumerSocketExecutionManager } =
+      await import("../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvanced/socketCommandExecutor");
     const manager = new ConsumerSocketExecutionManager();
 
     await manager.execute({
@@ -180,9 +182,8 @@ describe("ConsumerSocketExecutionManager", () => {
   });
 
   it("opens a fresh socket after a disconnect between items", async () => {
-    const { ConsumerSocketExecutionManager } = await import(
-      "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvanced/socketCommandExecutor"
-    );
+    const { ConsumerSocketExecutionManager } =
+      await import("../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvanced/socketCommandExecutor");
     const manager = new ConsumerSocketExecutionManager();
 
     await manager.execute({
@@ -225,9 +226,8 @@ describe("ConsumerSocketExecutionManager", () => {
 
   it("falls back to relay when the capability probe does not get a response", async () => {
     suppressProbeResponse = true;
-    const { createSocketCommandExecutor } = await import(
-      "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvanced/socketCommandExecutor"
-    );
+    const { createSocketCommandExecutor } =
+      await import("../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvanced/socketCommandExecutor");
     const fallbackExecutor = vi.fn(async (input) => ({
       channel: "socket" as const,
       socketMode: "relay" as const,

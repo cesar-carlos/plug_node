@@ -620,7 +620,9 @@ describe("executePlugClientNode", () => {
 
   it("keeps socket workflows on relay for version 1 nodes without new metadata", async () => {
     const socketExecutor = vi.fn(async () => {
-      throw new Error("agents:command executor should not run for version 1 socket nodes");
+      throw new Error(
+        "agents:command executor should not run for version 1 socket nodes",
+      );
     });
     const legacySocketExecutor = vi.fn(async (input) => ({
       channel: "socket" as const,

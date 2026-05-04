@@ -15,7 +15,8 @@ export class PlugDatabaseAdvancedUserApi implements ICredentialType {
   documentationUrl = "https://plug-server.se7esistemassinop.com.br/docs";
 
   icon: Icon = {
-    light: "file:../nodes/PlugDatabaseAdvancedUserAccess/plugDatabaseAdvancedUserAccess.svg",
+    light:
+      "file:../nodes/PlugDatabaseAdvancedUserAccess/plugDatabaseAdvancedUserAccess.svg",
     dark: "file:../nodes/PlugDatabaseAdvancedUserAccess/plugDatabaseAdvancedUserAccess.dark.svg",
   };
 

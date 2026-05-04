@@ -251,9 +251,9 @@ describe("client access REST helpers", () => {
       },
     });
 
-    await expect(getClientAgentToken(requester, session, "agent-1")).rejects.toBeInstanceOf(
-      PlugValidationError,
-    );
+    await expect(
+      getClientAgentToken(requester, session, "agent-1"),
+    ).rejects.toBeInstanceOf(PlugValidationError);
   });
 
   it("surfaces Plug errors for forbidden token access", async () => {

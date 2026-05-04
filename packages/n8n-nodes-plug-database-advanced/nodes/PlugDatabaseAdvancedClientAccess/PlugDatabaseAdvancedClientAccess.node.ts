@@ -26,9 +26,31 @@ export class PlugDatabaseAdvancedClientAccess implements INodeType {
   };
 
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-    return executePlugClientAccessNode(this, {
-      credentialName: "plugDatabaseAdvancedClientApi",
-      nodeDisplayName: "Plug Database Advanced Client Access",
-    });
+    try {
+      return await executePlugClientAccessNode(this, {
+        credentialName: "plugDatabaseAdvancedClientApi",
+        nodeDisplayName: "Plug Database Advanced Client Access",
+      });
+    } catch (error: unknown) {
+      if (this.continueOnFail()) {
+        return [
+          [
+            {
+              json: {
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "Unknown Plug Database Advanced Client Access error",
+              },
+              pairedItem: {
+                item: 0,
+              },
+            },
+          ],
+        ];
+      }
+
+      throw error;
+    }
   }
 }

@@ -284,8 +284,7 @@ const createDisconnectError = (reason: unknown): PlugError =>
     retryable: true,
   });
 
-const countRows = (value: unknown): number =>
-  Array.isArray(value) ? value.length : 0;
+const countRows = (value: unknown): number => (Array.isArray(value) ? value.length : 0);
 
 const isSingleSuccessWithRows = (
   value: unknown,
@@ -327,7 +326,8 @@ const removeStreamMarkerFromResponse = (
     return response;
   }
 
-  const { stream_id: _streamId, ...resultWithoutStreamId } = response.item.result;
+  const { stream_id: streamId, ...resultWithoutStreamId } = response.item.result;
+  void streamId;
   return {
     ...response,
     item: {
@@ -578,12 +578,7 @@ export const executeConsumerCommand = async (
     };
 
     const requestNextStreamWindow = async (): Promise<void> => {
-      if (
-        !activeRequestId ||
-        !activeStreamId ||
-        streamPullInFlight ||
-        streamCompleted
-      ) {
+      if (!activeRequestId || !activeStreamId || streamPullInFlight || streamCompleted) {
         return;
       }
 

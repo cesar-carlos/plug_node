@@ -25,7 +25,8 @@ const operationOptions = [
   {
     name: "List Access Requests",
     value: "listManagedAccessRequests",
-    description: "Lists client access requests for agents owned by the authenticated user.",
+    description:
+      "Lists client access requests for agents owned by the authenticated user.",
   },
   {
     name: "Approve Access Request",
@@ -79,7 +80,8 @@ const buildCatalogPaginationProperties = (): INodeProperties[] => [
     name: "returnAll",
     type: "boolean",
     default: false,
-    description: "Whether to request every page from the Plug catalog before returning items.",
+    description:
+      "Whether to request every page from the Plug catalog before returning items.",
     displayOptions: {
       show: {
         operation: ["listAgentCatalog"],

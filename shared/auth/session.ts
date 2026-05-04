@@ -15,30 +15,21 @@ import { plugLogger } from "../logging/plugLogger";
 import { isRecord } from "../utils/json";
 import { buildApiUrl } from "../utils/url";
 
-interface PlugAuthEndpointConfig<
-  TCredentials extends PlugEmailPasswordCredentials,
-  TLoginResponse extends PlugAnyLoginResponse,
-> {
+interface PlugAuthEndpointConfig {
   readonly loginPath: string;
   readonly refreshPath: string;
   readonly profileKey: "client" | "user";
   readonly profileLabel: string;
 }
 
-const clientAuthConfig: PlugAuthEndpointConfig<
-  PlugClientAuthCredentials,
-  PlugLoginResponse
-> = {
+const clientAuthConfig: PlugAuthEndpointConfig = {
   loginPath: "/client-auth/login",
   refreshPath: "/client-auth/refresh",
   profileKey: "client",
   profileLabel: "client",
 };
 
-const userAuthConfig: PlugAuthEndpointConfig<
-  PlugUserAuthCredentials,
-  PlugUserLoginResponse
-> = {
+const userAuthConfig: PlugAuthEndpointConfig = {
   loginPath: "/auth/login",
   refreshPath: "/auth/refresh",
   profileKey: "user",
@@ -373,7 +364,7 @@ const assertTokenPair = (
 
 const assertLoginResponse = <TLoginResponse extends PlugAnyLoginResponse>(
   body: unknown,
-  authConfig: PlugAuthEndpointConfig<PlugEmailPasswordCredentials, TLoginResponse>,
+  authConfig: PlugAuthEndpointConfig,
 ): TLoginResponse => {
   const tokenPair = assertTokenPair(body, "login");
   if (!isRecord(body)) {
@@ -415,7 +406,7 @@ const getLoginResponseProfile = (
 const assertRefreshResponse = <TLoginResponse extends PlugAnyLoginResponse>(
   body: unknown,
   previousLoginResponse: TLoginResponse,
-  authConfig: PlugAuthEndpointConfig<PlugEmailPasswordCredentials, TLoginResponse>,
+  authConfig: PlugAuthEndpointConfig,
 ): TLoginResponse => {
   const tokenPair = assertTokenPair(body, "refresh");
 
@@ -444,7 +435,7 @@ const loginWithEmailPassword = async <
 >(
   requester: PlugHttpRequester,
   credentials: TCredentials,
-  authConfig: PlugAuthEndpointConfig<TCredentials, TLoginResponse>,
+  authConfig: PlugAuthEndpointConfig,
 ): Promise<PlugSession<TCredentials, TLoginResponse>> => {
   plugLogger.debug("auth.login.start", {
     baseUrl: credentials.baseUrl,
@@ -472,7 +463,7 @@ const loginWithEmailPassword = async <
     );
   }
 
-  const loginResponse = assertLoginResponse(response.body, authConfig);
+  const loginResponse = assertLoginResponse<TLoginResponse>(response.body, authConfig);
   plugLogger.debug("auth.login.success", {
     statusCode: response.statusCode,
   });
@@ -482,7 +473,7 @@ const loginWithEmailPassword = async <
     accessToken: loginResponse.accessToken,
     refreshToken: loginResponse.refreshToken,
     loginResponse,
-  };
+  } as PlugSession<TCredentials, TLoginResponse>;
 };
 
 const refreshExecutionSession = async <
@@ -491,7 +482,7 @@ const refreshExecutionSession = async <
 >(
   requester: PlugHttpRequester,
   session: PlugSession<TCredentials, TLoginResponse>,
-  authConfig: PlugAuthEndpointConfig<TCredentials, TLoginResponse>,
+  authConfig: PlugAuthEndpointConfig,
 ): Promise<PlugSession<TCredentials, TLoginResponse>> => {
   plugLogger.debug("auth.refresh.start", {
     baseUrl: session.credentials.baseUrl,
@@ -518,7 +509,7 @@ const refreshExecutionSession = async <
     );
   }
 
-  const refreshed = assertRefreshResponse(
+  const refreshed = assertRefreshResponse<TLoginResponse>(
     response.body,
     session.loginResponse,
     authConfig,
@@ -539,21 +530,13 @@ export const loginClient = async <TCredentials extends PlugClientAuthCredentials
   requester: PlugHttpRequester,
   credentials: TCredentials,
 ): Promise<PlugSession<TCredentials, PlugLoginResponse>> =>
-  loginWithEmailPassword(
-    requester,
-    credentials,
-    clientAuthConfig as PlugAuthEndpointConfig<TCredentials, PlugLoginResponse>,
-  );
+  loginWithEmailPassword(requester, credentials, clientAuthConfig);
 
 export const loginUser = async <TCredentials extends PlugUserAuthCredentials>(
   requester: PlugHttpRequester,
   credentials: TCredentials,
 ): Promise<PlugSession<TCredentials, PlugUserLoginResponse>> =>
-  loginWithEmailPassword(
-    requester,
-    credentials,
-    userAuthConfig as PlugAuthEndpointConfig<TCredentials, PlugUserLoginResponse>,
-  );
+  loginWithEmailPassword(requester, credentials, userAuthConfig);
 
 export const refreshClientSession = async <
   TCredentials extends PlugClientAuthCredentials,
@@ -561,21 +544,13 @@ export const refreshClientSession = async <
   requester: PlugHttpRequester,
   session: PlugSession<TCredentials, PlugLoginResponse>,
 ): Promise<PlugSession<TCredentials, PlugLoginResponse>> =>
-  refreshExecutionSession(
-    requester,
-    session,
-    clientAuthConfig as PlugAuthEndpointConfig<TCredentials, PlugLoginResponse>,
-  );
+  refreshExecutionSession(requester, session, clientAuthConfig);
 
 export const refreshUserSession = async <TCredentials extends PlugUserAuthCredentials>(
   requester: PlugHttpRequester,
   session: PlugSession<TCredentials, PlugUserLoginResponse>,
 ): Promise<PlugSession<TCredentials, PlugUserLoginResponse>> =>
-  refreshExecutionSession(
-    requester,
-    session,
-    userAuthConfig as PlugAuthEndpointConfig<TCredentials, PlugUserLoginResponse>,
-  );
+  refreshExecutionSession(requester, session, userAuthConfig);
 
 export const buildAuthorizedHeaders = (
   session: PlugSession<PlugEmailPasswordCredentials, PlugAnyLoginResponse>,
@@ -604,9 +579,9 @@ export const withAutoRefreshSession = async <
   requester: PlugHttpRequester,
   credentials: TCredentials,
   callback: (session: PlugSession<TCredentials, TLoginResponse>) => Promise<T>,
-  authConfig?: PlugAuthEndpointConfig<TCredentials, TLoginResponse>,
+  authConfig?: PlugAuthEndpointConfig,
 ): Promise<T> => {
-  const runWithSession = createExecutionSessionRunner(
+  const runWithSession = createExecutionSessionRunner<TCredentials, TLoginResponse>(
     requester,
     credentials,
     authConfig,
@@ -620,11 +595,9 @@ export const createExecutionSessionRunner = <
 >(
   requester: PlugHttpRequester,
   credentials: TCredentials,
-  authConfig?: PlugAuthEndpointConfig<TCredentials, TLoginResponse>,
+  authConfig?: PlugAuthEndpointConfig,
 ): PlugExecutionSessionRunner<TCredentials, TLoginResponse> => {
-  const effectiveAuthConfig =
-    authConfig ??
-    (clientAuthConfig as unknown as PlugAuthEndpointConfig<TCredentials, TLoginResponse>);
+  const effectiveAuthConfig = authConfig ?? clientAuthConfig;
 
   let currentSession: PlugSession<TCredentials, TLoginResponse> | undefined;
   let inFlightLogin: Promise<PlugSession<TCredentials, TLoginResponse>> | undefined;
@@ -635,7 +608,7 @@ export const createExecutionSessionRunner = <
     }
 
     if (!inFlightLogin) {
-      inFlightLogin = loginWithEmailPassword(
+      inFlightLogin = loginWithEmailPassword<TCredentials, TLoginResponse>(
         requester,
         credentials,
         effectiveAuthConfig,
@@ -686,8 +659,4 @@ export const createUserExecutionSessionRunner = <
   requester: PlugHttpRequester,
   credentials: TCredentials,
 ): PlugExecutionSessionRunner<TCredentials, PlugUserLoginResponse> =>
-  createExecutionSessionRunner(
-    requester,
-    credentials,
-    userAuthConfig as PlugAuthEndpointConfig<TCredentials, PlugUserLoginResponse>,
-  );
+  createExecutionSessionRunner(requester, credentials, userAuthConfig);

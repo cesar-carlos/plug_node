@@ -36,16 +36,16 @@ export interface PlugEmailPasswordCredentials {
   readonly baseUrl: string;
 }
 
-export interface PlugClientAuthCredentials extends PlugEmailPasswordCredentials {}
+export type PlugClientAuthCredentials = PlugEmailPasswordCredentials;
 
-export interface PlugUserAuthCredentials extends PlugEmailPasswordCredentials {}
+export type PlugUserAuthCredentials = PlugEmailPasswordCredentials;
 
 export interface PlugCredentialDefaults extends PlugClientAuthCredentials {
   readonly agentId?: string;
   readonly clientToken?: string;
 }
 
-export interface PlugCredentials extends PlugCredentialDefaults {}
+export type PlugCredentials = PlugCredentialDefaults;
 
 export interface PlugResolvedExecutionContext extends PlugClientAuthCredentials {
   readonly resolvedAgentId: string;

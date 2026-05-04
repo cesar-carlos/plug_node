@@ -31,9 +31,7 @@ export class PlugDatabaseAdvanced implements INodeType {
   };
 
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-    const socketCommandExecutor = createSocketCommandExecutor(
-      executeLegacySocketCommand,
-    );
+    const socketCommandExecutor = createSocketCommandExecutor(executeLegacySocketCommand);
 
     try {
       return await executePlugClientNode(this, {

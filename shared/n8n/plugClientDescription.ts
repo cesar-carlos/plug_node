@@ -5,8 +5,7 @@ const operationOptions = [
   {
     name: "Validate Context",
     value: "validateContext",
-    description:
-      "Checks login, agent access, and the resolved client token end to end.",
+    description: "Checks login, agent access, and the resolved client token end to end.",
   },
   {
     name: "Execute SQL",
@@ -58,10 +57,7 @@ const socketEligibleOperationsV1 = [
   "getClientTokenPolicy",
 ];
 
-const socketEligibleOperationsV2 = [
-  ...socketEligibleOperationsV1,
-  "executeBatch",
-];
+const socketEligibleOperationsV2 = [...socketEligibleOperationsV1, "executeBatch"];
 
 const buildResponseModeProperty = (supportsSocket: boolean): INodeProperties => ({
   displayName: "Response Mode",

@@ -88,14 +88,20 @@ export const buildUserAccessOutputItems = (
     case "rejectAccessRequest":
     case "revokeAgentClientAccess":
       return [
-        buildSummaryEnvelope(result.response, {
-          operation: result.operation,
-          kind: "summary",
-        }, includeMetadata),
+        buildSummaryEnvelope(
+          result.response,
+          {
+            operation: result.operation,
+            kind: "summary",
+          },
+          includeMetadata,
+        ),
       ];
     default: {
       const exhaustiveCheck: never = result;
-      throw new Error(`Unsupported user access output result: ${String(exhaustiveCheck)}`);
+      throw new Error(
+        `Unsupported user access output result: ${String(exhaustiveCheck)}`,
+      );
     }
   }
 };

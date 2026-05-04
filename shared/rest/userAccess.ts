@@ -123,20 +123,16 @@ export const listAgentCatalog = async (
   session: PlugSession<PlugUserAuthCredentials, PlugUserLoginResponse>,
   input: ListAgentCatalogInput,
 ): Promise<PaginatedAgentCatalogResponse> => {
-  const body = await requestAuthorizedJson(
-    requester,
-    session,
-    {
-      method: "GET",
-      path: agentCatalogPath,
-      query: {
-        status: input.status,
-        search: input.search,
-        page: input.page,
-        pageSize: input.pageSize,
-      },
+  const body = await requestAuthorizedJson(requester, session, {
+    method: "GET",
+    path: agentCatalogPath,
+    query: {
+      status: input.status,
+      search: input.search,
+      page: input.page,
+      pageSize: input.pageSize,
     },
-  );
+  });
 
   return parseAgentCatalogResponse(body);
 };
@@ -145,14 +141,10 @@ export const listManagedAccessRequests = async (
   requester: PlugHttpRequester,
   session: PlugSession<PlugUserAuthCredentials, PlugUserLoginResponse>,
 ): Promise<ManagedAccessRequestListResponse> => {
-  const body = await requestAuthorizedJson(
-    requester,
-    session,
-    {
-      method: "GET",
-      path: managedAccessRequestsPath,
-    },
-  );
+  const body = await requestAuthorizedJson(requester, session, {
+    method: "GET",
+    path: managedAccessRequestsPath,
+  });
 
   const normalized = parseLooseListResponse<ManagedAccessRequestRecord>(
     body,
@@ -174,15 +166,11 @@ export const approveAccessRequest = async (
   session: PlugSession<PlugUserAuthCredentials, PlugUserLoginResponse>,
   requestId: string,
 ): Promise<UserAccessMutationSummary> => {
-  const raw = await requestAuthorizedJson(
-    requester,
-    session,
-    {
-      method: "POST",
-      path: `${managedAccessRequestsPath}/${encodeURIComponent(requestId)}/approve`,
-      acceptedStatusCodes: [200, 204],
-    },
-  );
+  const raw = await requestAuthorizedJson(requester, session, {
+    method: "POST",
+    path: `${managedAccessRequestsPath}/${encodeURIComponent(requestId)}/approve`,
+    acceptedStatusCodes: [200, 204],
+  });
 
   return {
     resourceType: "accessRequest",
@@ -196,15 +184,11 @@ export const rejectAccessRequest = async (
   session: PlugSession<PlugUserAuthCredentials, PlugUserLoginResponse>,
   requestId: string,
 ): Promise<UserAccessMutationSummary> => {
-  const raw = await requestAuthorizedJson(
-    requester,
-    session,
-    {
-      method: "POST",
-      path: `${managedAccessRequestsPath}/${encodeURIComponent(requestId)}/reject`,
-      acceptedStatusCodes: [200, 204],
-    },
-  );
+  const raw = await requestAuthorizedJson(requester, session, {
+    method: "POST",
+    path: `${managedAccessRequestsPath}/${encodeURIComponent(requestId)}/reject`,
+    acceptedStatusCodes: [200, 204],
+  });
 
   return {
     resourceType: "accessRequest",
@@ -218,14 +202,10 @@ export const listAgentClients = async (
   session: PlugSession<PlugUserAuthCredentials, PlugUserLoginResponse>,
   agentId: string,
 ): Promise<AgentClientListResponse> => {
-  const body = await requestAuthorizedJson(
-    requester,
-    session,
-    {
-      method: "GET",
-      path: `${ownedAgentsPath}/${encodeURIComponent(agentId)}/clients`,
-    },
-  );
+  const body = await requestAuthorizedJson(requester, session, {
+    method: "GET",
+    path: `${ownedAgentsPath}/${encodeURIComponent(agentId)}/clients`,
+  });
 
   const normalized = parseLooseListResponse<AgentClientRecord>(
     body,
@@ -248,15 +228,11 @@ export const revokeAgentClientAccess = async (
   agentId: string,
   clientId: string,
 ): Promise<UserAccessMutationSummary> => {
-  const raw = await requestAuthorizedJson(
-    requester,
-    session,
-    {
-      method: "DELETE",
-      path: `${ownedAgentsPath}/${encodeURIComponent(agentId)}/clients/${encodeURIComponent(clientId)}`,
-      acceptedStatusCodes: [200, 204],
-    },
-  );
+  const raw = await requestAuthorizedJson(requester, session, {
+    method: "DELETE",
+    path: `${ownedAgentsPath}/${encodeURIComponent(agentId)}/clients/${encodeURIComponent(clientId)}`,
+    acceptedStatusCodes: [200, 204],
+  });
 
   return {
     resourceType: "agentClientAccess",

@@ -675,7 +675,7 @@ const executeBuiltRequest = async (
       const socketImplementation = builtRequest.socketImplementation ?? "relay";
       const socketExecutor =
         socketImplementation === "relay"
-          ? config.legacySocketExecutor ?? config.socketExecutor
+          ? (config.legacySocketExecutor ?? config.socketExecutor)
           : config.socketExecutor;
 
       if (!config.supportsSocket || !socketExecutor) {

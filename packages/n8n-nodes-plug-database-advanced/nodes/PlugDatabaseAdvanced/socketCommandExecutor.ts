@@ -5,7 +5,11 @@ import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   type PlugSocketImplementation,
 } from "../../generated/shared/contracts/api";
-import { PlugError, PlugTimeoutError, PlugValidationError } from "../../generated/shared/contracts/errors";
+import {
+  PlugError,
+  PlugTimeoutError,
+  PlugValidationError,
+} from "../../generated/shared/contracts/errors";
 import { plugLogger } from "../../generated/shared/logging/plugLogger";
 import {
   buildConsumerSocketCapabilityProbeCommand,
@@ -151,7 +155,10 @@ export class ConsumerSocketExecutionManager {
       const probeStartedAt = Date.now();
       const probeTimeoutMs = Math.max(
         250,
-        Math.min(input.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS, defaultCapabilityProbeTimeoutMs),
+        Math.min(
+          input.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+          defaultCapabilityProbeTimeoutMs,
+        ),
       );
 
       this.capabilityProbeInFlight = (async () => {
