@@ -1,5 +1,11 @@
 # n8n-nodes-plug-database
 
+## 1.1.2
+
+### Patch Changes
+
+- Refresh the main node icons with the packaged Plug blockchain artwork so published builds pick up the updated branding reliably.
+
 ## 1.1.1
 
 ### Patch Changes

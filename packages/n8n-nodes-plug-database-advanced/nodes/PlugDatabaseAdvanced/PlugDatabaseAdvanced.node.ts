@@ -17,7 +17,7 @@ export class PlugDatabaseAdvanced implements INodeType {
       displayName: "Plug Database Advanced",
       technicalName: "plugDatabaseAdvanced",
       credentialName: "plugDatabaseAdvancedApi",
-      iconBaseName: "plugDatabaseAdvanced",
+      iconBaseName: "plugDatabaseAdvancedV2",
       description: "Run Plug Database commands over REST or Socket.",
       version: [1, 2],
       defaultVersion: 2,
@@ -25,8 +25,8 @@ export class PlugDatabaseAdvanced implements INodeType {
     subtitle: '={{$parameter["operation"]}}',
     usableAsTool: true,
     icon: {
-      light: "file:plugDatabaseAdvanced.svg",
-      dark: "file:plugDatabaseAdvanced.dark.svg",
+      light: "file:plugDatabaseAdvancedV2.svg",
+      dark: "file:plugDatabaseAdvancedV2.dark.svg",
     },
   };
 

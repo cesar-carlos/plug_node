@@ -15,14 +15,14 @@ export class PlugDatabase implements INodeType {
       displayName: "Plug Database",
       technicalName: "plugDatabase",
       credentialName: "plugDatabaseApi",
-      iconBaseName: "plugDatabase",
+      iconBaseName: "plugDatabaseV2",
       description: "Run Plug Database commands over REST.",
     }),
     subtitle: '={{$parameter["operation"]}}',
     usableAsTool: true,
     icon: {
-      light: "file:plugDatabase.svg",
-      dark: "file:plugDatabase.dark.svg",
+      light: "file:plugDatabaseV2.svg",
+      dark: "file:plugDatabaseV2.dark.svg",
     },
   };
 
