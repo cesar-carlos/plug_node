@@ -1,5 +1,11 @@
 # n8n-nodes-plug-database
 
+## 1.3.0
+
+### Minor Changes
+
+- 5c7f2de: Expose PDF, barcode, and socket event publishing under the consolidated Plug Database Tools resource.
+
 ## 1.2.0
 
 ## 1.1.2
