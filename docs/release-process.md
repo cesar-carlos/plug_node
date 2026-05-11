@@ -13,6 +13,16 @@ The official publish path is GitHub Actions.
 7. Merge the version PR to publish packages to npm.
 8. Run the `Scan Public Package` workflow, or run `npm run scan:public`, after the publish succeeds.
 
+## Version PR validation
+
+The version PR is created by `changesets/action` with the default GitHub token. GitHub may not trigger pull request checks for commits created by that token, so the version PR can appear without checks even when the `main` branch is green.
+
+Before merging the version PR:
+
+1. Confirm the latest `main` `CI` and `Publish` workflow runs are successful.
+2. Run `npm run verify` and `npm run pack:check` locally, or manually run the `CI` workflow against the `changeset-release/main` branch from GitHub Actions.
+3. Confirm the version bump and changelog match `npm run changeset:status`.
+
 ## Packages
 
 - `n8n-nodes-plug-database`
