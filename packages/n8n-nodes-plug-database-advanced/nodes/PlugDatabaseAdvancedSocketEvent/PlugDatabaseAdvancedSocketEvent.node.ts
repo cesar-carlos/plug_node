@@ -28,6 +28,12 @@ import {
 import {
   assertPublishCustomSocketEventInput,
   assertPublishCustomSocketEventResponse,
+  defaultCustomSocketEventFileMaxBytes,
+  defaultCustomSocketEventMaxFiles,
+  defaultCustomSocketEventPayloadJsonMaxBytes,
+  defaultCustomSocketEventTotalFilesMaxBytes,
+  defaultSocketEventAckTimeoutMs,
+  getJsonUtf8ByteLength,
   normalizeOptionalIdempotencyKey,
   type CustomSocketEventAttachment,
 } from "../../generated/shared/contracts/custom-socket-events";
@@ -214,6 +220,47 @@ const readAttachments = async (
   }
 
   return attachments;
+};
+
+const validatePublishPayloadAndAttachments = (
+  input: {
+    readonly payload: unknown;
+    readonly attachments: readonly BinarySocketEventAttachment[];
+  },
+  node: INode,
+): void => {
+  const payloadBytes = getJsonUtf8ByteLength(input.payload, "Payload JSON");
+  if (payloadBytes > defaultCustomSocketEventPayloadJsonMaxBytes) {
+    throw new NodeOperationError(
+      node,
+      `Payload JSON must be at most ${defaultCustomSocketEventPayloadJsonMaxBytes} bytes`,
+    );
+  }
+
+  if (input.attachments.length > defaultCustomSocketEventMaxFiles) {
+    throw new NodeOperationError(
+      node,
+      `Attachments must include at most ${defaultCustomSocketEventMaxFiles} files`,
+    );
+  }
+
+  let totalBytes = 0;
+  for (const attachment of input.attachments) {
+    totalBytes += attachment.sizeBytes;
+    if (attachment.sizeBytes > defaultCustomSocketEventFileMaxBytes) {
+      throw new NodeOperationError(
+        node,
+        `Attachment ${attachment.originalName} must be at most ${defaultCustomSocketEventFileMaxBytes} bytes`,
+      );
+    }
+  }
+
+  if (totalBytes > defaultCustomSocketEventTotalFilesMaxBytes) {
+    throw new NodeOperationError(
+      node,
+      `Attachments total size must be at most ${defaultCustomSocketEventTotalFilesMaxBytes} bytes`,
+    );
+  }
 };
 
 const toInlineAttachments = (
@@ -456,7 +503,24 @@ export class PlugDatabaseAdvancedSocketEvent implements INodeType {
         typeOptions: {
           minValue: 1,
         },
-        description: "HTTP timeout for publishing the event",
+        description:
+          "HTTP timeout for REST publishing. Socket publishing uses Socket ACK Timeout when set.",
+      },
+      {
+        displayName: "Socket ACK Timeout (MS)",
+        name: "socketAckTimeoutMs",
+        type: "number",
+        default: defaultSocketEventAckTimeoutMs,
+        typeOptions: {
+          minValue: 1,
+        },
+        displayOptions: {
+          show: {
+            publishChannel: ["socket"],
+          },
+        },
+        description:
+          "Time to wait for connection:ready and socket:event.published when publishing via Socket",
       },
       {
         displayName: "Include Plug Metadata",
@@ -503,12 +567,29 @@ export class PlugDatabaseAdvancedSocketEvent implements INodeType {
           DEFAULT_REQUEST_TIMEOUT_MS,
           this.getNode(),
         );
+        const socketAckTimeoutMs = normalizePositiveInteger(
+          this.getNodeParameter(
+            "socketAckTimeoutMs",
+            itemIndex,
+            defaultSocketEventAckTimeoutMs,
+          ),
+          "Socket ACK Timeout (MS)",
+          defaultSocketEventAckTimeoutMs,
+          this.getNode(),
+        );
         const includeMetadata = this.getNodeParameter(
           "includePlugMetadata",
           itemIndex,
           true,
         ) as boolean;
         const attachments = await readAttachments(this, itemIndex);
+        validatePublishPayloadAndAttachments(
+          {
+            payload,
+            attachments,
+          },
+          this.getNode(),
+        );
 
         const result = await sessionRunner(async (session) => {
           if (publishChannel === "socket") {
@@ -531,7 +612,7 @@ export class PlugDatabaseAdvancedSocketEvent implements INodeType {
                 payloadFrameCompression,
                 idempotencyKey,
                 attachments: toInlineAttachments(attachments),
-                timeoutMs,
+                timeoutMs: socketAckTimeoutMs,
               },
               payloadFrameSigning: resolvePayloadFrameSigning(credentials),
             });

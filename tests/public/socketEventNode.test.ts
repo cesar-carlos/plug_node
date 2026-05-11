@@ -113,6 +113,7 @@ const createContext = (options?: {
   readonly continueOnFail?: boolean;
   readonly publishStatusCode?: number;
   readonly publishBody?: unknown;
+  readonly binaryBuffer?: Buffer;
   readonly parameters?: Record<string, unknown>;
 }): IExecuteFunctions => {
   const requests: IHttpRequestOptions[] = [];
@@ -188,7 +189,9 @@ const createContext = (options?: {
           mimeType: "text/plain",
         }),
       ),
-      getBinaryDataBuffer: vi.fn(async () => Buffer.from("hello")),
+      getBinaryDataBuffer: vi.fn(
+        async () => options?.binaryBuffer ?? Buffer.from("hello"),
+      ),
     },
     __requests: requests,
   } as unknown as IExecuteFunctions;
@@ -326,6 +329,68 @@ describe("PlugDatabaseAdvancedSocketEvent", () => {
     expect(
       (context as unknown as { __requests: IHttpRequestOptions[] }).__requests,
     ).toHaveLength(0);
+  });
+
+  it("rejects payload JSON above the local server-aligned size limit", async () => {
+    const node = new PlugDatabaseAdvancedSocketEvent();
+    const context = createContext({
+      continueOnFail: true,
+      parameters: {
+        payloadJson: JSON.stringify("x".repeat(524_288)),
+      },
+    });
+
+    const output = await node.execute.call(context);
+
+    expect(output[0][0].json.error).toMatchObject({
+      message: "Payload JSON must be at most 524288 bytes",
+      name: "NodeOperationError",
+    });
+    expect(
+      (context as unknown as { __requests: IHttpRequestOptions[] }).__requests,
+    ).toHaveLength(0);
+  });
+
+  it("rejects attachments above the local per-file size limit", async () => {
+    const node = new PlugDatabaseAdvancedSocketEvent();
+    const context = createContext({
+      continueOnFail: true,
+      binaryBuffer: Buffer.alloc(524_289),
+      parameters: {
+        attachments: {
+          values: [{ binaryPropertyName: "invoice" }],
+        },
+      },
+    });
+
+    const output = await node.execute.call(context);
+
+    expect(output[0][0].json.error).toMatchObject({
+      message: "Attachment invoice.txt must be at most 524288 bytes",
+      name: "NodeOperationError",
+    });
+    expect(
+      (context as unknown as { __requests: IHttpRequestOptions[] }).__requests,
+    ).toHaveLength(0);
+  });
+
+  it("accepts multipart attachments at the local per-file size limit", async () => {
+    const node = new PlugDatabaseAdvancedSocketEvent();
+    const context = createContext({
+      binaryBuffer: Buffer.alloc(524_288),
+      parameters: {
+        attachments: {
+          values: [{ binaryPropertyName: "invoice" }],
+        },
+      },
+    });
+
+    await node.execute.call(context);
+    const requests = (context as unknown as { __requests: IHttpRequestOptions[] })
+      .__requests;
+    const formEntries = Array.from((requests[1].body as FormData).entries());
+
+    expect((formEntries[1][1] as File).size).toBe(524_288);
   });
 
   it("returns a user-safe error when a successful publish response has invalid JSON", async () => {

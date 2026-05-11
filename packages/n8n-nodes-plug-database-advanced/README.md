@@ -132,7 +132,8 @@ Both access nodes also support:
 - `Execute Batch` over socket requires `agents:command`; when the server does not support it, use `REST` or upgrade the server.
 - Large socket streams are protected by local buffer guardrails so the node fails clearly instead of letting memory grow without bounds.
 - Custom Socket Events can be published over REST or Socket. REST is the compatible default; Socket uses `/consumers`, `socket:event.publish`, and `socket:event.published` ACK correlation.
-- The event Trigger supports queue/backpressure controls, optional required PayloadFrame signatures, and the internal `client:agent.profile.updated` push.
+- Custom Socket Event attachments are locally checked against the server defaults: 5 files, 512 KiB per file, 2 MiB total, and 512 KiB payload JSON.
+- The event Trigger supports queue/backpressure controls, optional per-source required PayloadFrame signatures, eventId deduplication, a configurable reconnect circuit breaker, and the internal `client:agent.profile.updated` push.
 
 Legacy access-only nodes remain published for compatibility with existing workflows, but are hidden from the node creator for new users.
 

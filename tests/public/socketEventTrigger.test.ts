@@ -171,12 +171,17 @@ const createContext = (
     includePlugMetadata: true,
     reconnectOnDisconnect: true,
     maxReconnectAttempts: 1,
+    reconnectFailureWindowMs: 300000,
+    maxReconnectFailuresInWindow: 0,
     reconnectInitialDelayMs: 100,
     reconnectMaxDelayMs: 100,
     maxInflightEvents: 8,
     maxQueueSize: 128,
     overflowPolicy: "fail",
     requirePayloadSignature: false,
+    requirePayloadSignatureFor: "all",
+    deduplicateEvents: false,
+    deduplicationTtlMs: 300000,
     ...overrides,
   };
 
@@ -274,6 +279,10 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
               eventName: "client:custom.status.changed",
               payloadFrameRequestId: "event-1",
               subscriptionCount: 2,
+              backpressure: expect.objectContaining({
+                droppedNewestCount: 0,
+                droppedOldestCount: 0,
+              }),
             }),
             attachments: [
               {
@@ -371,6 +380,37 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
     }
   });
 
+  it("opens the reconnect circuit breaker during repeated activation failures", async () => {
+    vi.useFakeTimers();
+    try {
+      socketMock.state.sockets = [];
+      socketMock.state.connectErrorsBeforeReady = 2;
+      socketMock.state.readyFrame = encodePayloadFrame(
+        {
+          id: "socket-1",
+          message: "ready",
+          user: { sub: "client-1" },
+        },
+        { requestId: "handshake", compression: "none" },
+      );
+      const node = new PlugDatabaseAdvancedSocketEventTrigger();
+      const context = createContext({
+        maxReconnectAttempts: 0,
+        maxReconnectFailuresInWindow: 1,
+        reconnectFailureWindowMs: 1000,
+      });
+
+      const triggerPromise = expect(node.trigger.call(context)).rejects.toMatchObject({
+        code: "SOCKET_RECONNECT_CIRCUIT_OPEN",
+      });
+      await vi.advanceTimersByTimeAsync(250);
+      await triggerPromise;
+      expect(socketMock.state.sockets).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("listens for agent profile updates without custom subscriptions", async () => {
     socketMock.state.sockets = [];
     socketMock.state.connectErrorsBeforeReady = 0;
@@ -429,6 +469,47 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
 
     await response.closeFunction?.();
     expect(socket.connected).toBe(false);
+  });
+
+  it("can require signatures only for custom events while accepting unsigned profile pushes", async () => {
+    socketMock.state.sockets = [];
+    socketMock.state.connectErrorsBeforeReady = 0;
+    socketMock.state.readyFrame = encodePayloadFrame(
+      {
+        id: "socket-1",
+        message: "ready",
+        user: { sub: "client-1" },
+      },
+      { requestId: "handshake", compression: "none" },
+    );
+    const node = new PlugDatabaseAdvancedSocketEventTrigger();
+    const context = createContext({
+      eventSource: "agentProfileUpdated",
+      requirePayloadSignature: true,
+      requirePayloadSignatureFor: "customEvents",
+    });
+
+    const response = await node.trigger.call(context);
+    socketMock.state.sockets[0].dispatch(
+      "client:agent.profile.updated",
+      encodePayloadFrame(
+        {
+          success: true,
+          agentId: "agent-1",
+          profileVersion: 2,
+          profileUpdatedAt: "2026-05-11T12:00:00.000Z",
+          changedFields: ["displayName"],
+        },
+        { requestId: "profile-1", compression: "none" },
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit,
+    ).toHaveBeenCalledTimes(1);
+
+    await response.closeFunction?.();
   });
 
   it("does not emit an event after the trigger is closed while binary data is being prepared", async () => {

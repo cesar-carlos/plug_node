@@ -477,6 +477,41 @@ describe("custom socket events", () => {
     ).toBe(true);
   });
 
+  it("deduplicates custom socket events by eventId when a TTL is configured", async () => {
+    const transport = new MockCustomEventTransport();
+    const received: unknown[] = [];
+    const sessionHandle = await startCustomSocketEventSession({
+      transport,
+      eventNames: ["client:custom.status.changed"],
+      ackTimeoutMs: 1000,
+      deduplicateEventIdsTtlMs: 300_000,
+      onFatalError: (error) => {
+        throw error;
+      },
+      onEvent: (event) => {
+        received.push(event);
+      },
+    });
+    const frame = encodePayloadFrame(
+      {
+        eventId: "event-duplicate",
+        eventName: "client:custom.status.changed",
+        emittedAt: "2026-05-11T12:00:00.000Z",
+        publisher: { principalType: "client", clientId: "client-1" },
+        payload: { status: "ready" },
+        attachments: [],
+      },
+      { requestId: "event-duplicate", compression: "none" },
+    );
+
+    transport.dispatch("client:custom.status.changed", frame);
+    transport.dispatch("client:custom.status.changed", frame);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await sessionHandle.close();
+
+    expect(received).toHaveLength(1);
+  });
+
   it("propagates subscription rate-limit metadata", async () => {
     await expect(
       startCustomSocketEventSession({

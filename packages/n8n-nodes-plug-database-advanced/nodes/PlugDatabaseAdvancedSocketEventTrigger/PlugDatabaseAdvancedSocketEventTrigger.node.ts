@@ -26,6 +26,7 @@ import {
   defaultMaxQueuedSocketEvents,
   defaultManualListenTimeoutMs,
   defaultSocketEventAckTimeoutMs,
+  defaultSocketEventDeduplicationTtlMs,
   type AgentProfileUpdatedPayload,
   toAttachmentMetadata,
   type CustomSocketEventFramePayload,
@@ -45,6 +46,16 @@ import { deriveSocketNamespaceUrl } from "../../generated/shared/utils/url";
 const credentialName = "plugDatabaseAdvancedApi";
 const defaultReconnectInitialDelayMs = 1000;
 const defaultReconnectMaxDelayMs = 30_000;
+const defaultReconnectFailureWindowMs = 300_000;
+
+type PayloadSignatureRequirement = "all" | "customEvents" | "agentProfileUpdated";
+
+interface BackpressureSnapshot {
+  readonly queuedCount: number;
+  readonly inflightCount: number;
+  readonly droppedNewestCount: number;
+  readonly droppedOldestCount: number;
+}
 
 class SocketIoCustomEventTransport implements CustomSocketEventTransport {
   constructor(private readonly socket: Socket) {}
@@ -143,12 +154,22 @@ const normalizeInteger = (value: unknown, fallback: number, min: number): number
   return Math.max(min, Math.floor(numeric));
 };
 
+const createReconnectCircuitOpenError = (technicalMessage: string): PlugError =>
+  new PlugError("Plug socket reconnect circuit breaker opened.", {
+    code: "SOCKET_RECONNECT_CIRCUIT_OPEN",
+    description:
+      "Too many retryable socket failures happened inside the configured reconnect failure window.",
+    retryable: true,
+    technicalMessage,
+  });
+
 const buildTriggerItem = async (
   context: ITriggerFunctions,
   event: CustomSocketEventFramePayload,
   binaryPropertyPrefix: string,
   includeMetadata: boolean,
   metadata: SocketEventRuntimeMetadata,
+  backpressure: BackpressureSnapshot,
 ): Promise<INodeExecutionData> => {
   const binary: IBinaryKeyData = {};
 
@@ -181,6 +202,7 @@ const buildTriggerItem = async (
             reconnectAttempt: metadata.reconnectAttempt,
             subscriptionCount: metadata.subscriptionCount,
             payloadFrameRequestId: metadata.payloadFrameRequestId,
+            backpressure,
           },
         }
       : {}),
@@ -196,6 +218,7 @@ const buildAgentProfileUpdatedItem = (
   event: AgentProfileUpdatedPayload,
   includeMetadata: boolean,
   metadata: SocketEventRuntimeMetadata,
+  backpressure: BackpressureSnapshot,
 ): INodeExecutionData => ({
   json: {
     eventName: clientAgentProfileUpdatedEventName,
@@ -211,6 +234,7 @@ const buildAgentProfileUpdatedItem = (
             reconnectAttempt: metadata.reconnectAttempt,
             subscriptionCount: metadata.subscriptionCount,
             payloadFrameRequestId: metadata.payloadFrameRequestId,
+            backpressure,
           },
         }
       : {}),
@@ -230,6 +254,8 @@ const createBackpressureQueue = (input: {
   const queue: Array<() => Promise<void>> = [];
   let inflight = 0;
   let closed = false;
+  let droppedNewestCount = 0;
+  let droppedOldestCount = 0;
 
   const drain = (): void => {
     if (closed) {
@@ -279,12 +305,14 @@ const createBackpressureQueue = (input: {
 
       if (queue.length >= input.maxQueueSize) {
         if (input.overflowPolicy === "dropNewest") {
+          droppedNewestCount += 1;
           input.onDrop?.("dropNewest", { queueSize: queue.length });
           return;
         }
 
         if (input.overflowPolicy === "dropOldest") {
           queue.shift();
+          droppedOldestCount += 1;
           input.onDrop?.("dropOldest", { queueSize: queue.length });
         } else {
           input.emitError(
@@ -305,6 +333,14 @@ const createBackpressureQueue = (input: {
     close(): void {
       closed = true;
       queue.length = 0;
+    },
+    getStats(): BackpressureSnapshot {
+      return {
+        queuedCount: queue.length,
+        inflightCount: inflight,
+        droppedNewestCount,
+        droppedOldestCount,
+      };
     },
   };
 };
@@ -420,6 +456,38 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
         description: "Maximum reconnect attempts. Set 0 for unlimited retries.",
       },
       {
+        displayName: "Reconnect Failure Window (MS)",
+        name: "reconnectFailureWindowMs",
+        type: "number",
+        default: defaultReconnectFailureWindowMs,
+        typeOptions: {
+          minValue: 1000,
+        },
+        displayOptions: {
+          show: {
+            reconnectOnDisconnect: [true],
+          },
+        },
+        description:
+          "Window used by the reconnect circuit breaker. Set Max Reconnect Failures in Window to 0 to disable the breaker.",
+      },
+      {
+        displayName: "Max Reconnect Failures in Window",
+        name: "maxReconnectFailuresInWindow",
+        type: "number",
+        default: 0,
+        typeOptions: {
+          minValue: 0,
+        },
+        displayOptions: {
+          show: {
+            reconnectOnDisconnect: [true],
+          },
+        },
+        description:
+          "Maximum retryable reconnect failures within the configured window. Set 0 to disable this circuit breaker.",
+      },
+      {
         displayName: "Reconnect Initial Delay (MS)",
         name: "reconnectInitialDelayMs",
         type: "number",
@@ -487,6 +555,54 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
         type: "boolean",
         default: false,
         description: "Whether inbound PayloadFrames must include a valid HMAC signature",
+      },
+      {
+        displayName: "Require Payload Signature For",
+        name: "requirePayloadSignatureFor",
+        type: "options",
+        default: "all",
+        options: [
+          { name: "Agent Profile Updated Only", value: "agentProfileUpdated" },
+          { name: "All Event Sources", value: "all" },
+          { name: "Custom Events Only", value: "customEvents" },
+        ],
+        displayOptions: {
+          show: {
+            requirePayloadSignature: [true],
+          },
+        },
+        description:
+          "Event sources that must include a PayloadFrame signature when signature enforcement is enabled",
+      },
+      {
+        displayName: "Deduplicate Events",
+        name: "deduplicateEvents",
+        type: "boolean",
+        default: false,
+        displayOptions: {
+          show: {
+            eventSource: ["customEvents"],
+          },
+        },
+        description:
+          "Whether to ignore duplicate custom events with the same eventId during the TTL window",
+      },
+      {
+        displayName: "Deduplication TTL (MS)",
+        name: "deduplicationTtlMs",
+        type: "number",
+        default: defaultSocketEventDeduplicationTtlMs,
+        typeOptions: {
+          minValue: 0,
+        },
+        displayOptions: {
+          show: {
+            eventSource: ["customEvents"],
+            deduplicateEvents: [true],
+          },
+        },
+        description:
+          "How long to remember emitted custom event IDs. Set 0 to disable deduplication.",
       },
       {
         displayName: "Manual Listen Timeout (MS)",
@@ -570,6 +686,16 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
         100,
       ),
     );
+    const reconnectFailureWindowMs = normalizeInteger(
+      this.getNodeParameter("reconnectFailureWindowMs", defaultReconnectFailureWindowMs),
+      defaultReconnectFailureWindowMs,
+      1000,
+    );
+    const maxReconnectFailuresInWindow = normalizeInteger(
+      this.getNodeParameter("maxReconnectFailuresInWindow", 0),
+      0,
+      0,
+    );
     const maxInflightEvents = normalizeInteger(
       this.getNodeParameter("maxInflightEvents", defaultMaxInflightSocketEvents),
       defaultMaxInflightSocketEvents,
@@ -595,6 +721,30 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
       "requirePayloadSignature",
       false,
     ) as boolean;
+    const requirePayloadSignatureForParameter = this.getNodeParameter(
+      "requirePayloadSignatureFor",
+      "all",
+    ) as PayloadSignatureRequirement;
+    const requirePayloadSignatureFor: PayloadSignatureRequirement = [
+      "all",
+      "customEvents",
+      "agentProfileUpdated",
+    ].includes(requirePayloadSignatureForParameter)
+      ? requirePayloadSignatureForParameter
+      : "all";
+    const requirePayloadSignatureForSource =
+      requirePayloadSignature &&
+      (requirePayloadSignatureFor === "all" ||
+        requirePayloadSignatureFor === eventSource);
+    const deduplicateEvents = this.getNodeParameter(
+      "deduplicateEvents",
+      false,
+    ) as boolean;
+    const deduplicationTtlMs = normalizeInteger(
+      this.getNodeParameter("deduplicationTtlMs", defaultSocketEventDeduplicationTtlMs),
+      defaultSocketEventDeduplicationTtlMs,
+      0,
+    );
 
     let customEventSession: CustomSocketEventSession | undefined;
     let manualTimer: NodeJS.Timeout | undefined;
@@ -602,6 +752,7 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
     let closed = false;
     let reconnecting = false;
     let reconnectAttempts = 0;
+    let reconnectFailureTimes: number[] = [];
 
     const toPlugError = (error: unknown): PlugError =>
       error instanceof PlugError
@@ -651,6 +802,20 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
       return Math.max(100, Math.round(exponentialDelay * jitter));
     };
 
+    const recordReconnectFailureAndIsCircuitOpen = (): boolean => {
+      if (maxReconnectFailuresInWindow <= 0) {
+        return false;
+      }
+
+      const now = Date.now();
+      const cutoff = now - reconnectFailureWindowMs;
+      reconnectFailureTimes = reconnectFailureTimes
+        .filter((timestamp) => timestamp >= cutoff)
+        .concat(now);
+
+      return reconnectFailureTimes.length > maxReconnectFailuresInWindow;
+    };
+
     const connectSocket = async (): Promise<void> => {
       await sessionRunner(async (session) => {
         if (closed) {
@@ -672,7 +837,7 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
           ackTimeoutMs,
           payloadFrameSigning: resolvePayloadFrameSigning(credentials),
           reconnectAttempt: reconnectAttempts,
-          requirePayloadSignature,
+          requirePayloadSignature: requirePayloadSignatureForSource,
           onFatalError: (error: PlugError) => {
             void handleRuntimeError(error);
           },
@@ -692,6 +857,7 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
                       event,
                       includeMetadata,
                       metadata,
+                      eventQueue.getStats(),
                     );
                     if (closed) {
                       return;
@@ -704,6 +870,10 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
             : await startCustomSocketEventSession({
                 ...commonInput,
                 eventNames,
+                deduplicateEventIdsTtlMs:
+                  deduplicateEvents && deduplicationTtlMs > 0
+                    ? deduplicationTtlMs
+                    : undefined,
                 onEvent: (event, metadata: SocketEventRuntimeMetadata) => {
                   eventQueue.enqueue(async () => {
                     if (closed) {
@@ -716,6 +886,7 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
                       binaryPropertyPrefix,
                       includeMetadata,
                       metadata,
+                      eventQueue.getStats(),
                     );
                     if (closed) {
                       return;
@@ -728,6 +899,7 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
       });
 
       reconnectAttempts = 0;
+      reconnectFailureTimes = [];
     };
 
     const connectSocketWithRetry = async (): Promise<void> => {
@@ -748,6 +920,10 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
             throw plugError;
           }
 
+          if (recordReconnectFailureAndIsCircuitOpen()) {
+            throw createReconnectCircuitOpenError(plugError.message);
+          }
+
           reconnectAttempts += 1;
           await delay(getReconnectDelayMs());
         }
@@ -757,6 +933,11 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
     const scheduleReconnect = (error: PlugError): void => {
       if (closed || !reconnectOnDisconnect || !error.retryable || error.authRelated) {
         this.emitError(error);
+        return;
+      }
+
+      if (recordReconnectFailureAndIsCircuitOpen()) {
+        this.emitError(createReconnectCircuitOpenError(error.message));
         return;
       }
 

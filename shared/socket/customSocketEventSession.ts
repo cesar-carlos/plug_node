@@ -8,9 +8,11 @@ import {
   assertCustomSocketEventNames,
   assertCustomSocketEventName,
   assertPublishCustomSocketEventInput,
+  assertPublishCustomSocketEventInputWithinLimits,
   assertSocketEventControlAck,
   assertSocketEventPublishedAck,
   clientAgentProfileUpdatedEventName,
+  defaultSocketEventDeduplicationMaxEntries,
   defaultSocketEventAckTimeoutMs,
   type AgentProfileUpdatedPayload,
   type CustomSocketEventFramePayload,
@@ -53,6 +55,7 @@ export interface StartCustomSocketEventSessionInput {
   readonly payloadFrameSigning?: PayloadFrameSigningOptions;
   readonly reconnectAttempt?: number;
   readonly requirePayloadSignature?: boolean;
+  readonly deduplicateEventIdsTtlMs?: number;
   readonly onEvent: (
     event: CustomSocketEventFramePayload,
     metadata: SocketEventRuntimeMetadata,
@@ -77,6 +80,55 @@ export interface CustomSocketEventSession {
   readonly eventNames: readonly string[];
   close(options?: { readonly unsubscribe?: boolean }): Promise<void>;
 }
+
+const normalizeNonNegativeInteger = (value: unknown): number | undefined => {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const numeric =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return undefined;
+  }
+
+  return Math.floor(numeric);
+};
+
+const createEventIdDedupe = (
+  ttlMs: number | undefined,
+  maxEntries: number,
+): ((eventId: string, nowMs: number) => boolean) => {
+  if (ttlMs === undefined || ttlMs <= 0) {
+    return () => false;
+  }
+
+  const seen = new Map<string, number>();
+
+  return (eventId: string, nowMs: number): boolean => {
+    const existingExpiresAt = seen.get(eventId);
+    if (existingExpiresAt !== undefined && existingExpiresAt > nowMs) {
+      return true;
+    }
+
+    seen.set(eventId, nowMs + ttlMs);
+    for (const [cachedEventId, expiresAt] of seen) {
+      if (expiresAt <= nowMs || seen.size > maxEntries) {
+        seen.delete(cachedEventId);
+      }
+      if (seen.size <= maxEntries) {
+        break;
+      }
+    }
+
+    return false;
+  };
+};
 
 const normalizeRetryAfterSeconds = (retryAfterMs: unknown): number | undefined => {
   if (
@@ -431,6 +483,7 @@ export const publishCustomSocketEventOverSocket = async (input: {
   readonly requirePayloadSignature?: boolean;
 }): Promise<PublishCustomSocketEventResponse> => {
   const request = assertPublishCustomSocketEventInput(input.request);
+  assertPublishCustomSocketEventInputWithinLimits(request);
   const timeoutMs =
     request.timeoutMs ?? input.ackTimeoutMs ?? defaultSocketEventAckTimeoutMs;
   const eventName = assertCustomSocketEventName(request.eventName);
@@ -473,6 +526,11 @@ export const startCustomSocketEventSession = async (
   const eventNames = assertCustomSocketEventNames(input.eventNames);
   const timeoutMs = input.ackTimeoutMs ?? defaultSocketEventAckTimeoutMs;
   const reconnectAttempt = Math.max(0, Math.floor(input.reconnectAttempt ?? 0));
+  const dedupeTtlMs = normalizeNonNegativeInteger(input.deduplicateEventIdsTtlMs);
+  const isDuplicateEventId = createEventIdDedupe(
+    dedupeTtlMs,
+    defaultSocketEventDeduplicationMaxEntries,
+  );
   const subscribed = new Set<string>();
   const eventHandlers = new Map<string, (payload: unknown) => void>();
   let closing = false;
@@ -550,6 +608,13 @@ export const startCustomSocketEventSession = async (
               throw new PlugValidationError(
                 "Custom socket event payload eventName does not match listener",
               );
+            }
+            if (isDuplicateEventId(event.eventId, Date.now())) {
+              plugLogger.warn("transport.socket.custom_event.duplicate_ignored", {
+                eventName,
+                eventId: event.eventId,
+              });
+              return undefined;
             }
 
             return input.onEvent(event, {

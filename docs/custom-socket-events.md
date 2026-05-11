@@ -22,13 +22,15 @@ Supported fields:
 - `Payload Frame Compression`: passed to Plug as `default`, `none`, or `always`.
 - `Idempotency Key`: optional, max 128 chars, `[A-Za-z0-9._:-]`.
 - `Attachments`: optional binary property names from the incoming n8n item.
-- `Timeout (MS)`: HTTP timeout or socket publish ACK timeout.
+- `Timeout (MS)`: HTTP timeout for REST publishing.
+- `Socket ACK Timeout (MS)`: socket connection and `socket:event.published` ACK timeout when publishing over Socket.
 - `Include Plug Metadata`: adds a safe `__plug` object.
 
 Attachment behavior:
 
 - REST sends an `event` JSON form field plus one `files` part per binary property.
 - Socket sends inline attachments as `{ fieldName, originalName, mimeType, sizeBytes, base64 }`.
+- The node mirrors the server defaults locally: max `5` attachments, `524288` bytes per file, `2097152` bytes total, and `524288` UTF-8 bytes for `Payload JSON`.
 - Socket attachments are convenient for small payloads but remain subject to the server JSON envelope limit. Prefer REST multipart for larger files.
 
 The output keeps the server response fields and adds `__plug.channel = "rest" | "socket"` when metadata is enabled.
@@ -46,17 +48,25 @@ Backpressure options:
 - `Max Inflight Events`: concurrent n8n item preparation, default `8`.
 - `Max Queue Size`: queued events while inflight work is busy, default `128`.
 - `Overflow Policy`: `Fail`, `Drop Newest`, or `Drop Oldest`.
+- Drop counters and current queue/inflight counts are included in `json.__plug.backpressure` on emitted items.
 
 Security options:
 
 - `Require Payload Signature`: when enabled, inbound `PayloadFrame` objects without `signature` are rejected.
+- `Require Payload Signature For`: scopes signature enforcement to all event sources, custom events only, or `client:agent.profile.updated` only.
 - If a credential has `Payload Signing Key`, signed inbound frames are verified with HMAC-SHA256.
 - If `Payload Signing Key ID` is set, signed inbound frames must match it.
+
+Deduplication options:
+
+- `Deduplicate Events`: ignores duplicate custom events with the same `eventId`.
+- `Deduplication TTL (MS)`: how long emitted custom event IDs stay in the in-memory cache. This is local to the n8n process and only applies to `Event Source = Custom Events`.
 
 Reliability behavior:
 
 - Activation uses retry/backoff for retryable connection failures when reconnect is enabled.
 - Runtime `disconnect`, `connect_error`, and retryable `app:error` events are classified and routed through the same reconnect policy.
+- `Max Reconnect Failures in Window` and `Reconnect Failure Window (MS)` provide an optional reconnect circuit breaker. Keep the max at `0` to preserve unlimited retry behavior.
 - `ACCOUNT_BLOCKED` and `AGENT_ACCESS_REVOKED` are auth-related permanent errors.
 - `NAMESPACE_DEPRECATED` is permanent.
 - `CONSUMER_SOCKET_INITIALIZATION_FAILED`, `ROOM_JOIN_FAILED`, `SOCKET_CONNECT_ERROR`, and transient disconnects are retryable.
@@ -77,6 +87,7 @@ Profile push output:
 - `json.payload` with the decoded profile update payload
 
 When `Include Plug Metadata` is enabled, `json.__plug` includes safe operational metadata such as `channel`, `socketMode`, `eventName`, `eventId` when present, `receivedAt`, `socketId`, `reconnectAttempt`, `subscriptionCount`, and `payloadFrameRequestId`.
+For custom events it also includes `backpressure` counters.
 
 ## Internal Architecture
 
@@ -104,3 +115,14 @@ After changing `shared`, run `npm run sync-shared`. Do not manually edit files u
 The server currently fans out custom socket events only to sockets connected to the same Plug Server replica unless the deployment adds a distributed Socket.IO adapter. Workflows that require cross-replica delivery should publish through infrastructure that guarantees affinity or use a deployment with distributed socket fan-out.
 
 Do not log payload JSON, binary base64, access tokens, refresh tokens, client tokens, passwords, SQL, or payload signing keys. The nodes only add safe metadata to outputs.
+
+## Troubleshooting
+
+| Symptom / code                               | Meaning                                                                                       | Action                                                                                                |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `PAYLOAD_TOO_LARGE` or local size validation | Payload JSON or attachments exceed the server-aligned limits.                                 | Reduce payload size, split attachments, or use REST multipart for file-heavy events.                  |
+| `RATE_LIMITED`                               | REST or Socket publish rate limit was exceeded.                                               | Respect `retryAfterSeconds` when present and reduce publish frequency.                                |
+| `SUBSCRIPTION_LIMIT_EXCEEDED`                | The socket subscribed to more custom event names than the server allows.                      | Reduce exact event subscriptions or split workflows/sockets.                                          |
+| `PayloadFrame signature is required`         | `Require Payload Signature` is enabled but the server sent an unsigned frame for that source. | Scope `Require Payload Signature For` or configure server-side signing.                               |
+| `SOCKET_EVENT_BACKPRESSURE_LIMIT`            | The trigger queue is full and `Overflow Policy = Fail`.                                       | Increase queue/inflight limits, lower event volume, or choose a drop policy.                          |
+| `SOCKET_RECONNECT_CIRCUIT_OPEN`              | Too many retryable reconnect failures happened in the configured window.                      | Check server/network health, then raise or disable the circuit breaker if unlimited retry is desired. |

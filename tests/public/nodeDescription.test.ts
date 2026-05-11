@@ -68,6 +68,7 @@ describe("consolidated Plug node descriptions", () => {
         expect.objectContaining({ name: "publishChannel" }),
         expect.objectContaining({ name: "attachments" }),
         expect.objectContaining({ name: "idempotencyKey" }),
+        expect.objectContaining({ name: "socketAckTimeoutMs" }),
       ]),
     );
     expect(publisher.description.credentials).toEqual(
@@ -83,10 +84,15 @@ describe("consolidated Plug node descriptions", () => {
         expect.objectContaining({ name: "ackTimeoutMs" }),
         expect.objectContaining({ name: "reconnectOnDisconnect" }),
         expect.objectContaining({ name: "maxReconnectAttempts" }),
+        expect.objectContaining({ name: "reconnectFailureWindowMs" }),
+        expect.objectContaining({ name: "maxReconnectFailuresInWindow" }),
         expect.objectContaining({ name: "maxInflightEvents" }),
         expect.objectContaining({ name: "maxQueueSize" }),
         expect.objectContaining({ name: "overflowPolicy" }),
         expect.objectContaining({ name: "requirePayloadSignature" }),
+        expect.objectContaining({ name: "requirePayloadSignatureFor" }),
+        expect.objectContaining({ name: "deduplicateEvents" }),
+        expect.objectContaining({ name: "deduplicationTtlMs" }),
         expect.objectContaining({ name: "binaryPropertyPrefix" }),
       ]),
     );

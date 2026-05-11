@@ -14,6 +14,12 @@ export const defaultManualListenTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS;
 export const defaultBinaryPropertyPrefix = "attachment";
 export const defaultMaxInflightSocketEvents = 8;
 export const defaultMaxQueuedSocketEvents = 128;
+export const defaultCustomSocketEventMaxFiles = 5;
+export const defaultCustomSocketEventFileMaxBytes = 524_288;
+export const defaultCustomSocketEventTotalFilesMaxBytes = 2_097_152;
+export const defaultCustomSocketEventPayloadJsonMaxBytes = 524_288;
+export const defaultSocketEventDeduplicationTtlMs = 300_000;
+export const defaultSocketEventDeduplicationMaxEntries = 4096;
 
 const customSocketEventNamePattern = /^client:custom\.[A-Za-z0-9][A-Za-z0-9._:-]{0,113}$/;
 
@@ -53,6 +59,13 @@ export interface PublishCustomSocketEventInput {
   readonly idempotencyKey?: string;
   readonly attachments?: readonly CustomSocketEventAttachment[];
   readonly timeoutMs?: number;
+}
+
+export interface CustomSocketEventPublishLimitOptions {
+  readonly maxFiles?: number;
+  readonly maxFileBytes?: number;
+  readonly maxTotalFileBytes?: number;
+  readonly maxPayloadJsonBytes?: number;
 }
 
 export interface PublishCustomSocketEventResponse extends JsonObject {
@@ -292,6 +305,61 @@ export const assertPublishCustomSocketEventInput = (
       : {}),
     ...(value.timeoutMs !== undefined ? { timeoutMs: value.timeoutMs as number } : {}),
   };
+};
+
+export const getJsonUtf8ByteLength = (value: unknown, label: string): number => {
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    throw new PlugValidationError(`${label} must be JSON-serializable`);
+  }
+
+  if (serialized === undefined) {
+    throw new PlugValidationError(`${label} must be JSON-serializable`);
+  }
+
+  return Buffer.byteLength(serialized, "utf8");
+};
+
+export const assertPublishCustomSocketEventInputWithinLimits = (
+  value: PublishCustomSocketEventInput,
+  options: CustomSocketEventPublishLimitOptions = {},
+): void => {
+  const maxFiles = options.maxFiles ?? defaultCustomSocketEventMaxFiles;
+  const maxFileBytes = options.maxFileBytes ?? defaultCustomSocketEventFileMaxBytes;
+  const maxTotalFileBytes =
+    options.maxTotalFileBytes ?? defaultCustomSocketEventTotalFilesMaxBytes;
+  const maxPayloadJsonBytes =
+    options.maxPayloadJsonBytes ?? defaultCustomSocketEventPayloadJsonMaxBytes;
+  const payloadBytes = getJsonUtf8ByteLength(value.payload, "Payload JSON");
+
+  if (payloadBytes > maxPayloadJsonBytes) {
+    throw new PlugValidationError(
+      `Payload JSON must be at most ${maxPayloadJsonBytes} bytes`,
+    );
+  }
+
+  const attachments = value.attachments ?? [];
+  if (attachments.length > maxFiles) {
+    throw new PlugValidationError(`Attachments must include at most ${maxFiles} files`);
+  }
+
+  let totalBytes = 0;
+  for (const attachment of attachments) {
+    totalBytes += attachment.sizeBytes;
+    if (attachment.sizeBytes > maxFileBytes) {
+      throw new PlugValidationError(
+        `Attachment ${attachment.originalName} must be at most ${maxFileBytes} bytes`,
+      );
+    }
+  }
+
+  if (totalBytes > maxTotalFileBytes) {
+    throw new PlugValidationError(
+      `Attachments total size must be at most ${maxTotalFileBytes} bytes`,
+    );
+  }
 };
 
 export const assertSocketEventPublishedAck = (

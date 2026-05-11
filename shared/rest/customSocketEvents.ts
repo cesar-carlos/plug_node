@@ -7,6 +7,7 @@ import { DEFAULT_REQUEST_TIMEOUT_MS } from "../contracts/api";
 import {
   assertCustomSocketEventName,
   assertPublishCustomSocketEventInput,
+  assertPublishCustomSocketEventInputWithinLimits,
   assertPublishCustomSocketEventResponse,
   normalizeOptionalIdempotencyKey,
   type PublishCustomSocketEventInput,
@@ -38,6 +39,7 @@ export const publishCustomSocketEvent = async (
   input: PublishCustomSocketEventInput,
 ): Promise<PublishCustomSocketEventResponse> => {
   const request = assertPublishCustomSocketEventInput(input);
+  assertPublishCustomSocketEventInputWithinLimits(request);
   const eventName = assertCustomSocketEventName(request.eventName);
   const idempotencyKey = normalizeOptionalIdempotencyKey(request.idempotencyKey);
   const headers = buildAuthorizedHeaders(session, {

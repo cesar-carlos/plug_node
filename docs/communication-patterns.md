@@ -26,9 +26,9 @@ Flow:
 
 ## Custom Socket Events
 
-Custom Socket Events also use `/consumers`. The advanced package can publish through REST or `socket:event.publish`, and the trigger listens to exact `client:custom.*` names or the internal `client:agent.profile.updated` push.
+Custom Socket Events also use `/consumers`. The advanced package can publish through REST or `socket:event.publish`, enforces server-aligned local payload limits before sending, and the trigger listens to exact `client:custom.*` names or the internal `client:agent.profile.updated` push.
 
-See [Custom Socket Events](./custom-socket-events.md) for node fields, backpressure, HMAC, and shared-code maintenance notes.
+See [Custom Socket Events](./custom-socket-events.md) for node fields, backpressure, HMAC, deduplication, reconnect controls, troubleshooting, and shared-code maintenance notes.
 
 ## PayloadFrame handling
 
