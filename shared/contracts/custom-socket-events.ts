@@ -7,10 +7,13 @@ import { PlugValidationError } from "./errors";
 import { isRecord } from "../utils/json";
 
 export const customSocketEventPrefix = "client:custom." as const;
+export const clientAgentProfileUpdatedEventName = "client:agent.profile.updated" as const;
 export const customSocketEventNameMaxLength = 128;
 export const defaultSocketEventAckTimeoutMs = 10_000;
 export const defaultManualListenTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS;
 export const defaultBinaryPropertyPrefix = "attachment";
+export const defaultMaxInflightSocketEvents = 8;
+export const defaultMaxQueuedSocketEvents = 128;
 
 const customSocketEventNamePattern = /^client:custom\.[A-Za-z0-9][A-Za-z0-9._:-]{0,113}$/;
 
@@ -48,6 +51,7 @@ export interface PublishCustomSocketEventInput {
   readonly payload: unknown;
   readonly payloadFrameCompression?: PayloadFrameCompression;
   readonly idempotencyKey?: string;
+  readonly attachments?: readonly CustomSocketEventAttachment[];
   readonly timeoutMs?: number;
 }
 
@@ -60,6 +64,56 @@ export interface PublishCustomSocketEventResponse extends JsonObject {
   readonly idempotentReplay?: boolean;
   readonly requestId?: string;
 }
+
+export type SocketEventOverflowPolicy = "fail" | "dropNewest" | "dropOldest";
+
+export interface SocketEventRuntimeMetadata {
+  readonly eventName: string;
+  readonly socketId?: string;
+  readonly reconnectAttempt: number;
+  readonly subscriptionCount: number;
+  readonly payloadFrameRequestId?: string;
+}
+
+export interface AgentProfileUpdatedPayload extends JsonObject {
+  readonly success?: true;
+  readonly agent_id?: string;
+  readonly agentId?: string;
+  readonly profile_version?: number;
+  readonly profileVersion?: number;
+  readonly profileUpdatedAt?: string;
+  readonly changed_fields?: readonly string[];
+  readonly changedFields?: readonly string[];
+  readonly source?: string;
+}
+
+export type SocketEventPublishedAck =
+  | {
+      readonly success: true;
+      readonly requestId: string;
+      readonly data: {
+        readonly eventId: string;
+        readonly eventName: string;
+        readonly recipients: number;
+        readonly idempotencyKey?: string;
+        readonly idempotentReplay: boolean;
+      };
+    }
+  | {
+      readonly success: false;
+      readonly requestId: string;
+      readonly error: {
+        readonly code: string;
+        readonly message: string;
+        readonly statusCode?: number;
+        readonly retryAfterMs?: number;
+      };
+      readonly rateLimit?: {
+        readonly limit: number;
+        readonly remaining: number;
+        readonly resetAtMs: number;
+      };
+    };
 
 export type SocketEventControlAck =
   | {
@@ -133,6 +187,12 @@ export const normalizeOptionalIdempotencyKey = (value: unknown): string | undefi
     throw new PlugValidationError("Idempotency Key must be at most 128 characters");
   }
 
+  if (!/^[A-Za-z0-9._:-]+$/.test(trimmed)) {
+    throw new PlugValidationError(
+      "Idempotency Key may contain only letters, numbers, dot, colon, underscore or hyphen",
+    );
+  }
+
   return trimmed;
 };
 
@@ -168,6 +228,123 @@ export const assertPublishCustomSocketEventResponse = (
   }
 
   return value as unknown as PublishCustomSocketEventResponse;
+};
+
+export const assertPublishCustomSocketEventInput = (
+  value: unknown,
+): PublishCustomSocketEventInput => {
+  if (!isRecord(value)) {
+    throw new PlugValidationError("Plug socket event publish input must be an object");
+  }
+
+  const eventName = assertCustomSocketEventName(value.eventName);
+  const idempotencyKey = normalizeOptionalIdempotencyKey(value.idempotencyKey);
+
+  if (!("payload" in value) || value.payload === undefined) {
+    throw new PlugValidationError("Plug socket event publish input is missing payload");
+  }
+
+  if (
+    value.payloadFrameCompression !== undefined &&
+    value.payloadFrameCompression !== "default" &&
+    value.payloadFrameCompression !== "none" &&
+    value.payloadFrameCompression !== "always"
+  ) {
+    throw new PlugValidationError(
+      "Payload Frame Compression must be default, none or always",
+    );
+  }
+
+  if (
+    value.timeoutMs !== undefined &&
+    (typeof value.timeoutMs !== "number" ||
+      !Number.isFinite(value.timeoutMs) ||
+      value.timeoutMs <= 0)
+  ) {
+    throw new PlugValidationError("Timeout (MS) must be a positive number");
+  }
+
+  if (value.attachments !== undefined) {
+    if (!Array.isArray(value.attachments)) {
+      throw new PlugValidationError("Attachments must be an array");
+    }
+
+    for (const attachment of value.attachments) {
+      assertCustomSocketEventAttachment(attachment);
+    }
+  }
+
+  return {
+    eventName,
+    payload: value.payload,
+    ...(value.payloadFrameCompression !== undefined
+      ? {
+          payloadFrameCompression:
+            value.payloadFrameCompression as PayloadFrameCompression,
+        }
+      : {}),
+    ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+    ...(value.attachments !== undefined
+      ? {
+          attachments:
+            value.attachments as unknown as readonly CustomSocketEventAttachment[],
+        }
+      : {}),
+    ...(value.timeoutMs !== undefined ? { timeoutMs: value.timeoutMs as number } : {}),
+  };
+};
+
+export const assertSocketEventPublishedAck = (
+  value: unknown,
+): SocketEventPublishedAck => {
+  if (!isRecord(value) || typeof value.success !== "boolean") {
+    throw new PlugValidationError(
+      "socket:event.published ack must include success boolean",
+    );
+  }
+
+  if (typeof value.requestId !== "string" || value.requestId.trim() === "") {
+    throw new PlugValidationError("socket:event.published ack must include requestId");
+  }
+
+  if (value.success) {
+    if (!isRecord(value.data)) {
+      throw new PlugValidationError("socket:event.published success must include data");
+    }
+    if (typeof value.data.eventId !== "string" || value.data.eventId.trim() === "") {
+      throw new PlugValidationError("socket:event.published data is missing eventId");
+    }
+    if (typeof value.data.eventName !== "string" || value.data.eventName.trim() === "") {
+      throw new PlugValidationError("socket:event.published data is missing eventName");
+    }
+    if (
+      typeof value.data.recipients !== "number" ||
+      !Number.isFinite(value.data.recipients)
+    ) {
+      throw new PlugValidationError("socket:event.published data is missing recipients");
+    }
+    if (typeof value.data.idempotentReplay !== "boolean") {
+      throw new PlugValidationError(
+        "socket:event.published data is missing idempotentReplay",
+      );
+    }
+  } else {
+    if (
+      !isRecord(value.error) ||
+      typeof value.error.code !== "string" ||
+      value.error.code.trim() === "" ||
+      typeof value.error.message !== "string" ||
+      value.error.message.trim() === ""
+    ) {
+      throw new PlugValidationError(
+        "socket:event.published failure must include error.code and error.message",
+      );
+    }
+
+    assertOptionalRateLimit(value.rateLimit, "socket:event.published");
+  }
+
+  return value as unknown as SocketEventPublishedAck;
 };
 
 export const assertSocketEventControlAck = (value: unknown): SocketEventControlAck => {
@@ -209,21 +386,7 @@ export const assertSocketEventControlAck = (value: unknown): SocketEventControlA
       );
     }
 
-    if (value.rateLimit !== undefined) {
-      if (
-        !isRecord(value.rateLimit) ||
-        typeof value.rateLimit.limit !== "number" ||
-        !Number.isFinite(value.rateLimit.limit) ||
-        typeof value.rateLimit.remaining !== "number" ||
-        !Number.isFinite(value.rateLimit.remaining) ||
-        typeof value.rateLimit.resetAtMs !== "number" ||
-        !Number.isFinite(value.rateLimit.resetAtMs)
-      ) {
-        throw new PlugValidationError(
-          "socket:event ack failure rateLimit must include limit, remaining and resetAtMs",
-        );
-      }
-    }
+    assertOptionalRateLimit(value.rateLimit, "socket:event ack failure");
   }
 
   return value as unknown as SocketEventControlAck;
@@ -241,13 +404,18 @@ export const assertCustomSocketEventFramePayload = (
   }
 
   const eventName = assertCustomSocketEventName(value.eventName);
-  if (typeof value.emittedAt !== "string" || value.emittedAt.trim() === "") {
+  if (
+    typeof value.emittedAt !== "string" ||
+    value.emittedAt.trim() === "" ||
+    Number.isNaN(Date.parse(value.emittedAt))
+  ) {
     throw new PlugValidationError("Custom socket event payload is missing emittedAt");
   }
 
   if (!isRecord(value.publisher)) {
     throw new PlugValidationError("Custom socket event payload is missing publisher");
   }
+  assertCustomSocketEventPublisher(value.publisher);
 
   if (!("payload" in value)) {
     throw new PlugValidationError("Custom socket event payload is missing payload");
@@ -265,6 +433,67 @@ export const assertCustomSocketEventFramePayload = (
     ...(value as unknown as CustomSocketEventFramePayload),
     eventName,
   };
+};
+
+export const assertAgentProfileUpdatedPayload = (
+  value: unknown,
+): AgentProfileUpdatedPayload => {
+  if (!isRecord(value)) {
+    throw new PlugValidationError("Agent profile updated payload must be an object");
+  }
+
+  if (value.success !== undefined && value.success !== true) {
+    throw new PlugValidationError("Agent profile updated payload success must be true");
+  }
+
+  const agentId = value.agent_id ?? value.agentId;
+  if (typeof agentId !== "string" || agentId.trim() === "") {
+    throw new PlugValidationError("Agent profile updated payload is missing agent_id");
+  }
+
+  const profileVersion = value.profile_version ?? value.profileVersion;
+  if (
+    typeof profileVersion !== "number" ||
+    !Number.isInteger(profileVersion) ||
+    profileVersion < 0
+  ) {
+    throw new PlugValidationError(
+      "Agent profile updated payload is missing profile_version",
+    );
+  }
+
+  const profileUpdatedAt = value.profileUpdatedAt;
+  if (
+    profileUpdatedAt !== null &&
+    profileUpdatedAt !== undefined &&
+    (typeof profileUpdatedAt !== "string" || Number.isNaN(Date.parse(profileUpdatedAt)))
+  ) {
+    throw new PlugValidationError(
+      "Agent profile updated payload profileUpdatedAt must be an ISO date string",
+    );
+  }
+
+  const changedFields = value.changed_fields ?? value.changedFields;
+  if (
+    changedFields !== undefined &&
+    (!Array.isArray(changedFields) ||
+      changedFields.some((field) => typeof field !== "string"))
+  ) {
+    throw new PlugValidationError(
+      "Agent profile updated payload changed_fields must be an array of strings",
+    );
+  }
+
+  if (
+    value.source !== undefined &&
+    (typeof value.source !== "string" || value.source.trim() === "")
+  ) {
+    throw new PlugValidationError(
+      "Agent profile updated payload source must be a string",
+    );
+  }
+
+  return value as AgentProfileUpdatedPayload;
 };
 
 export const toAttachmentMetadata = (
@@ -322,4 +551,44 @@ const assertCustomSocketEventAttachment = (
   }
 
   return value as unknown as CustomSocketEventAttachment;
+};
+
+const assertCustomSocketEventPublisher = (value: Record<string, unknown>): void => {
+  if (
+    value.principalType !== undefined &&
+    (typeof value.principalType !== "string" || value.principalType.trim() === "")
+  ) {
+    throw new PlugValidationError(
+      "Custom socket event publisher principalType must be a string",
+    );
+  }
+
+  if (
+    value.clientId !== undefined &&
+    (typeof value.clientId !== "string" || value.clientId.trim() === "")
+  ) {
+    throw new PlugValidationError(
+      "Custom socket event publisher clientId must be a string",
+    );
+  }
+};
+
+const assertOptionalRateLimit = (value: unknown, context: string): void => {
+  if (value === undefined) {
+    return;
+  }
+
+  if (
+    !isRecord(value) ||
+    typeof value.limit !== "number" ||
+    !Number.isFinite(value.limit) ||
+    typeof value.remaining !== "number" ||
+    !Number.isFinite(value.remaining) ||
+    typeof value.resetAtMs !== "number" ||
+    !Number.isFinite(value.resetAtMs)
+  ) {
+    throw new PlugValidationError(
+      `${context} rateLimit must include limit, remaining and resetAtMs`,
+    );
+  }
 };

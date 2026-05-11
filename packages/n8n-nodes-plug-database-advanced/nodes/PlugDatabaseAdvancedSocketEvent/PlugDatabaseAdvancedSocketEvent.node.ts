@@ -1,10 +1,17 @@
+import { Buffer } from "node:buffer";
+
 import type {
+  IBinaryData,
+  IDataObject,
   IExecuteFunctions,
+  IHttpRequestOptions,
+  INode,
   INodeExecutionData,
   INodeType,
   INodeTypeDescription,
 } from "n8n-workflow";
-import { NodeConnectionTypes } from "n8n-workflow";
+import { NodeConnectionTypes, NodeOperationError } from "n8n-workflow";
+import { io, type Socket } from "socket.io-client";
 
 import {
   DEFAULT_BASE_URL,
@@ -13,13 +20,74 @@ import {
   type PlugCredentialDefaults,
 } from "../../generated/shared/contracts/api";
 import { PlugError } from "../../generated/shared/contracts/errors";
-import { createExecutionSessionRunner } from "../../generated/shared/auth/session";
-import { normalizeOptionalIdempotencyKey } from "../../generated/shared/contracts/custom-socket-events";
+import {
+  buildAuthorizedHeaders,
+  createExecutionSessionRunner,
+  createHttpError,
+} from "../../generated/shared/auth/session";
+import {
+  assertPublishCustomSocketEventInput,
+  assertPublishCustomSocketEventResponse,
+  normalizeOptionalIdempotencyKey,
+  type CustomSocketEventAttachment,
+} from "../../generated/shared/contracts/custom-socket-events";
 import { buildN8nHttpRequester } from "../../generated/shared/n8n/httpRequester";
 import { publishCustomSocketEvent } from "../../generated/shared/rest/customSocketEvents";
-import { parseJsonText } from "../../generated/shared/utils/json";
+import {
+  publishCustomSocketEventOverSocket,
+  type CustomSocketEventTransport,
+} from "../../generated/shared/socket/customSocketEventSession";
+import { parseJsonText, isRecord } from "../../generated/shared/utils/json";
+import { buildApiUrl, deriveSocketNamespaceUrl } from "../../generated/shared/utils/url";
 
 const credentialName = "plugDatabaseAdvancedApi";
+
+type PublishChannel = "rest" | "socket";
+
+interface BinarySocketEventAttachment {
+  readonly fieldName: string;
+  readonly originalName: string;
+  readonly mimeType: string;
+  readonly sizeBytes: number;
+  readonly buffer: Buffer;
+}
+
+class SocketIoCustomEventTransport implements CustomSocketEventTransport {
+  constructor(private readonly socket: Socket) {}
+
+  get id(): string | undefined {
+    return this.socket.id;
+  }
+
+  get connected(): boolean {
+    return this.socket.connected;
+  }
+
+  connect(): void {
+    this.socket.connect();
+  }
+
+  disconnect(): void {
+    this.socket.disconnect();
+  }
+
+  on(event: string, handler: (payload: unknown) => void): void {
+    this.socket.on(event, handler);
+  }
+
+  off(event: string, handler: (payload: unknown) => void): void {
+    this.socket.off(event, handler);
+  }
+
+  emit(event: string, payload?: unknown): void {
+    if (payload === undefined) {
+      this.socket.emit(event);
+      return;
+    }
+
+    this.socket.emit(event, payload);
+  }
+}
 
 const readCredentials = async (
   context: IExecuteFunctions,
@@ -60,6 +128,204 @@ const serializeErrorForContinueOnFail = (error: unknown): Record<string, unknown
   return { message: "Unknown error" };
 };
 
+const resolvePayloadFrameSigning = (
+  credentials: PlugCredentialDefaults,
+):
+  | {
+      readonly key?: string;
+      readonly keyId?: string;
+    }
+  | undefined => {
+  const key = credentials.payloadSigningKey?.trim();
+  const keyId = credentials.payloadSigningKeyId?.trim();
+  if (!key && !keyId) {
+    return undefined;
+  }
+
+  return {
+    ...(key ? { key } : {}),
+    ...(keyId ? { keyId } : {}),
+  };
+};
+
+const normalizePublishChannel = (value: unknown, node: INode): PublishChannel => {
+  if (value === "rest" || value === "socket") {
+    return value;
+  }
+
+  throw new NodeOperationError(node, "Publish Channel must be REST or Socket");
+};
+
+const normalizePositiveInteger = (
+  value: unknown,
+  fieldName: string,
+  fallback: number,
+  node: INode,
+): number => {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  const numeric =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw new NodeOperationError(node, `${fieldName} must be a positive number`);
+  }
+
+  return Math.floor(numeric);
+};
+
+const readAttachments = async (
+  context: IExecuteFunctions,
+  itemIndex: number,
+): Promise<BinarySocketEventAttachment[]> => {
+  const collection = context.getNodeParameter("attachments", itemIndex, {}) as {
+    readonly values?: ReadonlyArray<{ readonly binaryPropertyName?: unknown }>;
+  };
+  const attachments: BinarySocketEventAttachment[] = [];
+
+  for (const row of collection.values ?? []) {
+    const binaryPropertyName =
+      typeof row.binaryPropertyName === "string" ? row.binaryPropertyName.trim() : "";
+    if (binaryPropertyName === "") {
+      continue;
+    }
+
+    const binaryData = context.helpers.assertBinaryData(
+      itemIndex,
+      binaryPropertyName,
+    ) as IBinaryData;
+    const buffer = await context.helpers.getBinaryDataBuffer(
+      itemIndex,
+      binaryPropertyName,
+    );
+    attachments.push({
+      fieldName: "files",
+      originalName: binaryData.fileName ?? `${binaryPropertyName}.bin`,
+      mimeType: binaryData.mimeType ?? "application/octet-stream",
+      sizeBytes: buffer.byteLength,
+      buffer: Buffer.from(buffer),
+    });
+  }
+
+  return attachments;
+};
+
+const toInlineAttachments = (
+  attachments: readonly BinarySocketEventAttachment[],
+): CustomSocketEventAttachment[] =>
+  attachments.map((attachment) => ({
+    fieldName: attachment.fieldName,
+    originalName: attachment.originalName,
+    mimeType: attachment.mimeType,
+    sizeBytes: attachment.sizeBytes,
+    base64: attachment.buffer.toString("base64"),
+  }));
+
+const parseFullResponseBody = (
+  response: unknown,
+  node: INode,
+): {
+  readonly statusCode: number;
+  readonly headers: Record<string, string | string[] | undefined>;
+  readonly body: unknown;
+} => {
+  const body = isRecord(response) && "body" in response ? response.body : response;
+  const statusCode =
+    isRecord(response) && typeof response.statusCode === "number"
+      ? response.statusCode
+      : 200;
+  let parsedBody = body;
+  if (typeof body === "string" && /^[\s]*[{[]/.test(body)) {
+    try {
+      parsedBody = JSON.parse(body) as unknown;
+    } catch {
+      if (statusCode >= 200 && statusCode < 300) {
+        throw new NodeOperationError(
+          node,
+          "Plug socket event publish response body must be valid JSON",
+        );
+      }
+    }
+  }
+
+  return {
+    statusCode,
+    headers:
+      isRecord(response) && isRecord(response.headers)
+        ? (response.headers as Record<string, string | string[] | undefined>)
+        : {},
+    body: parsedBody,
+  };
+};
+
+const publishCustomSocketEventMultipart = async (
+  context: IExecuteFunctions,
+  session: Parameters<typeof buildAuthorizedHeaders>[0],
+  input: {
+    readonly eventName: string;
+    readonly payload: unknown;
+    readonly payloadFrameCompression?: PayloadFrameCompression;
+    readonly idempotencyKey?: string;
+    readonly attachments: readonly BinarySocketEventAttachment[];
+    readonly timeoutMs: number;
+  },
+) => {
+  const request = assertPublishCustomSocketEventInput({
+    eventName: input.eventName,
+    payload: input.payload,
+    payloadFrameCompression: input.payloadFrameCompression,
+    idempotencyKey: input.idempotencyKey,
+    timeoutMs: input.timeoutMs,
+  });
+  const form = new FormData();
+  form.append(
+    "event",
+    JSON.stringify({
+      eventName: request.eventName,
+      payload: request.payload,
+      ...(request.payloadFrameCompression
+        ? { payloadFrameCompression: request.payloadFrameCompression }
+        : {}),
+    }),
+  );
+
+  for (const attachment of input.attachments) {
+    form.append(
+      "files",
+      new Blob([new Uint8Array(attachment.buffer)], { type: attachment.mimeType }),
+      attachment.originalName,
+    );
+  }
+
+  const requestOptions: IHttpRequestOptions = {
+    method: "POST",
+    url: buildApiUrl(session.credentials.baseUrl, "/client/me/socket-events"),
+    headers: buildAuthorizedHeaders(
+      session,
+      request.idempotencyKey ? { "idempotency-key": request.idempotencyKey } : undefined,
+    ) as IDataObject,
+    body: form,
+    timeout: request.timeoutMs,
+    returnFullResponse: true,
+    ignoreHttpStatusErrors: true,
+  };
+  const response = parseFullResponseBody(
+    await context.helpers.httpRequest(requestOptions),
+    context.getNode(),
+  );
+  if (response.statusCode !== 202) {
+    throw createHttpError(response.statusCode, response.body, response.headers);
+  }
+
+  return assertPublishCustomSocketEventResponse(response.body);
+};
+
 export class PlugDatabaseAdvancedSocketEvent implements INodeType {
   description: INodeTypeDescription = {
     displayName: "Plug Database Advanced Socket Event",
@@ -98,6 +364,27 @@ export class PlugDatabaseAdvancedSocketEvent implements INodeType {
         ],
       },
       {
+        displayName: "Publish Channel",
+        name: "publishChannel",
+        type: "options",
+        default: "rest",
+        options: [
+          {
+            name: "REST",
+            value: "rest",
+            description: "Publish through POST /client/me/socket-events",
+            action: "Publish through REST",
+          },
+          {
+            name: "Socket",
+            value: "socket",
+            description: "Publish through socket:event.publish on /consumers",
+            action: "Publish through Socket",
+          },
+        ],
+        description: "Transport used to publish the custom event",
+      },
+      {
         displayName: "Event Name",
         name: "eventName",
         type: "string",
@@ -113,6 +400,33 @@ export class PlugDatabaseAdvancedSocketEvent implements INodeType {
         required: true,
         description:
           "JSON payload delivered to subscribers. Use null for a null payload.",
+      },
+      {
+        displayName: "Attachments",
+        name: "attachments",
+        type: "fixedCollection",
+        placeholder: "Add attachment",
+        default: {},
+        typeOptions: {
+          multipleValues: true,
+        },
+        options: [
+          {
+            displayName: "Attachment",
+            name: "values",
+            values: [
+              {
+                displayName: "Binary Property",
+                name: "binaryPropertyName",
+                type: "string",
+                default: "data",
+                required: true,
+                description:
+                  "Name of the binary property to publish as an inline socket event attachment",
+              },
+            ],
+          },
+        ],
       },
       {
         displayName: "Payload Frame Compression",
@@ -169,6 +483,10 @@ export class PlugDatabaseAdvancedSocketEvent implements INodeType {
     for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
       try {
         const eventName = this.getNodeParameter("eventName", itemIndex) as string;
+        const publishChannel = normalizePublishChannel(
+          this.getNodeParameter("publishChannel", itemIndex, "rest"),
+          this.getNode(),
+        );
         const payloadJson = this.getNodeParameter("payloadJson", itemIndex) as string;
         const payload = parseJsonText(payloadJson, "Payload JSON");
         const payloadFrameCompression = this.getNodeParameter(
@@ -179,26 +497,65 @@ export class PlugDatabaseAdvancedSocketEvent implements INodeType {
         const idempotencyKey = normalizeOptionalIdempotencyKey(
           this.getNodeParameter("idempotencyKey", itemIndex, ""),
         );
-        const timeoutMs = this.getNodeParameter(
-          "timeoutMs",
-          itemIndex,
+        const timeoutMs = normalizePositiveInteger(
+          this.getNodeParameter("timeoutMs", itemIndex, DEFAULT_REQUEST_TIMEOUT_MS),
+          "Timeout (MS)",
           DEFAULT_REQUEST_TIMEOUT_MS,
-        ) as number;
+          this.getNode(),
+        );
         const includeMetadata = this.getNodeParameter(
           "includePlugMetadata",
           itemIndex,
           true,
         ) as boolean;
+        const attachments = await readAttachments(this, itemIndex);
 
-        const result = await sessionRunner((session) =>
-          publishCustomSocketEvent(requester, session, {
+        const result = await sessionRunner(async (session) => {
+          if (publishChannel === "socket") {
+            const socket = io(
+              deriveSocketNamespaceUrl(credentials.baseUrl, "/consumers"),
+              {
+                autoConnect: false,
+                reconnection: false,
+                transports: ["websocket"],
+                auth: {
+                  token: session.accessToken,
+                },
+              },
+            );
+            return publishCustomSocketEventOverSocket({
+              transport: new SocketIoCustomEventTransport(socket),
+              request: {
+                eventName,
+                payload,
+                payloadFrameCompression,
+                idempotencyKey,
+                attachments: toInlineAttachments(attachments),
+                timeoutMs,
+              },
+              payloadFrameSigning: resolvePayloadFrameSigning(credentials),
+            });
+          }
+
+          if (attachments.length > 0) {
+            return publishCustomSocketEventMultipart(this, session, {
+              eventName,
+              payload,
+              payloadFrameCompression,
+              idempotencyKey,
+              attachments,
+              timeoutMs,
+            });
+          }
+
+          return publishCustomSocketEvent(requester, session, {
             eventName,
             payload,
             payloadFrameCompression,
             idempotencyKey,
             timeoutMs,
-          }),
-        );
+          });
+        });
 
         outputItems.push({
           json: {
@@ -206,11 +563,12 @@ export class PlugDatabaseAdvancedSocketEvent implements INodeType {
             ...(includeMetadata
               ? {
                   __plug: {
-                    channel: "rest",
+                    channel: publishChannel,
                     operation: "publishCustomSocketEvent",
                     eventName: result.eventName,
                     eventId: result.eventId,
                     recipients: result.recipients,
+                    attachmentCount: attachments.length,
                   },
                 }
               : {}),

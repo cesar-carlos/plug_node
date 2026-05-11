@@ -65,6 +65,8 @@ describe("consolidated Plug node descriptions", () => {
       expect.arrayContaining([
         expect.objectContaining({ name: "eventName" }),
         expect.objectContaining({ name: "payloadJson" }),
+        expect.objectContaining({ name: "publishChannel" }),
+        expect.objectContaining({ name: "attachments" }),
         expect.objectContaining({ name: "idempotencyKey" }),
       ]),
     );
@@ -76,10 +78,15 @@ describe("consolidated Plug node descriptions", () => {
     expect(trigger.description.inputs).toEqual([]);
     expect(trigger.description.properties).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ name: "eventSource" }),
         expect.objectContaining({ name: "eventNames" }),
         expect.objectContaining({ name: "ackTimeoutMs" }),
         expect.objectContaining({ name: "reconnectOnDisconnect" }),
         expect.objectContaining({ name: "maxReconnectAttempts" }),
+        expect.objectContaining({ name: "maxInflightEvents" }),
+        expect.objectContaining({ name: "maxQueueSize" }),
+        expect.objectContaining({ name: "overflowPolicy" }),
+        expect.objectContaining({ name: "requirePayloadSignature" }),
         expect.objectContaining({ name: "binaryPropertyPrefix" }),
       ]),
     );

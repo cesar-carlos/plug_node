@@ -26,4 +26,5 @@ export interface DecodedPayloadFrame<TData = unknown> {
 export interface PayloadFrameSigningOptions {
   readonly key?: string;
   readonly keyId?: string;
+  readonly requireSignature?: boolean;
 }

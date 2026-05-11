@@ -28,6 +28,10 @@ npm install n8n-nodes-plug-database-advanced
   - renders trusted HTML strings to PDF binary data
 - `Plug Database Advanced Barcode`
   - generates QR codes and barcodes as PNG or SVG binary data
+- `Plug Database Advanced Socket Event`
+  - publishes `client:custom.*` events over REST or `/consumers`
+- `Plug Database Advanced Socket Event Trigger`
+  - listens for `client:custom.*` events or `client:agent.profile.updated`
 
 ## Supported operations
 
@@ -67,6 +71,15 @@ npm install n8n-nodes-plug-database-advanced
 `Plug Database Advanced Barcode`:
 
 - `Generate Code`
+
+`Plug Database Advanced Socket Event`:
+
+- `Publish Event`
+
+`Plug Database Advanced Socket Event Trigger`:
+
+- `Custom Events`
+- `Agent Profile Updated`
 
 ## Credentials
 
@@ -118,6 +131,8 @@ Both access nodes also support:
 - When the server does not answer the newer consumer socket transport, the runtime falls back to relay for single-command flows.
 - `Execute Batch` over socket requires `agents:command`; when the server does not support it, use `REST` or upgrade the server.
 - Large socket streams are protected by local buffer guardrails so the node fails clearly instead of letting memory grow without bounds.
+- Custom Socket Events can be published over REST or Socket. REST is the compatible default; Socket uses `/consumers`, `socket:event.publish`, and `socket:event.published` ACK correlation.
+- The event Trigger supports queue/backpressure controls, optional required PayloadFrame signatures, and the internal `client:agent.profile.updated` push.
 
 Legacy access-only nodes remain published for compatibility with existing workflows, but are hidden from the node creator for new users.
 
@@ -158,4 +173,5 @@ Use n8n's built-in `Compression`, `Convert to File`, and `Extract From File` nod
 - [Workspace overview](https://github.com/cesar-carlos/plug_node/blob/main/README.md)
 - [Project summary](https://github.com/cesar-carlos/plug_node/blob/main/docs/project-summary.md)
 - [Communication patterns](https://github.com/cesar-carlos/plug_node/blob/main/docs/communication-patterns.md)
+- [Custom Socket Events](https://github.com/cesar-carlos/plug_node/blob/main/docs/custom-socket-events.md)
 - [Workflow examples](https://github.com/cesar-carlos/plug_node/blob/main/docs/workflow-examples.md)

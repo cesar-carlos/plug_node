@@ -378,6 +378,9 @@ const verifyFrameSignature = (
   signing: PayloadFrameSigningOptions | undefined,
 ): void => {
   if (frame.signature === undefined) {
+    if (signing?.requireSignature === true) {
+      throw new PlugValidationError("PayloadFrame signature is required");
+    }
     return;
   }
 

@@ -8,9 +8,11 @@ const socketMock = vi.hoisted(() => {
   type Handler = (payload: unknown) => void;
 
   const state: {
+    connectErrorsBeforeReady: number;
     readyFrame?: unknown;
     sockets: MockSocket[];
   } = {
+    connectErrorsBeforeReady: 0,
     sockets: [],
   };
 
@@ -28,6 +30,14 @@ const socketMock = vi.hoisted(() => {
     ) {}
 
     connect(): void {
+      if (state.connectErrorsBeforeReady > 0) {
+        state.connectErrorsBeforeReady -= 1;
+        queueMicrotask(() => {
+          this.dispatch("connect_error", new Error("temporary unavailable"));
+        });
+        return;
+      }
+
       this.connected = true;
       queueMicrotask(() => {
         this.dispatch("connection:ready", state.readyFrame);
@@ -154,6 +164,7 @@ const createContext = (
         { eventName: "client:custom.invoice.created" },
       ],
     },
+    eventSource: "customEvents",
     ackTimeoutMs: 1000,
     manualListenTimeoutMs: 0,
     binaryPropertyPrefix: "attachment",
@@ -162,6 +173,10 @@ const createContext = (
     maxReconnectAttempts: 1,
     reconnectInitialDelayMs: 100,
     reconnectMaxDelayMs: 100,
+    maxInflightEvents: 8,
+    maxQueueSize: 128,
+    overflowPolicy: "fail",
+    requirePayloadSignature: false,
     ...overrides,
   };
 
@@ -195,6 +210,7 @@ const createContext = (
 describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
   it("connects to /consumers, subscribes to multiple events, emits items, and cleans up", async () => {
     socketMock.state.sockets = [];
+    socketMock.state.connectErrorsBeforeReady = 0;
     socketMock.state.readyFrame = encodePayloadFrame(
       {
         id: "socket-1",
@@ -252,6 +268,13 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
         expect.objectContaining({
           json: expect.objectContaining({
             eventId: "event-1",
+            __plug: expect.objectContaining({
+              channel: "socket",
+              socketMode: "customEvent",
+              eventName: "client:custom.status.changed",
+              payloadFrameRequestId: "event-1",
+              subscriptionCount: 2,
+            }),
             attachments: [
               {
                 fieldName: "files",
@@ -281,6 +304,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
     vi.useFakeTimers();
     try {
       socketMock.state.sockets = [];
+      socketMock.state.connectErrorsBeforeReady = 0;
       socketMock.state.readyFrame = encodePayloadFrame(
         {
           id: "socket-1",
@@ -310,5 +334,171 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("retries initial activation after transient connect_error", async () => {
+    vi.useFakeTimers();
+    try {
+      socketMock.state.sockets = [];
+      socketMock.state.connectErrorsBeforeReady = 1;
+      socketMock.state.readyFrame = encodePayloadFrame(
+        {
+          id: "socket-1",
+          message: "ready",
+          user: { sub: "client-1" },
+        },
+        { requestId: "handshake", compression: "none" },
+      );
+      const node = new PlugDatabaseAdvancedSocketEventTrigger();
+      const context = createContext({
+        maxReconnectAttempts: 2,
+      });
+
+      const triggerPromise = node.trigger.call(context);
+      await vi.advanceTimersByTimeAsync(250);
+      const response = await triggerPromise;
+
+      expect(socketMock.state.sockets).toHaveLength(2);
+      expect(
+        socketMock.state.sockets[1].emittedEvents.filter(
+          ({ event }) => event === "socket:event.subscribe",
+        ),
+      ).toHaveLength(2);
+
+      await response.closeFunction?.();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("listens for agent profile updates without custom subscriptions", async () => {
+    socketMock.state.sockets = [];
+    socketMock.state.connectErrorsBeforeReady = 0;
+    socketMock.state.readyFrame = encodePayloadFrame(
+      {
+        id: "socket-1",
+        message: "ready",
+        user: { sub: "client-1" },
+      },
+      { requestId: "handshake", compression: "none" },
+    );
+    const node = new PlugDatabaseAdvancedSocketEventTrigger();
+    const context = createContext({
+      eventSource: "agentProfileUpdated",
+    });
+
+    const response = await node.trigger.call(context);
+    const socket = socketMock.state.sockets[0];
+    expect(
+      socket.emittedEvents.filter(({ event }) => event === "socket:event.subscribe"),
+    ).toHaveLength(0);
+
+    socket.dispatch(
+      "client:agent.profile.updated",
+      encodePayloadFrame(
+        {
+          success: true,
+          agentId: "agent-1",
+          profileVersion: 2,
+          profileUpdatedAt: "2026-05-11T12:00:00.000Z",
+          changedFields: ["displayName"],
+        },
+        { requestId: "profile-1", compression: "none" },
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const emit = (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit;
+    expect(emit).toHaveBeenCalledWith([
+      [
+        expect.objectContaining({
+          json: expect.objectContaining({
+            eventName: "client:agent.profile.updated",
+            payload: expect.objectContaining({
+              agentId: "agent-1",
+              profileVersion: 2,
+            }),
+            __plug: expect.objectContaining({
+              socketMode: "agentProfileUpdated",
+              payloadFrameRequestId: "profile-1",
+            }),
+          }),
+        }),
+      ],
+    ]);
+
+    await response.closeFunction?.();
+    expect(socket.connected).toBe(false);
+  });
+
+  it("does not emit an event after the trigger is closed while binary data is being prepared", async () => {
+    socketMock.state.sockets = [];
+    socketMock.state.connectErrorsBeforeReady = 0;
+    socketMock.state.readyFrame = encodePayloadFrame(
+      {
+        id: "socket-1",
+        message: "ready",
+        user: { sub: "client-1" },
+      },
+      { requestId: "handshake", compression: "none" },
+    );
+    const node = new PlugDatabaseAdvancedSocketEventTrigger();
+    const context = createContext();
+    let releasePrepare: (() => void) | undefined;
+    const prepareStarted = new Promise<void>((resolve) => {
+      (
+        context.helpers.prepareBinaryData as unknown as ReturnType<typeof vi.fn>
+      ).mockImplementationOnce(
+        async (
+          data: Buffer,
+          fileName?: string,
+          mimeType?: string,
+        ): Promise<IBinaryData> => {
+          resolve();
+          await new Promise<void>((release) => {
+            releasePrepare = release;
+          });
+          return {
+            data: data.toString("base64"),
+            fileName,
+            mimeType,
+          };
+        },
+      );
+    });
+
+    const response = await node.trigger.call(context);
+    const socket = socketMock.state.sockets[0];
+    socket.dispatch(
+      "client:custom.status.changed",
+      encodePayloadFrame(
+        {
+          eventId: "event-1",
+          eventName: "client:custom.status.changed",
+          emittedAt: "2026-05-11T12:00:00.000Z",
+          publisher: { principalType: "client", clientId: "client-1" },
+          payload: { status: "ready" },
+          attachments: [
+            {
+              fieldName: "files",
+              originalName: "hello.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+              base64: Buffer.from("hello").toString("base64"),
+            },
+          ],
+        },
+        { requestId: "event-1", compression: "none" },
+      ),
+    );
+
+    await prepareStarted;
+    await response.closeFunction?.();
+    releasePrepare?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit,
+    ).not.toHaveBeenCalled();
   });
 });

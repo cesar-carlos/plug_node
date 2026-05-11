@@ -6,23 +6,40 @@ import type {
 import { DEFAULT_REQUEST_TIMEOUT_MS } from "../contracts/api";
 import {
   assertCustomSocketEventName,
+  assertPublishCustomSocketEventInput,
   assertPublishCustomSocketEventResponse,
   normalizeOptionalIdempotencyKey,
   type PublishCustomSocketEventInput,
   type PublishCustomSocketEventResponse,
 } from "../contracts/custom-socket-events";
 import { buildAuthorizedHeaders, createHttpError } from "../auth/session";
+import { PlugValidationError } from "../contracts/errors";
 import { buildApiUrl } from "../utils/url";
 
 const customSocketEventPath = "/client/me/socket-events";
+
+const normalizePublishResponseBody = (body: unknown): unknown => {
+  if (typeof body !== "string" || !/^[\s]*[{[]/.test(body)) {
+    return body;
+  }
+
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    throw new PlugValidationError(
+      "Plug socket event publish response body must be valid JSON",
+    );
+  }
+};
 
 export const publishCustomSocketEvent = async (
   requester: PlugHttpRequester,
   session: PlugSession<PlugCredentialDefaults>,
   input: PublishCustomSocketEventInput,
 ): Promise<PublishCustomSocketEventResponse> => {
-  const eventName = assertCustomSocketEventName(input.eventName);
-  const idempotencyKey = normalizeOptionalIdempotencyKey(input.idempotencyKey);
+  const request = assertPublishCustomSocketEventInput(input);
+  const eventName = assertCustomSocketEventName(request.eventName);
+  const idempotencyKey = normalizeOptionalIdempotencyKey(request.idempotencyKey);
   const headers = buildAuthorizedHeaders(session, {
     "content-type": "application/json",
     ...(idempotencyKey !== undefined ? { "idempotency-key": idempotencyKey } : {}),
@@ -34,17 +51,19 @@ export const publishCustomSocketEvent = async (
     headers,
     body: {
       eventName,
-      payload: input.payload,
-      ...(input.payloadFrameCompression !== undefined
-        ? { payloadFrameCompression: input.payloadFrameCompression }
+      payload: request.payload,
+      ...(request.payloadFrameCompression !== undefined
+        ? { payloadFrameCompression: request.payloadFrameCompression }
         : {}),
     },
-    timeoutMs: input.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    timeoutMs: request.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
   });
 
   if (response.statusCode !== 202) {
     throw createHttpError(response.statusCode, response.body, response.headers);
   }
 
-  return assertPublishCustomSocketEventResponse(response.body);
+  return assertPublishCustomSocketEventResponse(
+    normalizePublishResponseBody(response.body),
+  );
 };

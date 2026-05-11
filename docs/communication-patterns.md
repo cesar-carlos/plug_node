@@ -24,6 +24,12 @@ Flow:
 8. Normalize the final response to JSON.
 9. Close the conversation and socket.
 
+## Custom Socket Events
+
+Custom Socket Events also use `/consumers`. The advanced package can publish through REST or `socket:event.publish`, and the trigger listens to exact `client:custom.*` names or the internal `client:agent.profile.updated` push.
+
+See [Custom Socket Events](./custom-socket-events.md) for node fields, backpressure, HMAC, and shared-code maintenance notes.
+
 ## PayloadFrame handling
 
 - supports `cmp: none | gzip`

@@ -5,13 +5,19 @@ import type {
   PlugSession,
 } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/api";
 import {
+  assertAgentProfileUpdatedPayload,
   assertCustomSocketEventFramePayload,
   assertCustomSocketEventName,
+  assertPublishCustomSocketEventInput,
+  assertSocketEventPublishedAck,
+  clientAgentProfileUpdatedEventName,
   assertSocketEventControlAck,
   toAttachmentMetadata,
 } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/custom-socket-events";
 import { publishCustomSocketEvent } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/rest/customSocketEvents";
 import {
+  publishCustomSocketEventOverSocket,
+  startAgentProfileUpdatedSession,
   startCustomSocketEventSession,
   type CustomSocketEventTransport,
 } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/customSocketEventSession";
@@ -19,24 +25,28 @@ import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database-advan
 
 class MockCustomEventTransport implements CustomSocketEventTransport {
   connected = false;
+  readonly id = "socket-1";
   readonly emittedEvents: Array<{ readonly event: string; readonly payload?: unknown }> =
     [];
 
   private readonly handlers = new Map<string, Set<(payload: unknown) => void>>();
+
+  constructor(private readonly readyFrame?: unknown) {}
 
   connect(): void {
     this.connected = true;
     queueMicrotask(() => {
       this.dispatch(
         "connection:ready",
-        encodePayloadFrame(
-          {
-            id: "socket-1",
-            message: "ready",
-            user: { sub: "client-1" },
-          },
-          { requestId: "handshake", compression: "none" },
-        ),
+        this.readyFrame ??
+          encodePayloadFrame(
+            {
+              id: "socket-1",
+              message: "ready",
+              user: { sub: "client-1" },
+            },
+            { requestId: "handshake", compression: "none" },
+          ),
       );
     });
   }
@@ -86,6 +96,37 @@ class MockCustomEventTransport implements CustomSocketEventTransport {
           success: true,
           requestId: request.requestId,
           data: { eventName: request.eventName, subscribed: false },
+        });
+      });
+    }
+
+    if (event === "socket:event.publish") {
+      const request = payload as {
+        readonly requestId: string;
+        readonly eventName: string;
+        readonly idempotencyKey?: string;
+      };
+      queueMicrotask(() => {
+        this.dispatch("socket:event.published", {
+          success: true,
+          requestId: "other-request",
+          data: {
+            eventId: "event-other",
+            eventName: request.eventName,
+            recipients: 1,
+            idempotentReplay: false,
+          },
+        });
+        this.dispatch("socket:event.published", {
+          success: true,
+          requestId: request.requestId,
+          data: {
+            eventId: "event-1",
+            eventName: request.eventName,
+            recipients: 2,
+            idempotencyKey: request.idempotencyKey,
+            idempotentReplay: false,
+          },
         });
       });
     }
@@ -154,6 +195,35 @@ class PartialSubscribeFailureTransport extends MockCustomEventTransport {
           error: {
             code: "SUBSCRIPTION_LIMIT_EXCEEDED",
             message: "too many subscriptions",
+          },
+        });
+      });
+      return;
+    }
+
+    super.emit(event, payload);
+  }
+}
+
+class RateLimitedPublishTransport extends MockCustomEventTransport {
+  override emit(event: string, payload?: unknown): void {
+    this.emittedEvents.push({ event, payload });
+    if (event === "socket:event.publish") {
+      const request = payload as { readonly requestId: string };
+      queueMicrotask(() => {
+        this.dispatch("socket:event.published", {
+          success: false,
+          requestId: request.requestId,
+          error: {
+            code: "RATE_LIMITED",
+            message: "slow down",
+            statusCode: 429,
+            retryAfterMs: 2500,
+          },
+          rateLimit: {
+            limit: 10,
+            remaining: 0,
+            resetAtMs: Date.now() + 2500,
           },
         });
       });
@@ -260,6 +330,102 @@ describe("custom socket events", () => {
     ).rejects.toThrow("Plug socket event publish response is missing eventId");
   });
 
+  it("validates publish input payload, idempotency key, and attachments", () => {
+    expect(() =>
+      assertPublishCustomSocketEventInput({
+        eventName: "client:custom.status.changed",
+        idempotencyKey: "invalid key",
+      }),
+    ).toThrow("Idempotency Key may contain only");
+
+    expect(() =>
+      assertPublishCustomSocketEventInput({
+        eventName: "client:custom.status.changed",
+      }),
+    ).toThrow("publish input is missing payload");
+
+    expect(() =>
+      assertPublishCustomSocketEventInput({
+        eventName: "client:custom.status.changed",
+        payload: null,
+        attachments: [
+          {
+            fieldName: "files",
+            originalName: "hello.txt",
+            mimeType: "text/plain",
+            sizeBytes: 99,
+            base64: Buffer.from("hello").toString("base64"),
+          },
+        ],
+      }),
+    ).toThrow("sizeBytes does not match");
+  });
+
+  it("publishes events over Socket and ignores divergent published acks", async () => {
+    const transport = new MockCustomEventTransport();
+
+    const response = await publishCustomSocketEventOverSocket({
+      transport,
+      request: {
+        eventName: "client:custom.status.changed",
+        payload: { status: "ready" },
+        payloadFrameCompression: "default",
+        idempotencyKey: "publish-1",
+      },
+      ackTimeoutMs: 1000,
+    });
+
+    expect(response).toMatchObject({
+      success: true,
+      eventId: "event-1",
+      eventName: "client:custom.status.changed",
+      recipients: 2,
+      idempotencyKey: "publish-1",
+      idempotentReplay: false,
+    });
+    expect(
+      transport.emittedEvents.some(({ event }) => event === "socket:event.publish"),
+    ).toBe(true);
+    expect(transport.connected).toBe(false);
+  });
+
+  it("propagates Socket publish rate-limit metadata", async () => {
+    await expect(
+      publishCustomSocketEventOverSocket({
+        transport: new RateLimitedPublishTransport(),
+        request: {
+          eventName: "client:custom.status.changed",
+          payload: null,
+        },
+        ackTimeoutMs: 1000,
+      }),
+    ).rejects.toMatchObject({
+      code: "RATE_LIMITED",
+      retryable: true,
+      retryAfterSeconds: 3,
+      details: {
+        rateLimit: {
+          limit: 10,
+          remaining: 0,
+        },
+      },
+    });
+  });
+
+  it("validates socket:event.published ack shape", () => {
+    expect(() =>
+      assertSocketEventPublishedAck({
+        success: true,
+        requestId: "request-1",
+        data: {
+          eventName: "client:custom.status.changed",
+          recipients: 1,
+          idempotentReplay: false,
+        },
+      }),
+    ).toThrow("socket:event.published data is missing eventId");
+  });
+
   it("subscribes, ignores divergent acks, decodes dynamic PayloadFrames, and unsubscribes", async () => {
     const transport = new MockCustomEventTransport();
     const received: unknown[] = [];
@@ -333,6 +499,135 @@ describe("custom socket events", () => {
         },
       },
     });
+  });
+
+  it("requires PayloadFrame signatures when configured", async () => {
+    const signing = { key: "test-signing-key", keyId: "test-key" };
+    const transport = new MockCustomEventTransport(
+      encodePayloadFrame(
+        {
+          id: "socket-1",
+          message: "ready",
+          user: { sub: "client-1" },
+        },
+        { requestId: "handshake", compression: "none", signing },
+      ),
+    );
+    const failures: unknown[] = [];
+    const sessionHandle = await startCustomSocketEventSession({
+      transport,
+      eventNames: ["client:custom.status.changed"],
+      ackTimeoutMs: 1000,
+      payloadFrameSigning: signing,
+      requirePayloadSignature: true,
+      onFatalError: (error) => {
+        failures.push(error);
+      },
+      onEvent: () => undefined,
+    });
+
+    transport.dispatch(
+      "client:custom.status.changed",
+      encodePayloadFrame(
+        {
+          eventId: "event-1",
+          eventName: "client:custom.status.changed",
+          emittedAt: "2026-05-11T12:00:00.000Z",
+          publisher: { principalType: "client", clientId: "client-1" },
+          payload: null,
+          attachments: [],
+        },
+        { requestId: "event-1", compression: "none" },
+      ),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await sessionHandle.close();
+
+    expect(failures[0]).toMatchObject({
+      code: "PLUG_VALIDATION_ERROR",
+      message: "PayloadFrame signature is required",
+    });
+  });
+
+  it("decodes agent profile updated events", async () => {
+    const transport = new MockCustomEventTransport();
+    const received: unknown[] = [];
+    const sessionHandle = await startAgentProfileUpdatedSession({
+      transport,
+      ackTimeoutMs: 1000,
+      onFatalError: (error) => {
+        throw error;
+      },
+      onEvent: (event, metadata) => {
+        received.push({ event, metadata });
+      },
+    });
+
+    transport.dispatch(
+      clientAgentProfileUpdatedEventName,
+      encodePayloadFrame(
+        {
+          success: true,
+          agentId: "agent-1",
+          profileVersion: 2,
+          profileUpdatedAt: "2026-05-11T12:00:00.000Z",
+          changedFields: ["name"],
+        },
+        { requestId: "profile-1", compression: "none" },
+      ),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await sessionHandle.close();
+
+    expect(received[0]).toMatchObject({
+      event: {
+        success: true,
+        agentId: "agent-1",
+        profileVersion: 2,
+      },
+      metadata: {
+        eventName: clientAgentProfileUpdatedEventName,
+        socketId: "socket-1",
+        payloadFrameRequestId: "profile-1",
+      },
+    });
+  });
+
+  it("validates agent profile updated timestamps", () => {
+    expect(() =>
+      assertAgentProfileUpdatedPayload({
+        success: true,
+        agent_id: "agent-1",
+        profile_version: 2,
+        profileUpdatedAt: "not-a-date",
+      }),
+    ).toThrow("profileUpdatedAt must be an ISO date string");
+  });
+
+  it("requires agent profile updated minimum server fields", () => {
+    expect(() =>
+      assertAgentProfileUpdatedPayload({
+        success: false,
+        agent_id: "agent-1",
+        profile_version: 2,
+      }),
+    ).toThrow("success must be true");
+
+    expect(() =>
+      assertAgentProfileUpdatedPayload({
+        success: true,
+        profile_version: 2,
+      }),
+    ).toThrow("missing agent_id");
+
+    expect(() =>
+      assertAgentProfileUpdatedPayload({
+        success: true,
+        agent_id: "agent-1",
+      }),
+    ).toThrow("missing profile_version");
   });
 
   it("requires requestId on failed control acks", () => {

@@ -3,11 +3,21 @@ import { randomUUID } from "node:crypto";
 import type { RelayConnectionReadyPayload } from "../contracts/api";
 import type { PayloadFrameSigningOptions } from "../contracts/payload-frame";
 import {
+  assertAgentProfileUpdatedPayload,
   assertCustomSocketEventFramePayload,
   assertCustomSocketEventNames,
+  assertCustomSocketEventName,
+  assertPublishCustomSocketEventInput,
   assertSocketEventControlAck,
+  assertSocketEventPublishedAck,
+  clientAgentProfileUpdatedEventName,
   defaultSocketEventAckTimeoutMs,
+  type AgentProfileUpdatedPayload,
   type CustomSocketEventFramePayload,
+  type PublishCustomSocketEventInput,
+  type PublishCustomSocketEventResponse,
+  type SocketEventRuntimeMetadata,
+  type SocketEventPublishedAck,
   type SocketEventControlAck,
 } from "../contracts/custom-socket-events";
 import { PlugError, PlugTimeoutError, PlugValidationError } from "../contracts/errors";
@@ -23,8 +33,11 @@ const subscribeEvent = "socket:event.subscribe";
 const subscribedEvent = "socket:event.subscribed";
 const unsubscribeEvent = "socket:event.unsubscribe";
 const unsubscribedEvent = "socket:event.unsubscribed";
+const publishEvent = "socket:event.publish";
+const publishedEvent = "socket:event.published";
 
 export interface CustomSocketEventTransport {
+  readonly id?: string;
   readonly connected: boolean;
   connect(): void;
   disconnect(): void;
@@ -38,7 +51,25 @@ export interface StartCustomSocketEventSessionInput {
   readonly eventNames: readonly string[];
   readonly ackTimeoutMs?: number;
   readonly payloadFrameSigning?: PayloadFrameSigningOptions;
-  readonly onEvent: (event: CustomSocketEventFramePayload) => void | Promise<void>;
+  readonly reconnectAttempt?: number;
+  readonly requirePayloadSignature?: boolean;
+  readonly onEvent: (
+    event: CustomSocketEventFramePayload,
+    metadata: SocketEventRuntimeMetadata,
+  ) => void | Promise<void>;
+  readonly onFatalError: (error: PlugError) => void;
+}
+
+export interface StartAgentProfileUpdatedSessionInput {
+  readonly transport: CustomSocketEventTransport;
+  readonly ackTimeoutMs?: number;
+  readonly payloadFrameSigning?: PayloadFrameSigningOptions;
+  readonly reconnectAttempt?: number;
+  readonly requirePayloadSignature?: boolean;
+  readonly onEvent: (
+    event: AgentProfileUpdatedPayload,
+    metadata: SocketEventRuntimeMetadata,
+  ) => void | Promise<void>;
   readonly onFatalError: (error: PlugError) => void;
 }
 
@@ -66,6 +97,40 @@ const createSocketAppError = (payload: unknown): PlugError => {
       ? appError.code
       : "SOCKET_APP_ERROR";
 
+  if (code === "ACCOUNT_BLOCKED") {
+    return new PlugError("The Plug account is blocked.", {
+      code,
+      description:
+        "The server closed the socket because the user or client account is blocked.",
+      details: isRecord(appError.details) ? appError.details : undefined,
+      technicalMessage:
+        typeof appError.message === "string" ? appError.message : undefined,
+      authRelated: true,
+    });
+  }
+
+  if (code === "AGENT_ACCESS_REVOKED") {
+    return new PlugError("Client access to this agent was revoked.", {
+      code,
+      description:
+        "Ask the agent owner to approve access again or update the credential before retrying.",
+      details: isRecord(appError.details) ? appError.details : undefined,
+      technicalMessage:
+        typeof appError.message === "string" ? appError.message : undefined,
+      authRelated: true,
+    });
+  }
+
+  if (code === "NAMESPACE_DEPRECATED") {
+    return new PlugError("The Plug socket namespace is deprecated.", {
+      code,
+      description: "Use the /consumers namespace for custom socket events.",
+      details: isRecord(appError.details) ? appError.details : undefined,
+      technicalMessage:
+        typeof appError.message === "string" ? appError.message : undefined,
+    });
+  }
+
   return new PlugError(
     typeof appError.message === "string" && appError.message.trim() !== ""
       ? appError.message
@@ -73,7 +138,10 @@ const createSocketAppError = (payload: unknown): PlugError => {
     {
       code,
       details: isRecord(appError.details) ? appError.details : undefined,
-      authRelated: code === "ACCOUNT_BLOCKED" || code === "AGENT_ACCESS_REVOKED",
+      retryable:
+        code === "CONSUMER_SOCKET_INITIALIZATION_FAILED" ||
+        code === "ROOM_JOIN_FAILED" ||
+        code === "SOCKET_APP_ERROR",
     },
   );
 };
@@ -113,6 +181,33 @@ const createControlError = (
     retryAfterSeconds,
     details: ack.rateLimit ? { rateLimit: ack.rateLimit } : undefined,
   });
+};
+
+const createPublishedError = (
+  ack: Extract<SocketEventPublishedAck, { success: false }>,
+): PlugError => {
+  const retryAfterSeconds = normalizeRetryAfterSeconds(ack.error.retryAfterMs);
+  return new PlugError(ack.error.message, {
+    code: ack.error.code,
+    statusCode: ack.error.statusCode,
+    retryable: ack.error.code === "RATE_LIMITED" || ack.error.statusCode === 429,
+    retryAfterSeconds,
+    details: ack.rateLimit ? { rateLimit: ack.rateLimit } : undefined,
+  });
+};
+
+const withSigningPolicy = (
+  signing: PayloadFrameSigningOptions | undefined,
+  requirePayloadSignature: boolean | undefined,
+): PayloadFrameSigningOptions | undefined => {
+  if (!signing && !requirePayloadSignature) {
+    return undefined;
+  }
+
+  return {
+    ...(signing ?? {}),
+    ...(requirePayloadSignature ? { requireSignature: true } : {}),
+  };
 };
 
 const waitForConnectionReady = async (
@@ -252,16 +347,141 @@ const waitForControlAck = async (input: {
     });
   });
 
+const waitForPublishedAck = async (input: {
+  readonly transport: CustomSocketEventTransport;
+  readonly requestId: string;
+  readonly timeoutMs: number;
+}): Promise<PublishCustomSocketEventResponse> =>
+  new Promise<PublishCustomSocketEventResponse>((resolve, reject) => {
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      input.transport.off(publishedEvent, handleAck);
+      input.transport.off(appErrorEvent, handleAppError);
+      input.transport.off(connectErrorEvent, handleConnectError);
+      input.transport.off(disconnectEvent, handleDisconnect);
+    };
+
+    const handleAck = (payload: unknown): void => {
+      try {
+        const ack = assertSocketEventPublishedAck(payload);
+        if (ack.requestId !== input.requestId) {
+          return;
+        }
+
+        cleanup();
+        if (!ack.success) {
+          reject(createPublishedError(ack));
+          return;
+        }
+
+        resolve({
+          success: true,
+          eventId: ack.data.eventId,
+          eventName: ack.data.eventName,
+          recipients: ack.data.recipients,
+          idempotentReplay: ack.data.idempotentReplay,
+          ...(ack.data.idempotencyKey !== undefined
+            ? { idempotencyKey: ack.data.idempotencyKey }
+            : {}),
+          requestId: ack.requestId,
+        });
+      } catch (error: unknown) {
+        cleanup();
+        reject(error);
+      }
+    };
+
+    const handleAppError = (payload: unknown): void => {
+      cleanup();
+      reject(createSocketAppError(payload));
+    };
+
+    const handleConnectError = (payload: unknown): void => {
+      cleanup();
+      reject(createConnectError(payload));
+    };
+
+    const handleDisconnect = (payload: unknown): void => {
+      cleanup();
+      reject(createDisconnectError(payload));
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(
+        new PlugTimeoutError(`Timed out while waiting for ${publishedEvent}`, {
+          timeoutMs: input.timeoutMs,
+          eventName: publishedEvent,
+          requestId: input.requestId,
+        }),
+      );
+    }, input.timeoutMs);
+
+    input.transport.on(publishedEvent, handleAck);
+    input.transport.on(appErrorEvent, handleAppError);
+    input.transport.on(connectErrorEvent, handleConnectError);
+    input.transport.on(disconnectEvent, handleDisconnect);
+  });
+
+export const publishCustomSocketEventOverSocket = async (input: {
+  readonly transport: CustomSocketEventTransport;
+  readonly request: PublishCustomSocketEventInput;
+  readonly ackTimeoutMs?: number;
+  readonly payloadFrameSigning?: PayloadFrameSigningOptions;
+  readonly requirePayloadSignature?: boolean;
+}): Promise<PublishCustomSocketEventResponse> => {
+  const request = assertPublishCustomSocketEventInput(input.request);
+  const timeoutMs =
+    request.timeoutMs ?? input.ackTimeoutMs ?? defaultSocketEventAckTimeoutMs;
+  const eventName = assertCustomSocketEventName(request.eventName);
+  const requestId = randomUUID();
+
+  await waitForConnectionReady(
+    input.transport,
+    timeoutMs,
+    withSigningPolicy(input.payloadFrameSigning, input.requirePayloadSignature),
+  );
+  try {
+    const published = waitForPublishedAck({
+      transport: input.transport,
+      requestId,
+      timeoutMs,
+    });
+
+    input.transport.emit(publishEvent, {
+      requestId,
+      ...(request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : {}),
+      eventName,
+      payload: request.payload,
+      ...(request.payloadFrameCompression
+        ? { payloadFrameCompression: request.payloadFrameCompression }
+        : {}),
+      ...(request.attachments && request.attachments.length > 0
+        ? { attachments: request.attachments }
+        : {}),
+    });
+
+    return await published;
+  } finally {
+    input.transport.disconnect();
+  }
+};
+
 export const startCustomSocketEventSession = async (
   input: StartCustomSocketEventSessionInput,
 ): Promise<CustomSocketEventSession> => {
   const eventNames = assertCustomSocketEventNames(input.eventNames);
   const timeoutMs = input.ackTimeoutMs ?? defaultSocketEventAckTimeoutMs;
+  const reconnectAttempt = Math.max(0, Math.floor(input.reconnectAttempt ?? 0));
   const subscribed = new Set<string>();
   const eventHandlers = new Map<string, (payload: unknown) => void>();
   let closing = false;
 
-  await waitForConnectionReady(input.transport, timeoutMs, input.payloadFrameSigning);
+  await waitForConnectionReady(
+    input.transport,
+    timeoutMs,
+    withSigningPolicy(input.payloadFrameSigning, input.requirePayloadSignature),
+  );
 
   const notifyFatal = (error: PlugError): void => {
     if (!closing) {
@@ -319,7 +539,10 @@ export const startCustomSocketEventSession = async (
       subscribed.add(eventName);
       const handler = (payload: unknown): void => {
         void decodePayloadFrameAsync<unknown>(payload, {
-          signing: input.payloadFrameSigning,
+          signing: withSigningPolicy(
+            input.payloadFrameSigning,
+            input.requirePayloadSignature,
+          ),
         })
           .then((decoded) => {
             const event = assertCustomSocketEventFramePayload(decoded.data);
@@ -329,7 +552,14 @@ export const startCustomSocketEventSession = async (
               );
             }
 
-            return input.onEvent(event);
+            return input.onEvent(event, {
+              eventName,
+              socketId: input.transport.id,
+              reconnectAttempt,
+              subscriptionCount: eventNames.length,
+              payloadFrameRequestId:
+                decoded.frame.requestId === null ? undefined : decoded.frame.requestId,
+            });
           })
           .catch((error: unknown) => {
             notifyFatal(
@@ -377,6 +607,81 @@ export const startCustomSocketEventSession = async (
       input.transport.off(appErrorEvent, handleAppError);
       input.transport.off(connectErrorEvent, handleConnectError);
       input.transport.off(disconnectEvent, handleDisconnect);
+      input.transport.disconnect();
+    },
+  };
+};
+
+export const startAgentProfileUpdatedSession = async (
+  input: StartAgentProfileUpdatedSessionInput,
+): Promise<CustomSocketEventSession> => {
+  const timeoutMs = input.ackTimeoutMs ?? defaultSocketEventAckTimeoutMs;
+  const reconnectAttempt = Math.max(0, Math.floor(input.reconnectAttempt ?? 0));
+  let closing = false;
+
+  await waitForConnectionReady(
+    input.transport,
+    timeoutMs,
+    withSigningPolicy(input.payloadFrameSigning, input.requirePayloadSignature),
+  );
+
+  const notifyFatal = (error: PlugError): void => {
+    if (!closing) {
+      input.onFatalError(error);
+    }
+  };
+
+  const handleAppError = (payload: unknown): void => {
+    notifyFatal(createSocketAppError(payload));
+  };
+  const handleConnectError = (payload: unknown): void => {
+    notifyFatal(createConnectError(payload));
+  };
+  const handleDisconnect = (payload: unknown): void => {
+    notifyFatal(createDisconnectError(payload));
+  };
+  const handleProfileUpdated = (payload: unknown): void => {
+    void decodePayloadFrameAsync<unknown>(payload, {
+      signing: withSigningPolicy(
+        input.payloadFrameSigning,
+        input.requirePayloadSignature,
+      ),
+    })
+      .then((decoded) =>
+        input.onEvent(assertAgentProfileUpdatedPayload(decoded.data), {
+          eventName: clientAgentProfileUpdatedEventName,
+          socketId: input.transport.id,
+          reconnectAttempt,
+          subscriptionCount: 1,
+          payloadFrameRequestId:
+            decoded.frame.requestId === null ? undefined : decoded.frame.requestId,
+        }),
+      )
+      .catch((error: unknown) => {
+        notifyFatal(
+          error instanceof PlugError
+            ? error
+            : new PlugError("Failed to process agent profile update event.", {
+                code: "SOCKET_AGENT_PROFILE_EVENT_PROCESSING_FAILED",
+                technicalMessage: error instanceof Error ? error.message : undefined,
+              }),
+        );
+      });
+  };
+
+  input.transport.on(appErrorEvent, handleAppError);
+  input.transport.on(connectErrorEvent, handleConnectError);
+  input.transport.on(disconnectEvent, handleDisconnect);
+  input.transport.on(clientAgentProfileUpdatedEventName, handleProfileUpdated);
+
+  return {
+    eventNames: [clientAgentProfileUpdatedEventName],
+    close: async (): Promise<void> => {
+      closing = true;
+      input.transport.off(appErrorEvent, handleAppError);
+      input.transport.off(connectErrorEvent, handleConnectError);
+      input.transport.off(disconnectEvent, handleDisconnect);
+      input.transport.off(clientAgentProfileUpdatedEventName, handleProfileUpdated);
       input.transport.disconnect();
     },
   };
