@@ -55,6 +55,21 @@ const normalizeOutputBinaryProperty = (value: unknown): string => {
   return propertyName;
 };
 
+const normalizeOutputJsonProperty = (
+  value: unknown,
+  fallback: string,
+  label: string,
+): string => {
+  const propertyName = toOptionalString(value) ?? fallback;
+  if (!/^[A-Za-z0-9_-]+$/.test(propertyName)) {
+    throw new PlugValidationError(
+      `${label} may contain only letters, numbers, underscores, and hyphens`,
+    );
+  }
+
+  return propertyName;
+};
+
 const parseAdvancedOptions = (value: unknown): unknown => {
   const text = typeof value === "string" ? value.trim() : "";
   if (text === "") {
@@ -134,6 +149,13 @@ export const executePlugToolsPdfNode = async (
           itemIndex,
           true,
         ) as boolean;
+        const metadataProperty = includeMetadata
+          ? normalizeOutputJsonProperty(
+              context.getNodeParameter("metadataProperty", itemIndex, "__plugTools"),
+              "__plugTools",
+              "Metadata Property",
+            )
+          : undefined;
 
         const browser = resolvePdfBrowserLaunchOptions({
           executablePath: browserOptions.browserExecutablePath,
@@ -154,6 +176,7 @@ export const executePlugToolsPdfNode = async (
           headerTemplate: pdfOptions.headerTemplate,
           footerTemplate: pdfOptions.footerTemplate,
           waitUntil: pdfOptions.waitUntil,
+          media: pdfOptions.media,
           renderDelayMs: pdfOptions.renderDelayMs,
           maxHtmlSizeBytes: pdfOptions.maxHtmlSizeBytes,
           maxOutputSizeBytes: pdfOptions.maxOutputSizeBytes,
@@ -177,7 +200,7 @@ export const executePlugToolsPdfNode = async (
             ...items[itemIndex].json,
             ...(includeMetadata
               ? {
-                  __plugTools: {
+                  [metadataProperty ?? "__plugTools"]: {
                     operation: "htmlToPdf",
                     fileName,
                     mimeType: "application/pdf",
@@ -243,6 +266,7 @@ export const executePlugToolsBarcodeNode = async (
           maxOutputSizeBytes: renderOptions.maxOutputSizeBytes,
           includeText: renderOptions.includeText,
           textXAlign: renderOptions.textXAlign,
+          qrErrorCorrection: renderOptions.qrErrorCorrection,
           foregroundColor: renderOptions.foregroundColor,
           backgroundColor: renderOptions.backgroundColor,
         },
@@ -256,11 +280,7 @@ export const executePlugToolsBarcodeNode = async (
         ),
       );
       const fileName = normalizeBarcodeFileName(
-        context.getNodeParameter(
-          "fileName",
-          itemIndex,
-          `barcode.${barcode.outputFormat}`,
-        ),
+        context.getNodeParameter("fileName", itemIndex, "barcode"),
         barcode.outputFormat,
       );
       const includeMetadata = context.getNodeParameter(
@@ -273,6 +293,24 @@ export const executePlugToolsBarcodeNode = async (
         itemIndex,
         false,
       ) as boolean;
+      const metadataProperty = includeMetadata
+        ? normalizeOutputJsonProperty(
+            context.getNodeParameter("metadataProperty", itemIndex, "__plugTools"),
+            "__plugTools",
+            "Metadata Property",
+          )
+        : undefined;
+      const base64OutputProperty = includeBase64Json
+        ? normalizeOutputJsonProperty(
+            context.getNodeParameter(
+              "base64OutputProperty",
+              itemIndex,
+              "generatedCodeBase64",
+            ),
+            "generatedCodeBase64",
+            "Base64 Output Property",
+          )
+        : undefined;
       const startedAt = now();
       const generated = await generateBarcode(barcode);
       const durationMs = now() - startedAt;
@@ -287,7 +325,7 @@ export const executePlugToolsBarcodeNode = async (
           ...items[itemIndex].json,
           ...(includeMetadata
             ? {
-                __plugTools: {
+                [metadataProperty ?? "__plugTools"]: {
                   operation: "generateCode",
                   barcodeType: barcode.barcodeType,
                   outputFormat: barcode.outputFormat,
@@ -301,7 +339,8 @@ export const executePlugToolsBarcodeNode = async (
             : {}),
           ...(includeBase64Json
             ? {
-                generatedCodeBase64: generated.buffer.toString("base64"),
+                [base64OutputProperty ?? "generatedCodeBase64"]:
+                  generated.buffer.toString("base64"),
               }
             : {}),
         },

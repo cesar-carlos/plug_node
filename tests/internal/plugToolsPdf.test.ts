@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolvePdfBrowserLaunchOptions,
   normalizeHtmlDocument,
+  resolvePdfRenderHardLimits,
   resolvePdfRenderOptions,
   shouldBlockPdfRequestUrl,
 } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/tools/pdf";
@@ -68,12 +69,14 @@ describe("Plug tools PDF renderer helpers", () => {
         scale: 1.5,
         marginTop: "1in",
         waitUntil: "networkidle",
+        media: "screen",
         renderDelayMs: 50,
       }),
     ).toMatchObject({
       format: "Letter",
       scale: 1.5,
       waitUntil: "networkidle",
+      media: "screen",
       renderDelayMs: 50,
       margin: {
         top: "1in",
@@ -90,6 +93,27 @@ describe("Plug tools PDF renderer helpers", () => {
     expect(() => resolvePdfRenderOptions({ waitUntil: "commit" })).toThrow(
       "Wait Until must be load, domcontentloaded, or networkidle",
     );
+    expect(() => resolvePdfRenderOptions({ media: "reader" })).toThrow(
+      "PDF Media must be print or screen",
+    );
+    expect(() =>
+      resolvePdfRenderOptions(
+        { maxHtmlSizeBytes: 1000, maxOutputSizeBytes: 1001 },
+        { maxHtmlSizeBytes: 1000, maxOutputSizeBytes: 1000 },
+      ),
+    ).toThrow("Max PDF Output Size Bytes must be less than or equal to 1000 bytes");
+  });
+
+  it("allows deployment-specific PDF hard caps through environment variables", () => {
+    expect(
+      resolvePdfRenderHardLimits({
+        PLUG_TOOLS_MAX_HTML_SIZE_BYTES: "123",
+        PLUG_TOOLS_MAX_PDF_OUTPUT_SIZE_BYTES: "456",
+      }),
+    ).toEqual({
+      maxHtmlSizeBytes: 123,
+      maxOutputSizeBytes: 456,
+    });
   });
 
   it("injects CSS and enforces the configured HTML size limit", () => {

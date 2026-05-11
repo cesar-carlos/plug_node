@@ -127,9 +127,29 @@ Legacy access-only nodes remain published for compatibility with existing workfl
 
 For Docker-based n8n deployments, install Chrome or Chromium in the image and set `PLUG_TOOLS_CHROME_EXECUTABLE_PATH` to the executable path. `playwright-core` does not download a browser at install time.
 
-For safety, the PDF node accepts HTML strings only, supports optional CSS injection, disables JavaScript by default, blocks external network requests, and always blocks `file:` URLs. It also exposes `Wait Until`, `Render Delay (ms)`, `Max HTML Size Bytes`, and `Max PDF Output Size Bytes` controls for larger templates.
+Example Debian-based Docker layer:
 
-`Plug Database Advanced Barcode` uses `@bwip-js/node` and supports QR Code, Code 128, EAN, UPC, Data Matrix, PDF417, and Aztec output. EAN and UPC inputs are validated before rendering. PNG and SVG binary output include optional metadata with size and duration, and QR/barcode output can also be emitted as JSON base64 when needed.
+```dockerfile
+USER root
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends chromium \
+  && rm -rf /var/lib/apt/lists/*
+ENV PLUG_TOOLS_CHROME_EXECUTABLE_PATH=/usr/bin/chromium
+USER node
+```
+
+For Alpine-based images, use `apk add --no-cache chromium` and set `PLUG_TOOLS_CHROME_EXECUTABLE_PATH=/usr/bin/chromium-browser` when that is the installed executable path.
+
+For safety, the PDF node accepts HTML strings only, supports optional CSS injection, disables JavaScript by default, blocks external network requests, and always blocks `file:` URLs. It also exposes `PDF Media`, `Wait Until`, `Render Delay (ms)`, `Max HTML Size Bytes`, and `Max PDF Output Size Bytes` controls for larger templates.
+
+Deployment owners can enforce tighter upper bounds with:
+
+- `PLUG_TOOLS_MAX_HTML_SIZE_BYTES`
+- `PLUG_TOOLS_MAX_PDF_OUTPUT_SIZE_BYTES`
+- `PLUG_TOOLS_MAX_BARCODE_TEXT_SIZE_BYTES`
+- `PLUG_TOOLS_MAX_BARCODE_OUTPUT_SIZE_BYTES`
+
+`Plug Database Advanced Barcode` uses `@bwip-js/node` and supports QR Code, Code 128, EAN, UPC, Data Matrix, PDF417, and Aztec output. EAN and UPC inputs are validated before rendering. PNG and SVG binary output include optional metadata with size and duration, and QR/barcode output can also be emitted as JSON base64 when needed. Use `Metadata Property` and `Base64 Output Property` when the default JSON fields would collide with upstream item fields.
 
 Use n8n's built-in `Compression`, `Convert to File`, and `Extract From File` nodes for gzip, base64, and generic file conversion.
 

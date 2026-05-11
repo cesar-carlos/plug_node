@@ -23,6 +23,7 @@ export interface BarcodeRenderInput {
   readonly maxOutputSizeBytes: number;
   readonly includeText: boolean;
   readonly textXAlign: "left" | "center" | "right";
+  readonly qrErrorCorrection: "L" | "M" | "Q" | "H";
   readonly foregroundColor?: string;
   readonly backgroundColor?: string;
   readonly advancedOptions?: Record<string, string | number | boolean>;
@@ -41,8 +42,14 @@ export interface RawBarcodeRenderOptions {
   readonly maxOutputSizeBytes?: unknown;
   readonly includeText?: unknown;
   readonly textXAlign?: unknown;
+  readonly qrErrorCorrection?: unknown;
   readonly foregroundColor?: unknown;
   readonly backgroundColor?: unknown;
+}
+
+export interface BarcodeRenderHardLimits {
+  readonly maxTextSizeBytes: number;
+  readonly maxOutputSizeBytes: number;
 }
 
 type BwipJsRenderOptions = Record<string, string | number | boolean | undefined> & {
@@ -63,6 +70,8 @@ const defaultBarcodeType = "qrcode";
 const defaultBarcodeScale = 3;
 const defaultMaxBarcodeTextSizeBytes = 4_096;
 const defaultMaxBarcodeOutputSizeBytes = 10_000_000;
+const defaultHardMaxBarcodeTextSizeBytes = 100_000;
+const defaultHardMaxBarcodeOutputSizeBytes = 50_000_000;
 const allowedOutputFormats = new Set<BarcodeOutputFormat>(["png", "svg"]);
 const allowedBarcodeTypes = new Set<BarcodeType>([
   "qrcode",
@@ -75,6 +84,7 @@ const allowedBarcodeTypes = new Set<BarcodeType>([
   "azteccode",
 ]);
 const allowedTextAlignments = new Set(["left", "center", "right"]);
+const allowedQrErrorCorrectionLevels = new Set(["L", "M", "Q", "H"]);
 const colorPattern = /^#?[0-9a-fA-F]{6}$/;
 
 const toOptionalString = (value: unknown): string | undefined => {
@@ -113,6 +123,36 @@ const toPositiveInteger = (value: unknown, fallback: number, label: string): num
   }
 
   return numberValue;
+};
+
+const toCappedPositiveInteger = (
+  value: unknown,
+  fallback: number,
+  label: string,
+  hardLimit: number,
+): number => {
+  const normalized = toPositiveInteger(value, fallback, label);
+  if (normalized > hardLimit) {
+    throw new PlugValidationError(
+      `${label} must be less than or equal to ${hardLimit} bytes`,
+    );
+  }
+
+  return normalized;
+};
+
+const readPositiveIntegerEnv = (
+  env: NodeJS.ProcessEnv,
+  name: string,
+  fallback: number,
+): number => {
+  const value = env[name];
+  if (value === undefined || value.trim() === "") {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 };
 
 const toBoolean = (value: unknown, fallback: boolean): boolean =>
@@ -194,6 +234,21 @@ const validateBarcodeTextForType = (barcodeType: BarcodeType, text: string): voi
 export const normalizeBarcodeOutputProperty = (value: unknown): string =>
   toOptionalString(value) ?? "data";
 
+export const resolveBarcodeRenderHardLimits = (
+  env: NodeJS.ProcessEnv = process.env,
+): BarcodeRenderHardLimits => ({
+  maxTextSizeBytes: readPositiveIntegerEnv(
+    env,
+    "PLUG_TOOLS_MAX_BARCODE_TEXT_SIZE_BYTES",
+    defaultHardMaxBarcodeTextSizeBytes,
+  ),
+  maxOutputSizeBytes: readPositiveIntegerEnv(
+    env,
+    "PLUG_TOOLS_MAX_BARCODE_OUTPUT_SIZE_BYTES",
+    defaultHardMaxBarcodeOutputSizeBytes,
+  ),
+});
+
 export const normalizeBarcodeFileName = (
   value: unknown,
   outputFormat: BarcodeOutputFormat,
@@ -211,7 +266,9 @@ export const resolveBarcodeRenderInput = (input: {
   readonly outputFormat: unknown;
   readonly renderOptions?: RawBarcodeRenderOptions;
   readonly advancedOptions?: unknown;
+  readonly hardLimits?: BarcodeRenderHardLimits;
 }): BarcodeRenderInput => {
+  const hardLimits = input.hardLimits ?? resolveBarcodeRenderHardLimits();
   const barcodeType = toOptionalString(input.barcodeType) ?? defaultBarcodeType;
   if (!allowedBarcodeTypes.has(barcodeType as BarcodeType)) {
     throw new PlugValidationError(
@@ -229,11 +286,19 @@ export const resolveBarcodeRenderInput = (input: {
     throw new PlugValidationError("Text X Align must be left, center, or right");
   }
 
+  const qrErrorCorrection = (
+    toOptionalString(input.renderOptions?.qrErrorCorrection) ?? "M"
+  ).toUpperCase();
+  if (!allowedQrErrorCorrectionLevels.has(qrErrorCorrection)) {
+    throw new PlugValidationError("QR Error Correction must be L, M, Q, or H");
+  }
+
   const text = normalizeBarcodeText(input.text);
-  const maxTextSizeBytes = toPositiveInteger(
+  const maxTextSizeBytes = toCappedPositiveInteger(
     input.renderOptions?.maxTextSizeBytes,
     defaultMaxBarcodeTextSizeBytes,
     "Max Text Size Bytes",
+    hardLimits.maxTextSizeBytes,
   );
   const height = toOptionalPositiveNumber(input.renderOptions?.height, "Height");
   const foregroundColor = normalizeHexColor(
@@ -254,14 +319,16 @@ export const resolveBarcodeRenderInput = (input: {
     barcodeType: barcodeType as BarcodeType,
     outputFormat: outputFormat as BarcodeOutputFormat,
     scale: toPositiveNumber(input.renderOptions?.scale, defaultBarcodeScale, "Scale"),
-    maxOutputSizeBytes: toPositiveInteger(
+    maxOutputSizeBytes: toCappedPositiveInteger(
       input.renderOptions?.maxOutputSizeBytes,
       defaultMaxBarcodeOutputSizeBytes,
       "Max Output Size Bytes",
+      hardLimits.maxOutputSizeBytes,
     ),
     ...(height ? { height } : {}),
     includeText: toBoolean(input.renderOptions?.includeText, false),
     textXAlign: textXAlign as BarcodeRenderInput["textXAlign"],
+    qrErrorCorrection: qrErrorCorrection as BarcodeRenderInput["qrErrorCorrection"],
     ...(foregroundColor ? { foregroundColor } : {}),
     ...(backgroundColor ? { backgroundColor } : {}),
     ...(advancedOptions ? { advancedOptions } : {}),
@@ -275,6 +342,7 @@ const buildBwipOptions = (input: BarcodeRenderInput): BwipJsRenderOptions => ({
   scale: input.scale,
   ...(input.height !== undefined ? { height: input.height } : {}),
   ...(input.includeText ? { includetext: true, textxalign: input.textXAlign } : {}),
+  ...(input.barcodeType === "qrcode" ? { eclevel: input.qrErrorCorrection } : {}),
   ...(input.foregroundColor ? { barcolor: input.foregroundColor } : {}),
   ...(input.backgroundColor ? { backgroundcolor: input.backgroundColor } : {}),
 });

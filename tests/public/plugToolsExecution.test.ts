@@ -104,6 +104,7 @@ describe("Plug tools execution", () => {
           format: "A4",
           printBackground: true,
           waitUntil: "domcontentloaded",
+          media: "screen",
           renderDelayMs: 25,
         });
         expect(input.html).toContain("<style>body { color: red; }</style>");
@@ -126,9 +127,11 @@ describe("Plug tools execution", () => {
           format: "A4",
           printBackground: true,
           waitUntil: "domcontentloaded",
+          media: "screen",
           renderDelayMs: 25,
         },
         includePlugToolsMetadata: true,
+        metadataProperty: "pdfMeta",
       },
     });
 
@@ -139,7 +142,7 @@ describe("Plug tools execution", () => {
 
     expect(output[0][0].json).toMatchObject({
       input: true,
-      __plugTools: {
+      pdfMeta: {
         operation: "htmlToPdf",
         fileName: "invoice.pdf",
         sizeBytes: 9,
@@ -204,7 +207,9 @@ describe("Plug tools execution", () => {
         },
         advancedOptionsJson: "{}",
         includeBase64Json: true,
+        base64OutputProperty: "qrBase64",
         includePlugToolsMetadata: true,
+        metadataProperty: "barcodeMeta",
       },
     });
 
@@ -213,7 +218,7 @@ describe("Plug tools execution", () => {
     });
 
     expect(output[0][0].json).toMatchObject({
-      __plugTools: {
+      barcodeMeta: {
         operation: "generateCode",
         barcodeType: "qrcode",
         outputFormat: "png",
@@ -221,7 +226,7 @@ describe("Plug tools execution", () => {
         sizeBytes: expect.any(Number),
         durationMs: expect.any(Number),
       },
-      generatedCodeBase64: expect.any(String),
+      qrBase64: expect.any(String),
     });
     expect(output[0][0].binary?.qr).toMatchObject({
       mimeType: "image/png",
@@ -238,7 +243,6 @@ describe("Plug tools execution", () => {
         text: "0123456789",
         barcodeType: "code128",
         outputFormat: "svg",
-        fileName: "code128",
         outputBinaryProperty: "barcode",
         renderOptions: {
           scale: 2,
@@ -257,7 +261,7 @@ describe("Plug tools execution", () => {
 
     expect(output[0][0].binary?.barcode).toMatchObject({
       mimeType: "image/svg+xml",
-      fileName: "code128.svg",
+      fileName: "barcode.svg",
     });
     expect(context.preparedBinaries[0].buffer.toString("utf8")).toContain("<svg");
   });

@@ -37,7 +37,8 @@ Use the advanced package with:
 - HTML: an HTML string from a previous node or an expression
 - CSS: optional inline stylesheet for the rendered document
 - browser: `Browser Executable Path`, `PLUG_TOOLS_CHROME_EXECUTABLE_PATH`, or an installed Chrome channel
-- PDF options: set `Wait Until`, `Render Delay (ms)`, and output size limits for larger templates
+- PDF options: set `PDF Media`, `Wait Until`, `Render Delay (ms)`, and output size limits for larger templates
+- metadata: set `Metadata Property` if the input JSON already uses `__plugTools`
 
 Expected result: the input JSON is preserved and the generated PDF is attached as n8n binary data.
 
@@ -50,5 +51,6 @@ Use the advanced package with:
 - barcode type: `QR Code` for URLs or text, or a supported linear/2D barcode type
 - output format: `PNG` for image workflows or `SVG` for vector output
 - optional `Include Base64 JSON` when a downstream API needs a JSON string instead of binary data
+- optional `Base64 Output Property` and `Metadata Property` to avoid overwriting existing JSON fields
 
 Expected result: the input JSON is preserved and the generated image is attached as n8n binary data.

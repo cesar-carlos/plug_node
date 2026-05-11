@@ -7,6 +7,7 @@ import { PlugValidationError } from "../contracts/errors";
 export type PdfBrowserChannel = "chrome" | "msedge" | "chromium";
 export type PdfPaperFormat = "A3" | "A4" | "A5" | "Legal" | "Letter";
 export type PdfWaitUntil = "load" | "domcontentloaded" | "networkidle";
+export type PdfMedia = "print" | "screen";
 
 export interface PdfBrowserLaunchOptions {
   readonly executablePath?: string;
@@ -22,6 +23,7 @@ export interface PdfRenderOptions {
   readonly preferCSSPageSize: boolean;
   readonly scale: number;
   readonly waitUntil: PdfWaitUntil;
+  readonly media: PdfMedia;
   readonly renderDelayMs: number;
   readonly maxHtmlSizeBytes: number;
   readonly maxOutputSizeBytes: number;
@@ -66,9 +68,15 @@ export interface RawPdfRenderOptions {
   readonly headerTemplate?: unknown;
   readonly footerTemplate?: unknown;
   readonly waitUntil?: unknown;
+  readonly media?: unknown;
   readonly renderDelayMs?: unknown;
   readonly maxHtmlSizeBytes?: unknown;
   readonly maxOutputSizeBytes?: unknown;
+}
+
+export interface PdfRenderHardLimits {
+  readonly maxHtmlSizeBytes: number;
+  readonly maxOutputSizeBytes: number;
 }
 
 const defaultBrowserChannel: PdfBrowserChannel = "chrome";
@@ -77,6 +85,8 @@ const defaultPdfMargin = "20mm";
 const defaultRenderDelayMs = 0;
 const defaultMaxHtmlSizeBytes = 1_000_000;
 const defaultMaxPdfOutputSizeBytes = 25_000_000;
+const defaultHardMaxHtmlSizeBytes = 5_000_000;
+const defaultHardMaxPdfOutputSizeBytes = 100_000_000;
 const allowedBrowserChannels = new Set<PdfBrowserChannel>([
   "chrome",
   "msedge",
@@ -88,6 +98,7 @@ const allowedWaitUntilValues = new Set<PdfWaitUntil>([
   "domcontentloaded",
   "networkidle",
 ]);
+const allowedPdfMedia = new Set<PdfMedia>(["print", "screen"]);
 
 const toOptionalString = (value: unknown): string | undefined => {
   if (typeof value !== "string") {
@@ -134,6 +145,36 @@ const toPositiveInteger = (value: unknown, fallback: number, label: string): num
   return numberValue;
 };
 
+const toCappedPositiveInteger = (
+  value: unknown,
+  fallback: number,
+  label: string,
+  hardLimit: number,
+): number => {
+  const normalized = toPositiveInteger(value, fallback, label);
+  if (normalized > hardLimit) {
+    throw new PlugValidationError(
+      `${label} must be less than or equal to ${hardLimit} bytes`,
+    );
+  }
+
+  return normalized;
+};
+
+const readPositiveIntegerEnv = (
+  env: NodeJS.ProcessEnv,
+  name: string,
+  fallback: number,
+): number => {
+  const value = env[name];
+  if (value === undefined || value.trim() === "") {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 const toScale = (value: unknown): number => {
   const scale = toPositiveNumber(value, 1, "Scale");
   if (scale < 0.1 || scale > 2) {
@@ -145,6 +186,21 @@ const toScale = (value: unknown): number => {
 
 const normalizeMargin = (value: unknown): string =>
   toOptionalString(value) ?? defaultPdfMargin;
+
+export const resolvePdfRenderHardLimits = (
+  env: NodeJS.ProcessEnv = process.env,
+): PdfRenderHardLimits => ({
+  maxHtmlSizeBytes: readPositiveIntegerEnv(
+    env,
+    "PLUG_TOOLS_MAX_HTML_SIZE_BYTES",
+    defaultHardMaxHtmlSizeBytes,
+  ),
+  maxOutputSizeBytes: readPositiveIntegerEnv(
+    env,
+    "PLUG_TOOLS_MAX_PDF_OUTPUT_SIZE_BYTES",
+    defaultHardMaxPdfOutputSizeBytes,
+  ),
+});
 
 export const normalizeHtml = (value: unknown): string => {
   if (typeof value !== "string" || value.trim() === "") {
@@ -239,6 +295,7 @@ export const resolvePdfBrowserLaunchOptions = (
 
 export const resolvePdfRenderOptions = (
   options: RawPdfRenderOptions,
+  hardLimits: PdfRenderHardLimits = resolvePdfRenderHardLimits(),
 ): PdfRenderOptions => {
   const formatValue = toOptionalString(options.format) ?? "A4";
   if (!allowedPdfFormats.has(formatValue as PdfPaperFormat)) {
@@ -252,6 +309,11 @@ export const resolvePdfRenderOptions = (
     );
   }
 
+  const mediaValue = toOptionalString(options.media) ?? "print";
+  if (!allowedPdfMedia.has(mediaValue as PdfMedia)) {
+    throw new PlugValidationError("PDF Media must be print or screen");
+  }
+
   return {
     format: formatValue as PdfPaperFormat,
     landscape: toBoolean(options.landscape, false),
@@ -259,20 +321,23 @@ export const resolvePdfRenderOptions = (
     preferCSSPageSize: toBoolean(options.preferCSSPageSize, false),
     scale: toScale(options.scale),
     waitUntil: waitUntilValue as PdfWaitUntil,
+    media: mediaValue as PdfMedia,
     renderDelayMs: toNonNegativeNumber(
       options.renderDelayMs,
       defaultRenderDelayMs,
       "Render Delay (ms)",
     ),
-    maxHtmlSizeBytes: toPositiveInteger(
+    maxHtmlSizeBytes: toCappedPositiveInteger(
       options.maxHtmlSizeBytes,
       defaultMaxHtmlSizeBytes,
       "Max HTML Size Bytes",
+      hardLimits.maxHtmlSizeBytes,
     ),
-    maxOutputSizeBytes: toPositiveInteger(
+    maxOutputSizeBytes: toCappedPositiveInteger(
       options.maxOutputSizeBytes,
       defaultMaxPdfOutputSizeBytes,
       "Max PDF Output Size Bytes",
+      hardLimits.maxOutputSizeBytes,
     ),
     margin: {
       top: normalizeMargin(options.marginTop),
@@ -372,7 +437,7 @@ export const createPlaywrightHtmlToPdfRenderer = (): HtmlToPdfRenderer => {
         if (input.pdf.renderDelayMs > 0) {
           await page.waitForTimeout(input.pdf.renderDelayMs);
         }
-        await page.emulateMedia({ media: "print" });
+        await page.emulateMedia({ media: input.pdf.media });
         const pdf = await page.pdf(buildPdfOptions(input.pdf));
         if (pdf.length > input.pdf.maxOutputSizeBytes) {
           throw new PlugValidationError(

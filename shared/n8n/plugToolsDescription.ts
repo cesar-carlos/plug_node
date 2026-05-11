@@ -93,6 +93,17 @@ const pdfOptions: INodeProperties = {
       description: "Page readiness event to wait for before printing the PDF.",
     },
     {
+      displayName: "PDF Media",
+      name: "media",
+      type: "options",
+      default: "print",
+      options: [
+        { name: "Print", value: "print" },
+        { name: "Screen", value: "screen" },
+      ],
+      description: "CSS media type to emulate before printing the PDF.",
+    },
+    {
       displayName: "Render Delay (ms)",
       name: "renderDelayMs",
       type: "number",
@@ -293,6 +304,19 @@ const barcodeRenderOptions: INodeProperties = {
       description: "Text alignment for human-readable barcode text.",
     },
     {
+      displayName: "QR Error Correction",
+      name: "qrErrorCorrection",
+      type: "options",
+      default: "M",
+      options: [
+        { name: "Low", value: "L" },
+        { name: "Medium", value: "M" },
+        { name: "Quartile", value: "Q" },
+        { name: "High", value: "H" },
+      ],
+      description: "QR Code error correction level. Only applies to QR Code output.",
+    },
+    {
       displayName: "Foreground Color",
       name: "foregroundColor",
       type: "string",
@@ -375,6 +399,18 @@ export const buildPlugToolsPdfNodeDescription = (
       description:
         "Whether to include the __plugTools object with generation metadata in output JSON.",
     },
+    {
+      displayName: "Metadata Property",
+      name: "metadataProperty",
+      type: "string",
+      default: "__plugTools",
+      displayOptions: {
+        show: {
+          includePlugToolsMetadata: [true],
+        },
+      },
+      description: "JSON property where generation metadata should be stored.",
+    },
   ]);
 
 export const buildPlugToolsBarcodeNodeDescription = (
@@ -439,7 +475,7 @@ export const buildPlugToolsBarcodeNodeDescription = (
       displayName: "File Name",
       name: "fileName",
       type: "string",
-      default: "barcode.png",
+      default: "barcode",
       description: "Name of the generated image file.",
     },
     {
@@ -470,11 +506,35 @@ export const buildPlugToolsBarcodeNodeDescription = (
         "Whether to include the generated image as base64 in output JSON in addition to binary data.",
     },
     {
+      displayName: "Base64 Output Property",
+      name: "base64OutputProperty",
+      type: "string",
+      default: "generatedCodeBase64",
+      displayOptions: {
+        show: {
+          includeBase64Json: [true],
+        },
+      },
+      description: "JSON property where the optional base64 image should be stored.",
+    },
+    {
       displayName: "Include Plug Tools Metadata",
       name: "includePlugToolsMetadata",
       type: "boolean",
       default: true,
       description:
         "Whether to include the __plugTools object with generation metadata in output JSON.",
+    },
+    {
+      displayName: "Metadata Property",
+      name: "metadataProperty",
+      type: "string",
+      default: "__plugTools",
+      displayOptions: {
+        show: {
+          includePlugToolsMetadata: [true],
+        },
+      },
+      description: "JSON property where generation metadata should be stored.",
     },
   ]);
