@@ -12,7 +12,7 @@ This repository contains the Plug Database n8n community node workspace.
 - `n8n-nodes-plug-database`
   - public REST-only package
   - exposes one consolidated `Plug Database` node
-  - remains the clean candidate for n8n verification because it avoids extra runtime tool dependencies
+  - includes local PDF and barcode tool runtimes, so n8n Cloud verification should be treated as a separate compatibility check
 - `n8n-nodes-plug-database-advanced`
   - advanced npm package
   - REST + consumer socket support
@@ -47,6 +47,7 @@ Resources:
 - `SQL`
 - `Client Access`
 - `User Access`
+- `Tools`
 
 The SQL resource can override `Agent ID` and `Client Token` per workflow step. Resolution order is:
 
@@ -60,10 +61,17 @@ The `User Access` resource browses the agent catalog and manages owner-side appr
 
 Legacy access-only nodes remain registered for workflow compatibility, but they are hidden from the node creator for new users.
 
-Tool nodes:
+Tools:
 
-- `Plug Database Advanced PDF` renders trusted HTML strings to PDF binary files using `playwright-core` and an installed Chrome/Chromium browser.
-- `Plug Database Advanced Barcode` generates QR codes and common barcodes as PNG or SVG binary files using `@bwip-js/node`.
+- `HTML to PDF` renders trusted HTML strings to PDF binary files using `playwright-core` and an installed Chrome/Chromium browser.
+- Document tools include `Markdown to PDF`, `Text to PDF`, `Merge PDFs`, `Split PDF`, and `Extract PDF Text`.
+- Image tools include resize, convert, compress, watermark, and thumbnail operations powered by `sharp`.
+- Code and identity tools include `Generate Barcode`, `Read Barcode`, CPF/CNPJ validation and formatting, and UUID generation.
+- Data tools include JSONata transforms, CSV/JSON conversion, text normalization, regex extraction, and JSON Schema validation.
+- Security tools include hash, HMAC, Base64, JWT decode, and AES-256-GCM text encrypt/decrypt helpers.
+- Date and value tools include date parsing/formatting, business-day math, currency formatting, and number-to-words conversion.
+- Plug-specific helpers build socket event payloads and SQL request/row/access-request summaries without adding new endpoints.
+- `Publish Socket Event` publishes `client:custom.*` events over REST in both packages and over Socket in the advanced package.
 - Use n8n's built-in `Compression`, `Convert to File`, and `Extract From File` nodes for gzip, base64, and generic file conversion.
 
 ## Example workflows
@@ -111,7 +119,9 @@ npm run scan:public
 
 ## Verification path
 
-`n8n-nodes-plug-database` is kept REST-only and dependency-light for the public verification path. Tooling that requires runtime dependencies lives in `n8n-nodes-plug-database-advanced`.
+`n8n-nodes-plug-database` is kept REST-only. Document, image, data, security, date/value, identity, Plug-specific, barcode, and REST socket-event publishing tools now live under `Resource = Tools` in both consolidated packages; `n8n-nodes-plug-database-advanced` additionally supports Socket publish and Socket relay behavior.
+
+Because the public package now ships local tool runtime dependencies, passing `scan:public` is still useful but should not be read as an n8n Cloud verification guarantee.
 
 After a GitHub Actions publish succeeds, run the dedicated `Scan Public Package` workflow or execute:
 

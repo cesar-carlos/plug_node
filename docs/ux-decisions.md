@@ -17,12 +17,14 @@ The API base URL is fixed in code.
 
 - REST-only
 - no Socket options in the UI
-- intended for n8n verification
+- includes Tools operations without Socket publish
+- includes local PDF and barcode runtime dependencies, so Cloud verification is not assumed from the package name alone
 
 ### Advanced package
 
 - explicit `Channel = REST | Socket`
 - `Chunk Items` output mode
+- includes Tools operations with REST or Socket publish where applicable
 - npm-only distribution
 
 ## Output behavior

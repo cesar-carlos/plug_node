@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,26 +33,59 @@ if (packageNames.length === 0) {
   );
 }
 
+const sleepSync = (durationMs) => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, durationMs);
+};
+
+const acquireLock = (lockDir) => {
+  const deadline = Date.now() + 60_000;
+
+  while (true) {
+    try {
+      mkdirSync(lockDir);
+      return () => rmSync(lockDir, { recursive: true, force: true });
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
+      }
+
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for sync lock: ${lockDir}`);
+      }
+
+      sleepSync(100);
+    }
+  }
+};
+
 for (const packageName of packageNames) {
   const targetRoot = path.join(packagesRoot, packageName, "generated", "shared");
+  const targetParent = path.dirname(targetRoot);
+  const lockDir = path.join(targetParent, ".shared-sync.lock");
+  const tempRoot = path.join(
+    targetParent,
+    `.shared-${packageName}-${process.pid}-${Date.now()}`,
+  );
+  mkdirSync(targetParent, { recursive: true });
+  const releaseLock = acquireLock(lockDir);
 
-  rmSync(targetRoot, { recursive: true, force: true });
-  mkdirSync(targetRoot, { recursive: true });
-  cpSync(sharedRoot, targetRoot, { recursive: true });
+  try {
+    rmSync(tempRoot, { recursive: true, force: true });
+    mkdirSync(tempRoot, { recursive: true });
+    cpSync(sharedRoot, tempRoot, { recursive: true });
 
-  if (packageName === "n8n-nodes-plug-database") {
-    rmSync(path.join(targetRoot, "contracts", "payload-frame.ts"), {
-      force: true,
-    });
-    rmSync(path.join(targetRoot, "n8n", "plugToolsDescription.ts"), {
-      force: true,
-    });
-    rmSync(path.join(targetRoot, "n8n", "plugToolsExecution.ts"), {
-      force: true,
-    });
-    rmSync(path.join(targetRoot, "socket"), { recursive: true, force: true });
-    rmSync(path.join(targetRoot, "tools"), { recursive: true, force: true });
+    if (packageName === "n8n-nodes-plug-database") {
+      rmSync(path.join(tempRoot, "contracts", "payload-frame.ts"), {
+        force: true,
+      });
+      rmSync(path.join(tempRoot, "socket"), { recursive: true, force: true });
+    }
+
+    rmSync(targetRoot, { recursive: true, force: true });
+    renameSync(tempRoot, targetRoot);
+    console.log(`Synced shared -> packages/${packageName}/generated/shared`);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+    releaseLock();
   }
-
-  console.log(`Synced shared -> packages/${packageName}/generated/shared`);
 }

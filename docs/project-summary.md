@@ -17,7 +17,8 @@ The node handles login, session refresh, command execution, response normalizati
 
 - `n8n-nodes-plug-database`
   - public REST-only package
-  - candidate for n8n verification
+  - includes local PDF and barcode tool runtimes
+  - n8n Cloud verification must be checked separately
 - `n8n-nodes-plug-database-advanced`
   - advanced npm package
   - REST + Socket relay support
@@ -36,13 +37,11 @@ The node handles login, session refresh, command execution, response normalizati
 - `Get Agent Profile`
 - `Get Client Token Policy`
 
-## Out of scope for v1
+## Out of scope for the public package
 
+- Socket relay transport
+- Socket Event publish over Socket
 - realtime trigger nodes
-- access governance flows
-- approved-agent management flows
-- owner/admin UI flows
-- legacy `agents:command` transport
 
 ## Tooling
 
@@ -54,4 +53,4 @@ The node handles login, session refresh, command execution, response normalizati
 - `vitest`
 - `release-it`
 
-The advanced package adds `socket.io-client` as its only runtime dependency.
+Both packages include the PDF and barcode tool runtime dependencies. The advanced package also adds `socket.io-client` for Socket relay and Socket Event publishing.

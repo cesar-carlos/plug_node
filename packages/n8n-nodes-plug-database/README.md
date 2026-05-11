@@ -17,12 +17,14 @@ npm install n8n-nodes-plug-database
 - fixed Plug Database API base URL
 - guided mode for common operations
 - advanced mode for raw JSON-RPC commands
-- dependency-light REST-only runtime for the public verification path
+- Document, image, code/identity, data, security, date/value, Plug-specific, barcode, and REST socket-event publishing tools under `Resource = Tools`
+
+This package is still REST-only, but it now includes local PDF and barcode tool runtime dependencies. Treat n8n Cloud verification as a separate compatibility check rather than assuming the package is Cloud-strict.
 
 ## Included nodes
 
 - `Plug Database`
-  - consolidated REST-only node with `Resource = SQL | Client Access | User Access`
+  - consolidated REST-only node with `Resource = SQL | Client Access | User Access | Tools`
 
 ## Supported operations
 
@@ -54,6 +56,17 @@ npm install n8n-nodes-plug-database
 - `Reject Access Request`
 - `List Agent Clients`
 - `Revoke Agent Client Access`
+
+`Resource = Tools`:
+
+- Documents: `HTML to PDF`, `Markdown to PDF`, `Text to PDF`, `Merge PDFs`, `Split PDF`, `Extract PDF Text`
+- Images: `Resize Image`, `Convert Image`, `Compress Image`, `Add Image Watermark`, `Create Thumbnail`
+- Code and identity: `Generate Barcode`, `Read Barcode`, `Validate CPF/CNPJ`, `Format CPF/CNPJ`, `Generate UUID`
+- Data: `Transform JSON`, `CSV to JSON`, `JSON to CSV`, `Normalize Text`, `Extract Regex Fields`, `Validate JSON Schema`
+- Security: `Generate Hash`, `HMAC Sign`, `Base64 Encode/Decode`, `JWT Decode`, `Encrypt Text`, `Decrypt Text`
+- Dates and values: `Format Date`, `Parse Date`, `Add Business Days`, `Format Currency`, `Number to Words`
+- Plug-specific: `Build Socket Event Payload`, `Validate Client Token`, `Validate Agent Context`, `Build SQL Request`, `Parse SQL Rows`, `Generate Access Request Summary`
+- `Publish Socket Event` over REST
 
 ## Credentials
 
@@ -103,7 +116,7 @@ Legacy access-only nodes remain published for compatibility with existing workfl
 - no Socket relay support
 - no realtime trigger in v1
 - `Execute Batch` runs over REST only
-- PDF, QR code, and barcode tool nodes live in `n8n-nodes-plug-database-advanced` because they require runtime dependencies
+- Socket Event publish uses REST only in this package
 
 ## Documentation
 

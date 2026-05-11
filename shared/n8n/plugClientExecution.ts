@@ -22,6 +22,10 @@ import {
   type PlugExecutionSessionRunner,
 } from "../auth/session";
 import { executePlugClientAccessNode } from "./plugClientAccessExecution";
+import {
+  executePlugToolsResource,
+  type PlugToolsSocketEventPublisher,
+} from "./plugToolsExecution";
 import { executePlugUserAccessNode } from "./plugUserAccessExecution";
 import { buildN8nHttpRequester } from "./httpRequester";
 import { buildNodeOutputItems } from "../output/nodeOutput";
@@ -55,6 +59,7 @@ export interface PlugClientNodeExecutionConfig {
   readonly nodeDisplayName?: string;
   readonly socketExecutor?: PlugSocketExecutor;
   readonly legacySocketExecutor?: PlugSocketExecutor;
+  readonly toolSocketEventPublisher?: PlugToolsSocketEventPublisher;
 }
 
 const retryableOperations = new Set([
@@ -857,7 +862,7 @@ const executePlugSqlNode = async (
   return [outputItems];
 };
 
-type PlugUnifiedResource = "sql" | "clientAccess" | "userAccess";
+type PlugUnifiedResource = "sql" | "clientAccess" | "userAccess" | "tools";
 
 const resolveUnifiedResource = (
   context: IExecuteFunctions,
@@ -894,6 +899,12 @@ export const executePlugClientNode = async (
       return executePlugUserAccessNode(context, {
         credentialName: config.credentialName,
         nodeDisplayName: config.nodeDisplayName,
+      });
+    case "tools":
+      return executePlugToolsResource(context, {
+        credentialName: config.credentialName,
+        nodeDisplayName: config.nodeDisplayName ?? "Plug Database",
+        socketEventPublisher: config.toolSocketEventPublisher,
       });
     default: {
       const exhaustiveCheck: never = resource;

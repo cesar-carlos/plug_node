@@ -30,9 +30,10 @@ Expected result: normalized JSON output with optional chunk emission for streami
 
 ## Generate a PDF document
 
-Use the advanced package with:
+Use either package with:
 
-- node: `Plug Database Advanced PDF`
+- node: `Plug Database` or `Plug Database Advanced`
+- resource: `Tools`
 - operation: `HTML to PDF`
 - HTML: an HTML string from a previous node or an expression
 - CSS: optional inline stylesheet for the rendered document
@@ -44,13 +45,37 @@ Expected result: the input JSON is preserved and the generated PDF is attached a
 
 ## Generate a QR code or barcode
 
-Use the advanced package with:
+Use either package with:
 
-- node: `Plug Database Advanced Barcode`
-- operation: `Generate Code`
+- node: `Plug Database` or `Plug Database Advanced`
+- resource: `Tools`
+- operation: `Generate Barcode`
 - barcode type: `QR Code` for URLs or text, or a supported linear/2D barcode type
 - output format: `PNG` for image workflows or `SVG` for vector output
 - optional `Include Base64 JSON` when a downstream API needs a JSON string instead of binary data
 - optional `Base64 Output Property` and `Metadata Property` to avoid overwriting existing JSON fields
 
 Expected result: the input JSON is preserved and the generated image is attached as n8n binary data.
+
+## Transform and validate payload data
+
+Use either package with:
+
+- node: `Plug Database` or `Plug Database Advanced`
+- resource: `Tools`
+- operation: `Transform JSON` for JSONata projections, or `Validate JSON Schema` before sending payloads downstream
+- output JSON property: defaults to `result`
+
+Use these before SQL or access workflows when a workflow receives loose webhook data and needs a normalized, validated payload.
+
+## Prepare files without standalone nodes
+
+Use either package with:
+
+- node: `Plug Database` or `Plug Database Advanced`
+- resource: `Tools`
+- operations: document and image helpers such as `Merge PDFs`, `Extract PDF Text`, `Resize Image`, and `Create Thumbnail`
+- binary input: `Binary Property`, default `data`
+- binary output: `Output Binary Property`, default `data`
+
+Use these helpers when the workflow needs file preparation close to Plug SQL, access, or socket-event logic.

@@ -1,5 +1,14 @@
 import { Buffer } from "node:buffer";
 
+import {
+  BinaryBitmap,
+  DecodeHintType,
+  HybridBinarizer,
+  MultiFormatReader,
+  RGBLuminanceSource,
+} from "@zxing/library";
+import sharp from "sharp";
+
 import { PlugValidationError } from "../contracts/errors";
 import { isRecord } from "../utils/json";
 
@@ -33,6 +42,14 @@ export interface GeneratedBarcode {
   readonly buffer: Buffer;
   readonly mimeType: "image/png" | "image/svg+xml";
   readonly fileExtension: "png" | "svg";
+}
+
+export interface ReadBarcodeResult {
+  readonly text: string;
+  readonly format: string;
+  readonly width: number;
+  readonly height: number;
+  readonly attempt: string;
 }
 
 export interface RawBarcodeRenderOptions {
@@ -392,6 +409,83 @@ export const generateBarcode = async (
     }
 
     throw new PlugValidationError("Failed to generate barcode or QR code", {
+      technicalMessage: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+const decodeBarcodeBitmap = (
+  data: Buffer,
+  width: number,
+  height: number,
+): { readonly text: string; readonly format: string } => {
+  const luminance = new RGBLuminanceSource(Uint8ClampedArray.from(data), width, height);
+  const bitmap = new BinaryBitmap(new HybridBinarizer(luminance));
+  const reader = new MultiFormatReader();
+  reader.setHints(new Map([[DecodeHintType.TRY_HARDER, true]]));
+  const result = reader.decode(bitmap);
+
+  return {
+    text: result.getText(),
+    format: result.getBarcodeFormat().toString(),
+  };
+};
+
+const readBarcodeAttempt = async (
+  buffer: Buffer,
+  rotation: number,
+  threshold: boolean,
+): Promise<ReadBarcodeResult> => {
+  let pipeline = sharp(buffer).rotate(rotation).greyscale();
+  if (threshold) {
+    pipeline = pipeline.threshold(128);
+  }
+
+  const { data, info } = await pipeline.raw().toBuffer({ resolveWithObject: true });
+  const decoded = decodeBarcodeBitmap(data, info.width, info.height);
+
+  return {
+    ...decoded,
+    width: info.width,
+    height: info.height,
+    attempt: `${rotation}deg${threshold ? "-threshold" : ""}`,
+  };
+};
+
+export const readBarcode = async (buffer: Buffer): Promise<ReadBarcodeResult> => {
+  const attempts = [
+    { rotation: 0, threshold: false },
+    { rotation: 0, threshold: true },
+    { rotation: 90, threshold: false },
+    { rotation: 180, threshold: false },
+    { rotation: 270, threshold: false },
+  ];
+  const errors: string[] = [];
+
+  for (const attempt of attempts) {
+    try {
+      return await readBarcodeAttempt(buffer, attempt.rotation, attempt.threshold);
+    } catch (error: unknown) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  try {
+    const metadata = await sharp(buffer).metadata();
+    throw new PlugValidationError("Failed to read barcode or QR code", {
+      technicalMessage: errors.join("; "),
+      details: {
+        width: metadata.width,
+        height: metadata.height,
+        attempts: attempts.length,
+      },
+    });
+  } catch (error: unknown) {
+    if (error instanceof PlugValidationError) {
+      throw error;
+    }
+
+    throw new PlugValidationError("Failed to read barcode or QR code", {
       technicalMessage: error instanceof Error ? error.message : String(error),
     });
   }

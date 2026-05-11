@@ -13,13 +13,14 @@
 ### Public package
 
 - REST-only
-- no runtime dependencies
-- verification candidate for n8n
+- includes PDF and barcode tool runtime dependencies
+- exposes Socket Event publish over REST only
+- not Cloud-strict by dependency profile; n8n Cloud verification is tracked separately from the REST-only transport boundary
 
 ### Advanced package
 
 - REST + Socket relay
-- includes `socket.io-client`
+- includes `socket.io-client`, PDF, and barcode tool runtime dependencies
 - npm-only distribution
 
 ## Shared core
@@ -48,3 +49,5 @@ Main shared areas:
 ## Public package isolation
 
 The sync process removes socket-only code from the public package output so the published REST package does not include runtime socket modules.
+
+The public package intentionally keeps the Socket runtime out while still shipping PDF and barcode runtimes. This means the package boundary is transport-focused, not dependency-minimal.

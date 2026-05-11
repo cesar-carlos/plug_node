@@ -16,6 +16,7 @@ export class PlugDatabaseAdvancedPdf implements INodeType {
       iconBaseName: "plugToolsPdf",
       description: "Render HTML to PDF binary files for advanced Plug workflows.",
     }),
+    hidden: true,
     subtitle: '={{$parameter["operation"]}}',
     usableAsTool: true,
     icon: {

@@ -1,0 +1,177 @@
+import type { IDataObject, IExecuteFunctions, INodeExecutionData } from "n8n-workflow";
+import { NodeOperationError } from "n8n-workflow";
+
+import { PlugError, PlugValidationError } from "../contracts/errors";
+import type {
+  PayloadFrameCompression,
+  PlugCredentialDefaults,
+  PlugSession,
+} from "../contracts/api";
+import type {
+  CustomSocketEventAttachment,
+  PublishCustomSocketEventResponse,
+} from "../contracts/custom-socket-events";
+import type { HtmlToPdfRenderer } from "../tools/pdf";
+import { isRecord, parseJsonText } from "../utils/json";
+
+export interface PlugToolsPdfExecutionConfig {
+  readonly nodeDisplayName: string;
+  readonly renderer?: HtmlToPdfRenderer;
+}
+
+export interface PlugToolsBarcodeExecutionConfig {
+  readonly nodeDisplayName: string;
+}
+
+export interface PlugToolsSocketEventPublishInput {
+  readonly session: PlugSession<PlugCredentialDefaults>;
+  readonly eventName: string;
+  readonly payload: unknown;
+  readonly payloadFrameCompression?: PayloadFrameCompression;
+  readonly idempotencyKey?: string;
+  readonly attachments: readonly CustomSocketEventAttachment[];
+  readonly timeoutMs: number;
+  readonly payloadFrameSigning?:
+    | {
+        readonly key?: string;
+        readonly keyId?: string;
+      }
+    | undefined;
+}
+
+export interface PlugToolsSocketEventPublisher {
+  (input: PlugToolsSocketEventPublishInput): Promise<PublishCustomSocketEventResponse>;
+}
+
+export interface PlugToolsExecutionConfig {
+  readonly credentialName?: string;
+  readonly nodeDisplayName: string;
+  readonly renderer?: HtmlToPdfRenderer;
+  readonly socketEventPublisher?: PlugToolsSocketEventPublisher;
+}
+
+export const emptyInputItem: INodeExecutionData = { json: {} };
+
+export const toCollection = (
+  context: IExecuteFunctions,
+  parameterName: string,
+  itemIndex: number,
+): IDataObject => context.getNodeParameter(parameterName, itemIndex, {}) as IDataObject;
+
+export const toOptionalString = (value: unknown): string | undefined => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+};
+
+export const normalizeOutputBinaryProperty = (value: unknown): string => {
+  const propertyName = toOptionalString(value) ?? "data";
+  if (!/^[A-Za-z0-9_-]+$/.test(propertyName)) {
+    throw new PlugValidationError(
+      "Output Binary Property may contain only letters, numbers, underscores, and hyphens",
+    );
+  }
+
+  return propertyName;
+};
+
+export const normalizeOutputJsonProperty = (
+  value: unknown,
+  fallback: string,
+  label: string,
+): string => {
+  const propertyName = toOptionalString(value) ?? fallback;
+  if (!/^[A-Za-z0-9_-]+$/.test(propertyName)) {
+    throw new PlugValidationError(
+      `${label} may contain only letters, numbers, underscores, and hyphens`,
+    );
+  }
+
+  return propertyName;
+};
+
+export const normalizePositiveIntegerLimit = (
+  value: unknown,
+  fallback: number,
+  label: string,
+): number => {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  const numberValue = Number(value);
+  if (!Number.isInteger(numberValue) || numberValue <= 0) {
+    throw new PlugValidationError(`${label} must be a positive integer`);
+  }
+
+  return numberValue;
+};
+
+export const assertBufferSize = (
+  buffer: Buffer,
+  maxSizeBytes: number,
+  label: string,
+): void => {
+  if (buffer.length > maxSizeBytes) {
+    throw new PlugValidationError(
+      `${label} size must be less than or equal to ${maxSizeBytes} bytes`,
+    );
+  }
+};
+
+export const parseAdvancedOptions = (value: unknown): unknown => {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (text === "") {
+    return undefined;
+  }
+
+  return parseJsonText(text, "Advanced Options JSON");
+};
+
+export const now = (): number => Date.now();
+
+export const serializeErrorForContinueOnFail = (error: unknown): IDataObject => {
+  if (error instanceof PlugError) {
+    return {
+      message: error.message,
+      description: error.description,
+      code: error.code,
+      statusCode: error.statusCode,
+      correlationId: error.correlationId,
+      retryable: error.retryable,
+      retryAfterSeconds: error.retryAfterSeconds,
+      technicalMessage: error.technicalMessage,
+      details: error.details,
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      name: error.name,
+    };
+  }
+
+  return {
+    message: "Unknown error",
+  };
+};
+
+export const toNodeOperationError = (
+  context: IExecuteFunctions,
+  error: unknown,
+  nodeDisplayName: string,
+  itemIndex: number,
+): NodeOperationError => {
+  const nodeError =
+    error instanceof Error || typeof error === "string"
+      ? error
+      : isRecord(error)
+        ? JSON.stringify(error)
+        : new Error(`Unknown ${nodeDisplayName} error`);
+
+  return new NodeOperationError(context.getNode(), nodeError, { itemIndex });
+};

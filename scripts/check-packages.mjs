@@ -5,6 +5,8 @@ const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const packages = [
   {
     workspace: "n8n-nodes-plug-database",
+    maxPackedSizeBytes: 200_000,
+    maxUnpackedSizeBytes: 1_200_000,
     forbid: [
       "dist/tsconfig.tsbuildinfo",
       "dist/generated/shared/socket/",
@@ -13,6 +15,8 @@ const packages = [
   },
   {
     workspace: "n8n-nodes-plug-database-advanced",
+    maxPackedSizeBytes: 250_000,
+    maxUnpackedSizeBytes: 1_600_000,
     forbid: ["dist/tsconfig.tsbuildinfo"],
   },
 ];
@@ -65,5 +69,19 @@ for (const pkg of packages) {
     }
   }
 
-  console.log(`Validated npm pack output for ${pkg.workspace}`);
+  if (packResult.size > pkg.maxPackedSizeBytes) {
+    throw new Error(
+      `Tarball for ${pkg.workspace} is ${packResult.size} bytes, above limit ${pkg.maxPackedSizeBytes}`,
+    );
+  }
+
+  if (packResult.unpackedSize > pkg.maxUnpackedSizeBytes) {
+    throw new Error(
+      `Unpacked tarball for ${pkg.workspace} is ${packResult.unpackedSize} bytes, above limit ${pkg.maxUnpackedSizeBytes}`,
+    );
+  }
+
+  console.log(
+    `Validated npm pack output for ${pkg.workspace} (${packResult.size} packed bytes, ${packResult.unpackedSize} unpacked bytes)`,
+  );
 }

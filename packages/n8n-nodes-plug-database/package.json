@@ -50,7 +50,7 @@
   ],
   "n8n": {
     "n8nNodesApiVersion": 1,
-    "strict": true,
+    "strict": false,
     "credentials": [
       "dist/credentials/PlugDatabaseApi.credentials.js",
       "dist/credentials/PlugDatabaseClientApi.credentials.js",
@@ -74,5 +74,21 @@
   },
   "peerDependencies": {
     "n8n-workflow": "*"
+  },
+  "dependencies": {
+    "@bwip-js/node": "4.10.1",
+    "@zxing/library": "^0.21.3",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "date-fns": "^4.1.0",
+    "jose": "^6.2.3",
+    "jsonata": "^2.1.0",
+    "marked": "^18.0.3",
+    "papaparse": "^5.5.3",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.7.284",
+    "playwright-core": "1.59.1",
+    "sharp": "^0.34.5",
+    "to-words": "^5.5.0"
   }
 }

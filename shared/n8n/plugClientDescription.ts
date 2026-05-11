@@ -2,6 +2,7 @@ import type { INodeProperties, INodeTypeDescription } from "n8n-workflow";
 import { NodeConnectionTypes } from "n8n-workflow";
 
 import { buildPlugClientAccessProperties } from "./plugClientAccessDescription";
+import { buildPlugToolsProperties } from "./plugToolsDescription";
 import { buildPlugUserAccessProperties } from "./plugUserAccessDescription";
 
 const operationOptions = [
@@ -617,6 +618,7 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
 
 export interface PlugNodeDescriptionOptions {
   readonly supportsSocket: boolean;
+  readonly supportsSocketEventSocketPublish?: boolean;
   readonly displayName: string;
   readonly technicalName: string;
   readonly credentialName: string;
@@ -674,6 +676,11 @@ export const buildPlugClientNodeDescription = (
           value: "userAccess",
           description: "Review catalog, approvals, and owned agent access.",
         },
+        {
+          name: "Tools",
+          value: "tools",
+          description: "Generate PDFs, barcodes, and publish Plug socket events.",
+        },
       ],
     },
     ...buildPlugSqlProperties(options.supportsSocket).map((property) =>
@@ -685,5 +692,9 @@ export const buildPlugClientNodeDescription = (
     ...buildPlugUserAccessProperties().map((property) =>
       addResourceDisplayOption(property, "userAccess"),
     ),
+    ...buildPlugToolsProperties({
+      supportsSocketPublish:
+        options.supportsSocketEventSocketPublish ?? options.supportsSocket,
+    }).map((property) => addResourceDisplayOption(property, "tools")),
   ],
 });

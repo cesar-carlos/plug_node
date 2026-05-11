@@ -1,15 +1,15 @@
 # Custom Socket Events
 
-The advanced package exposes the Plug Server custom event surface through two n8n nodes:
+The advanced package exposes the Plug Server custom event surface through the consolidated Tools resource and the realtime trigger:
 
-- `Plug Database Advanced Socket Event` publishes `client:custom.*` events.
+- `Plug Database Advanced` with `Resource = Tools` and `Operation = Publish Socket Event` publishes `client:custom.*` events.
 - `Plug Database Advanced Socket Event Trigger` listens for custom events or the internal `client:agent.profile.updated` push.
 
 The normative server contract lives in the Plug Server docs under `plug_server/docs`. This document records how the n8n package maps that contract into node fields and shared code.
 
 ## Publisher Node
 
-`Plug Database Advanced Socket Event` has one operation, `Publish Event`.
+`Plug Database Advanced` has one socket-event publisher operation under `Resource = Tools`: `Publish Socket Event`.
 
 Use `Publish Channel = REST` for the compatible default. It sends `POST /api/v1/client/me/socket-events` with JSON when no attachments are configured, and `multipart/form-data` when attachments are present.
 

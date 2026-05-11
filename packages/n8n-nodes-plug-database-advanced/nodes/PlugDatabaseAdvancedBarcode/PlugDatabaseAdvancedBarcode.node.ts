@@ -17,6 +17,7 @@ export class PlugDatabaseAdvancedBarcode implements INodeType {
       description:
         "Generate QR codes and barcodes as binary files for advanced Plug workflows.",
     }),
+    hidden: true,
     subtitle: '={{$parameter["operation"]}}',
     usableAsTool: true,
     icon: {

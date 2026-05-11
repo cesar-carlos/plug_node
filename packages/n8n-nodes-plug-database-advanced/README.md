@@ -23,13 +23,9 @@ npm install n8n-nodes-plug-database-advanced
 ## Included nodes
 
 - `Plug Database Advanced`
-  - consolidated node with `Resource = SQL | Client Access | User Access`
-- `Plug Database Advanced PDF`
-  - renders trusted HTML strings to PDF binary data
-- `Plug Database Advanced Barcode`
-  - generates QR codes and barcodes as PNG or SVG binary data
-- `Plug Database Advanced Socket Event`
-  - publishes `client:custom.*` events over REST or `/consumers`
+  - consolidated node with `Resource = SQL | Client Access | User Access | Tools`
+- `Plug Database Advanced PDF`, `Plug Database Advanced Barcode`, and `Plug Database Advanced Socket Event`
+  - hidden compatibility nodes for existing workflows
 - `Plug Database Advanced Socket Event Trigger`
   - listens for `client:custom.*` events or `client:agent.profile.updated`
 
@@ -64,17 +60,16 @@ npm install n8n-nodes-plug-database-advanced
 - `List Agent Clients`
 - `Revoke Agent Client Access`
 
-`Plug Database Advanced PDF`:
+`Resource = Tools`:
 
-- `HTML to PDF`
-
-`Plug Database Advanced Barcode`:
-
-- `Generate Code`
-
-`Plug Database Advanced Socket Event`:
-
-- `Publish Event`
+- Documents: `HTML to PDF`, `Markdown to PDF`, `Text to PDF`, `Merge PDFs`, `Split PDF`, `Extract PDF Text`
+- Images: `Resize Image`, `Convert Image`, `Compress Image`, `Add Image Watermark`, `Create Thumbnail`
+- Code and identity: `Generate Barcode`, `Read Barcode`, `Validate CPF/CNPJ`, `Format CPF/CNPJ`, `Generate UUID`
+- Data: `Transform JSON`, `CSV to JSON`, `JSON to CSV`, `Normalize Text`, `Extract Regex Fields`, `Validate JSON Schema`
+- Security: `Generate Hash`, `HMAC Sign`, `Base64 Encode/Decode`, `JWT Decode`, `Encrypt Text`, `Decrypt Text`
+- Dates and values: `Format Date`, `Parse Date`, `Add Business Days`, `Format Currency`, `Number to Words`
+- Plug-specific: `Build Socket Event Payload`, `Validate Client Token`, `Validate Agent Context`, `Build SQL Request`, `Parse SQL Rows`, `Generate Access Request Summary`
+- `Publish Socket Event` over REST or Socket
 
 `Plug Database Advanced Socket Event Trigger`:
 

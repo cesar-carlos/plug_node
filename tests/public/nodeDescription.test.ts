@@ -12,6 +12,13 @@ import { PlugDatabaseAdvancedSocketEventTrigger } from "../../packages/n8n-nodes
 import { PlugDatabaseAdvancedUserAccess } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedUserAccess/PlugDatabaseAdvancedUserAccess.node";
 
 describe("consolidated Plug node descriptions", () => {
+  const getToolsOperationProperties = (node: PlugDatabase | PlugDatabaseAdvanced) =>
+    node.description.properties.filter(
+      (property) =>
+        property.name === "operation" &&
+        property.displayOptions?.show?.resource?.[0] === "tools",
+    );
+
   it("shows resource selection on the public consolidated node", () => {
     const node = new PlugDatabase();
     const resourceProperty = node.description.properties.find(
@@ -30,12 +37,220 @@ describe("consolidated Plug node descriptions", () => {
         expect.objectContaining({ value: "sql" }),
         expect.objectContaining({ value: "clientAccess" }),
         expect.objectContaining({ value: "userAccess" }),
+        expect.objectContaining({ value: "tools" }),
       ]),
     );
-    expect(operationProperties).toHaveLength(3);
+    expect(operationProperties).toHaveLength(11);
     expect(
       operationProperties.map((property) => property.displayOptions?.show?.resource),
-    ).toEqual([["sql"], ["clientAccess"], ["userAccess"]]);
+    ).toEqual([
+      ["sql"],
+      ["clientAccess"],
+      ["userAccess"],
+      ["tools"],
+      ["tools"],
+      ["tools"],
+      ["tools"],
+      ["tools"],
+      ["tools"],
+      ["tools"],
+      ["tools"],
+    ]);
+  });
+
+  it("keeps the consolidated Tools operation contract stable", () => {
+    const publicNode = new PlugDatabase();
+    const advancedNode = new PlugDatabaseAdvanced();
+    const expectedOperations = [
+      "htmlToPdf",
+      "markdownToPdf",
+      "textToPdf",
+      "mergePdfs",
+      "splitPdf",
+      "extractPdfText",
+      "resizeImage",
+      "convertImage",
+      "compressImage",
+      "addImageWatermark",
+      "createThumbnail",
+      "generateCode",
+      "readBarcode",
+      "validateCpfCnpj",
+      "formatCpfCnpj",
+      "generateUuid",
+      "transformJson",
+      "csvToJson",
+      "jsonToCsv",
+      "normalizeText",
+      "extractRegexFields",
+      "validateJsonSchema",
+      "generateHash",
+      "hmacSign",
+      "base64",
+      "jwtDecode",
+      "encryptText",
+      "decryptText",
+      "formatDate",
+      "parseDate",
+      "addBusinessDays",
+      "formatCurrency",
+      "numberToWords",
+      "buildSocketEventPayload",
+      "validateClientToken",
+      "validateAgentContext",
+      "buildSqlRequest",
+      "parseSqlRows",
+      "generateAccessRequestSummary",
+      "publishSocketEvent",
+    ];
+
+    for (const node of [publicNode, advancedNode]) {
+      expect(
+        getToolsOperationProperties(node).flatMap(
+          (property) => property.options?.map((option) => option.value) ?? [],
+        ),
+      ).toEqual(expectedOperations);
+    }
+  });
+
+  it("keeps legacy advanced tool nodes hidden with stable technical names", () => {
+    expect(
+      [
+        new PlugDatabaseAdvancedPdf(),
+        new PlugDatabaseAdvancedBarcode(),
+        new PlugDatabaseAdvancedSocketEvent(),
+      ].map((node) => ({
+        name: node.description.name,
+        hidden: node.description.hidden,
+        usableAsTool: node.description.usableAsTool,
+      })),
+    ).toEqual([
+      {
+        name: "plugDatabaseAdvancedPdf",
+        hidden: true,
+        usableAsTool: true,
+      },
+      {
+        name: "plugDatabaseAdvancedBarcode",
+        hidden: true,
+        usableAsTool: true,
+      },
+      {
+        name: "plugDatabaseAdvancedSocketEvent",
+        hidden: true,
+        usableAsTool: true,
+      },
+    ]);
+  });
+
+  it("exposes tools inside both consolidated Plug nodes", () => {
+    const publicNode = new PlugDatabase();
+    const advancedNode = new PlugDatabaseAdvanced();
+
+    for (const node of [publicNode, advancedNode]) {
+      const toolCategory = node.description.properties.find(
+        (property) => property.name === "toolCategory",
+      );
+      const toolOperationOptions = getToolsOperationProperties(node).flatMap(
+        (property) => property.options ?? [],
+      );
+
+      expect(toolCategory?.options).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ value: "documents" }),
+          expect.objectContaining({ value: "image" }),
+          expect.objectContaining({ value: "identity" }),
+          expect.objectContaining({ value: "data" }),
+          expect.objectContaining({ value: "security" }),
+          expect.objectContaining({ value: "dateValue" }),
+          expect.objectContaining({ value: "plugSpecific" }),
+          expect.objectContaining({ value: "socket" }),
+        ]),
+      );
+      expect(toolOperationOptions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ value: "htmlToPdf" }),
+          expect.objectContaining({ value: "markdownToPdf" }),
+          expect.objectContaining({ value: "resizeImage" }),
+          expect.objectContaining({ value: "generateCode" }),
+          expect.objectContaining({ value: "transformJson" }),
+          expect.objectContaining({ value: "encryptText" }),
+          expect.objectContaining({ value: "formatDate" }),
+          expect.objectContaining({ value: "buildSqlRequest" }),
+          expect.objectContaining({ value: "publishSocketEvent" }),
+          expect.objectContaining({ name: "HTML to PDF" }),
+          expect.objectContaining({ name: "Markdown to PDF" }),
+          expect.objectContaining({ name: "Resize Image" }),
+          expect.objectContaining({ name: "Generate Barcode" }),
+          expect.objectContaining({ name: "Transform JSON" }),
+          expect.objectContaining({ name: "Encrypt Text" }),
+          expect.objectContaining({ name: "Format Date" }),
+          expect.objectContaining({ name: "Build SQL Request" }),
+          expect.objectContaining({ name: "Publish Socket Event" }),
+        ]),
+      );
+      expect(node.description.properties).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: "html",
+            displayOptions: expect.objectContaining({
+              show: expect.objectContaining({
+                resource: ["tools"],
+                operation: ["htmlToPdf"],
+              }),
+            }),
+          }),
+          expect.objectContaining({
+            name: "barcodeType",
+            displayOptions: expect.objectContaining({
+              show: expect.objectContaining({
+                resource: ["tools"],
+                operation: ["generateCode"],
+              }),
+            }),
+          }),
+          expect.objectContaining({
+            name: "jsonataExpression",
+            displayOptions: expect.objectContaining({
+              show: expect.objectContaining({
+                resource: ["tools"],
+                operation: ["transformJson"],
+              }),
+            }),
+          }),
+          expect.objectContaining({
+            name: "eventName",
+            displayOptions: expect.objectContaining({
+              show: expect.objectContaining({
+                resource: ["tools"],
+                operation: ["publishSocketEvent"],
+              }),
+            }),
+          }),
+        ]),
+      );
+    }
+
+    const publicPublishChannel = publicNode.description.properties.find(
+      (property) =>
+        property.name === "publishChannel" &&
+        property.displayOptions?.show?.resource?.[0] === "tools",
+    );
+    const advancedPublishChannel = advancedNode.description.properties.find(
+      (property) =>
+        property.name === "publishChannel" &&
+        property.displayOptions?.show?.resource?.[0] === "tools",
+    );
+
+    expect(publicPublishChannel?.options).toEqual([
+      expect.objectContaining({ value: "rest" }),
+    ]);
+    expect(advancedPublishChannel?.options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: "rest" }),
+        expect.objectContaining({ value: "socket" }),
+      ]),
+    );
   });
 
   it("limits advanced socket controls to the SQL resource", () => {
@@ -55,6 +270,9 @@ describe("consolidated Plug node descriptions", () => {
     expect(new PlugDatabaseUserAccess().description.hidden).toBe(true);
     expect(new PlugDatabaseAdvancedClientAccess().description.hidden).toBe(true);
     expect(new PlugDatabaseAdvancedUserAccess().description.hidden).toBe(true);
+    expect(new PlugDatabaseAdvancedPdf().description.hidden).toBe(true);
+    expect(new PlugDatabaseAdvancedBarcode().description.hidden).toBe(true);
+    expect(new PlugDatabaseAdvancedSocketEvent().description.hidden).toBe(true);
   });
 
   it("exposes advanced custom socket event publish and trigger nodes", () => {
@@ -98,7 +316,7 @@ describe("consolidated Plug node descriptions", () => {
     );
   });
 
-  it("exposes PDF and barcode tool nodes in the advanced package", () => {
+  it("keeps legacy PDF and barcode tool nodes registered in the advanced package", () => {
     const nodes = [new PlugDatabaseAdvancedPdf(), new PlugDatabaseAdvancedBarcode()];
 
     for (const node of nodes) {
