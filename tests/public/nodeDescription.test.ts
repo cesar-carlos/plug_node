@@ -10,6 +10,7 @@ import { PlugDatabaseAdvancedPdf } from "../../packages/n8n-nodes-plug-database-
 import { PlugDatabaseAdvancedSocketEvent } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEvent/PlugDatabaseAdvancedSocketEvent.node";
 import { PlugDatabaseAdvancedSocketEventTrigger } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEventTrigger/PlugDatabaseAdvancedSocketEventTrigger.node";
 import { PlugDatabaseAdvancedUserAccess } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedUserAccess/PlugDatabaseAdvancedUserAccess.node";
+import { PluraAiAutomationsTrigger } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node";
 
 describe("consolidated Plug node descriptions", () => {
   const getToolsOperationProperties = (node: PlugDatabase | PlugDatabaseAdvanced) =>
@@ -312,6 +313,36 @@ describe("consolidated Plug node descriptions", () => {
         expect.objectContaining({ name: "deduplicateEvents" }),
         expect.objectContaining({ name: "deduplicationTtlMs" }),
         expect.objectContaining({ name: "binaryPropertyPrefix" }),
+      ]),
+    );
+  });
+
+  it("exposes the Plura.ai automations trigger in the advanced package", () => {
+    const trigger = new PluraAiAutomationsTrigger();
+
+    expect(trigger.description).toMatchObject({
+      displayName: "Plura.ai Automations Trigger",
+      name: "pluraAiAutomationsTrigger",
+      group: ["trigger"],
+      inputs: [],
+    });
+    expect(trigger.description.outputs).toEqual(["main"]);
+    expect(trigger.description.credentials).toEqual([
+      expect.objectContaining({ name: "pluraAiAutomationsApi", required: true }),
+    ]);
+    expect(trigger.description.webhooks).toEqual([
+      expect.objectContaining({
+        name: "default",
+        httpMethod: "POST",
+        responseMode: "onReceived",
+        path: "plura-ai-automations",
+      }),
+    ]);
+    expect(trigger.description.properties).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "workspace_id" }),
+        expect.objectContaining({ name: "journey_id" }),
+        expect.objectContaining({ name: "automation_node_id" }),
       ]),
     );
   });

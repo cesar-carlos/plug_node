@@ -28,6 +28,8 @@ npm install n8n-nodes-plug-database-advanced
   - hidden compatibility nodes for existing workflows
 - `Plug Database Advanced Socket Event Trigger`
   - listens for `client:custom.*` events or `client:agent.profile.updated`
+- `Plura.ai Automations Trigger`
+  - receives webhook events when a Plura.ai automation node executes
 
 ## Supported operations
 
@@ -76,9 +78,15 @@ npm install n8n-nodes-plug-database-advanced
 - `Custom Events`
 - `Agent Profile Updated`
 
+`Plura.ai Automations Trigger`:
+
+- `Workspace`
+- `Journey`
+- `Automation Node`
+
 ## Credentials
 
-The credential asks for:
+`Plug Database Advanced API` asks for:
 
 - `User (email)`
 - `Password`
@@ -94,6 +102,14 @@ The SQL node can override `Agent ID` and `Client Token` per node. Resolution ord
 The package uses the fixed API base URL:
 
 - `https://plug-server.se7esistemassinop.com.br/api/v1`
+
+`Plura.ai Automations API` asks for:
+
+- `Email`
+- `Password`
+- optional `API Key`
+
+The Plura.ai trigger uses the email and password to load Workspace, Journey, and Automation Node options, then registers the n8n webhook with Plura.ai when the workflow is activated.
 
 ## Output modes
 
