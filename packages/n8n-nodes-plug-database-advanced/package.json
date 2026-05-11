@@ -56,7 +56,8 @@
     "credentials": [
       "dist/credentials/PlugDatabaseAdvancedApi.credentials.js",
       "dist/credentials/PlugDatabaseAdvancedClientApi.credentials.js",
-      "dist/credentials/PlugDatabaseAdvancedUserApi.credentials.js"
+      "dist/credentials/PlugDatabaseAdvancedUserApi.credentials.js",
+      "dist/credentials/PluraAiAutomationsApi.credentials.js"
     ],
     "nodes": [
       "dist/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node.js",
@@ -64,6 +65,7 @@
       "dist/nodes/PlugDatabaseAdvancedBarcode/PlugDatabaseAdvancedBarcode.node.js",
       "dist/nodes/PlugDatabaseAdvancedSocketEvent/PlugDatabaseAdvancedSocketEvent.node.js",
       "dist/nodes/PlugDatabaseAdvancedSocketEventTrigger/PlugDatabaseAdvancedSocketEventTrigger.node.js",
+      "dist/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node.js",
       "dist/nodes/PlugDatabaseAdvancedClientAccess/PlugDatabaseAdvancedClientAccess.node.js",
       "dist/nodes/PlugDatabaseAdvancedUserAccess/PlugDatabaseAdvancedUserAccess.node.js"
     ]
