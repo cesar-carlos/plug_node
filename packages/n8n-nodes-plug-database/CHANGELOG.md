@@ -1,5 +1,7 @@
 # n8n-nodes-plug-database
 
+## 1.2.0
+
 ## 1.1.2
 
 ### Patch Changes
