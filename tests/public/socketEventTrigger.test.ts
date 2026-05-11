@@ -1,0 +1,314 @@
+import { describe, expect, it, vi } from "vitest";
+import type { IBinaryData, ITriggerFunctions, IHttpRequestOptions } from "n8n-workflow";
+
+import { PlugDatabaseAdvancedSocketEventTrigger } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEventTrigger/PlugDatabaseAdvancedSocketEventTrigger.node";
+import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
+
+const socketMock = vi.hoisted(() => {
+  type Handler = (payload: unknown) => void;
+
+  const state: {
+    readyFrame?: unknown;
+    sockets: MockSocket[];
+  } = {
+    sockets: [],
+  };
+
+  class MockSocket {
+    connected = false;
+    readonly handlers = new Map<string, Set<Handler>>();
+    readonly emittedEvents: Array<{
+      readonly event: string;
+      readonly payload?: unknown;
+    }> = [];
+
+    constructor(
+      readonly url: string,
+      readonly options: Record<string, unknown>,
+    ) {}
+
+    connect(): void {
+      this.connected = true;
+      queueMicrotask(() => {
+        this.dispatch("connection:ready", state.readyFrame);
+      });
+    }
+
+    disconnect(): void {
+      this.connected = false;
+    }
+
+    on(event: string, handler: Handler): void {
+      const handlers = this.handlers.get(event) ?? new Set<Handler>();
+      handlers.add(handler);
+      this.handlers.set(event, handlers);
+    }
+
+    off(event: string, handler: Handler): void {
+      this.handlers.get(event)?.delete(handler);
+    }
+
+    emit(event: string, payload?: unknown): void {
+      this.emittedEvents.push({ event, payload });
+      if (event === "socket:event.subscribe") {
+        const request = payload as {
+          readonly requestId: string;
+          readonly eventName: string;
+        };
+        queueMicrotask(() => {
+          this.dispatch("socket:event.subscribed", {
+            success: true,
+            requestId: request.requestId,
+            data: {
+              eventName: request.eventName,
+              subscribed: true,
+            },
+          });
+        });
+      }
+
+      if (event === "socket:event.unsubscribe") {
+        const request = payload as {
+          readonly requestId: string;
+          readonly eventName: string;
+        };
+        queueMicrotask(() => {
+          this.dispatch("socket:event.unsubscribed", {
+            success: true,
+            requestId: request.requestId,
+            data: {
+              eventName: request.eventName,
+              subscribed: false,
+            },
+          });
+        });
+      }
+    }
+
+    dispatch(event: string, payload: unknown): void {
+      for (const handler of this.handlers.get(event) ?? []) {
+        handler(payload);
+      }
+    }
+  }
+
+  const io = vi.fn((url: string, options: Record<string, unknown>) => {
+    const socket = new MockSocket(url, options);
+    state.sockets.push(socket);
+    return socket;
+  });
+
+  return {
+    io,
+    state,
+  };
+});
+
+vi.mock("socket.io-client", () => ({
+  io: socketMock.io,
+}));
+
+const credentials = {
+  user: "client@example.com",
+  password: "secret",
+  baseUrl: "https://plug-server.example.com/api/v1",
+  agentId: "agent-1",
+  clientToken: "client-token",
+  payloadSigningKey: "",
+  payloadSigningKeyId: "",
+};
+
+const createContext = (
+  overrides?: Partial<Record<string, unknown>>,
+): ITriggerFunctions => {
+  const emit = vi.fn();
+  const emitError = vi.fn();
+  const httpRequest = vi.fn(async (request: IHttpRequestOptions) => {
+    if (String(request.url).endsWith("/client-auth/login")) {
+      return {
+        statusCode: 200,
+        headers: {},
+        body: {
+          accessToken: `access-${httpRequest.mock.calls.length}`,
+          refreshToken: "refresh-1",
+          client: {
+            id: "client-1",
+            userId: "user-1",
+            email: "client@example.com",
+            name: "Plug",
+            lastName: "Client",
+            status: "active",
+            role: "client",
+          },
+        },
+      };
+    }
+
+    throw new Error(`Unexpected request ${request.url}`);
+  });
+
+  const parameters: Record<string, unknown> = {
+    eventNames: {
+      values: [
+        { eventName: "client:custom.status.changed" },
+        { eventName: "client:custom.invoice.created" },
+      ],
+    },
+    ackTimeoutMs: 1000,
+    manualListenTimeoutMs: 0,
+    binaryPropertyPrefix: "attachment",
+    includePlugMetadata: true,
+    reconnectOnDisconnect: true,
+    maxReconnectAttempts: 1,
+    reconnectInitialDelayMs: 100,
+    reconnectMaxDelayMs: 100,
+    ...overrides,
+  };
+
+  return {
+    getCredentials: vi.fn(async () => credentials),
+    getNodeParameter: vi.fn(
+      (name: string, fallback?: unknown) => parameters[name] ?? fallback,
+    ),
+    getMode: () => "trigger",
+    emit,
+    emitError,
+    helpers: {
+      httpRequest,
+      prepareBinaryData: vi.fn(
+        async (
+          data: Buffer,
+          fileName?: string,
+          mimeType?: string,
+        ): Promise<IBinaryData> => ({
+          data: data.toString("base64"),
+          fileName,
+          mimeType,
+        }),
+      ),
+    },
+    __emit: emit,
+    __emitError: emitError,
+  } as unknown as ITriggerFunctions;
+};
+
+describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
+  it("connects to /consumers, subscribes to multiple events, emits items, and cleans up", async () => {
+    socketMock.state.sockets = [];
+    socketMock.state.readyFrame = encodePayloadFrame(
+      {
+        id: "socket-1",
+        message: "ready",
+        user: { sub: "client-1" },
+      },
+      { requestId: "handshake", compression: "none" },
+    );
+    const node = new PlugDatabaseAdvancedSocketEventTrigger();
+    const context = createContext();
+
+    const response = await node.trigger.call(context);
+    const socket = socketMock.state.sockets[0];
+
+    expect(socketMock.io).toHaveBeenCalledWith(
+      "https://plug-server.example.com/consumers",
+      expect.objectContaining({
+        auth: {
+          token: "access-1",
+        },
+        transports: ["websocket"],
+      }),
+    );
+    expect(
+      socket.emittedEvents.filter(({ event }) => event === "socket:event.subscribe"),
+    ).toHaveLength(2);
+
+    socket.dispatch(
+      "client:custom.status.changed",
+      encodePayloadFrame(
+        {
+          eventId: "event-1",
+          eventName: "client:custom.status.changed",
+          emittedAt: "2026-05-11T12:00:00.000Z",
+          publisher: { principalType: "client", clientId: "client-1" },
+          payload: { status: "ready" },
+          attachments: [
+            {
+              fieldName: "files",
+              originalName: "hello.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+              base64: Buffer.from("hello").toString("base64"),
+            },
+          ],
+        },
+        { requestId: "event-1", compression: "none" },
+      ),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const emit = (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit;
+    expect(emit).toHaveBeenCalledWith([
+      [
+        expect.objectContaining({
+          json: expect.objectContaining({
+            eventId: "event-1",
+            attachments: [
+              {
+                fieldName: "files",
+                originalName: "hello.txt",
+                mimeType: "text/plain",
+                sizeBytes: 5,
+              },
+            ],
+          }),
+          binary: expect.objectContaining({
+            attachment_0: expect.objectContaining({
+              fileName: "hello.txt",
+            }),
+          }),
+        }),
+      ],
+    ]);
+
+    await response.closeFunction?.();
+    expect(
+      socket.emittedEvents.filter(({ event }) => event === "socket:event.unsubscribe"),
+    ).toHaveLength(2);
+    expect(socket.connected).toBe(false);
+  });
+
+  it("reconnects and re-subscribes after retryable disconnects", async () => {
+    vi.useFakeTimers();
+    try {
+      socketMock.state.sockets = [];
+      socketMock.state.readyFrame = encodePayloadFrame(
+        {
+          id: "socket-1",
+          message: "ready",
+          user: { sub: "client-1" },
+        },
+        { requestId: "handshake", compression: "none" },
+      );
+      const node = new PlugDatabaseAdvancedSocketEventTrigger();
+      const context = createContext();
+
+      const response = await node.trigger.call(context);
+      socketMock.state.sockets[0].dispatch("disconnect", "transport close");
+      await vi.advanceTimersByTimeAsync(150);
+
+      expect(socketMock.state.sockets).toHaveLength(2);
+      expect(
+        socketMock.state.sockets[1].emittedEvents.filter(
+          ({ event }) => event === "socket:event.subscribe",
+        ),
+      ).toHaveLength(2);
+      expect(
+        (context as unknown as { __emitError: ReturnType<typeof vi.fn> }).__emitError,
+      ).not.toHaveBeenCalled();
+
+      await response.closeFunction?.();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

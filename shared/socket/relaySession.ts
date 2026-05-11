@@ -16,14 +16,19 @@ import {
   type RpcSingleCommand,
   type SocketAppErrorPayload,
 } from "../contracts/api";
-import type { PayloadFrameEnvelope } from "../contracts/payload-frame";
+import type {
+  PayloadFrameEnvelope,
+  PayloadFrameSigningOptions,
+} from "../contracts/payload-frame";
 import { PlugError, PlugTimeoutError, PlugValidationError } from "../contracts/errors";
 import { plugLogger } from "../logging/plugLogger";
 import { normalizeRpcPayload } from "../output/rpcNormalization";
-import { decodePayloadFrame, encodePayloadFrame } from "./payloadFrameCodec";
-import { isRecord } from "../utils/json";
+import { decodePayloadFrameAsync, encodePayloadFrameAsync } from "./payloadFrameCodec";
+import { estimateJsonUtf8Bytes, isRecord } from "../utils/json";
 
 const appErrorEvent = "app:error";
+const connectErrorEvent = "connect_error";
+const disconnectEvent = "disconnect";
 const connectionReadyEvent = "connection:ready";
 const conversationStartEvent = "relay:conversation.start";
 const conversationStartedEvent = "relay:conversation.started";
@@ -35,6 +40,27 @@ const rpcChunkEvent = "relay:rpc.chunk";
 const rpcCompleteEvent = "relay:rpc.complete";
 const rpcStreamPullEvent = "relay:rpc.stream.pull";
 const rpcStreamPullResponseEvent = "relay:rpc.stream.pull_response";
+const defaultMaxBufferedChunkItems = 512;
+const defaultMaxBufferedRows = 50_000;
+const defaultMaxBufferedBytes = 8 * 1024 * 1024;
+const maxStreamPullWindowSize = 1000;
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === "string" && value.trim() !== "";
+
+const isPositiveInteger = (value: unknown): value is number =>
+  typeof value === "number" &&
+  Number.isInteger(value) &&
+  Number.isFinite(value) &&
+  value > 0;
+
+const normalizeStreamPullWindowSize = (value: unknown, fallback: number): number => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+
+  return Math.min(maxStreamPullWindowSize, Math.max(1, Math.floor(value)));
+};
 
 const createSocketAppError = (payload: unknown): PlugError => {
   const appError = isRecord(payload) ? (payload as SocketAppErrorPayload) : {};
@@ -83,6 +109,8 @@ const createRelayControlError = (input: {
   readonly code?: string;
   readonly message?: string;
   readonly statusCode?: number;
+  readonly retryAfterMs?: number;
+  readonly retryAfterSeconds?: number;
   readonly details?: Record<string, unknown>;
 }): PlugError => {
   const code =
@@ -100,23 +128,35 @@ const createRelayControlError = (input: {
     });
   }
 
+  const retryAfterSeconds = normalizeRetryAfterSeconds(input);
+
   if (code === "RATE_LIMITED" || input.statusCode === 429) {
     return new PlugError("Plug rate limited the socket request.", {
       code,
       statusCode: input.statusCode,
-      description: "Wait a moment before trying this socket operation again.",
+      description:
+        retryAfterSeconds !== undefined
+          ? `Wait ${retryAfterSeconds} second(s) before trying this socket operation again.`
+          : "Wait a moment before trying this socket operation again.",
       details: input.details,
       technicalMessage: input.message,
+      retryable: true,
+      retryAfterSeconds,
     });
   }
 
-  if (input.statusCode === 503) {
+  if (input.statusCode === 503 || code === "SERVICE_UNAVAILABLE") {
     return new PlugError("Plug socket transport is temporarily unavailable.", {
       code,
       statusCode: input.statusCode,
-      description: "The hub or agent may be overloaded. Try again shortly.",
+      description:
+        retryAfterSeconds !== undefined
+          ? `The hub or agent may be overloaded. Try again in ${retryAfterSeconds} second(s).`
+          : "The hub or agent may be overloaded. Try again shortly.",
       details: input.details,
       technicalMessage: input.message,
+      retryable: true,
+      retryAfterSeconds,
     });
   }
 
@@ -124,6 +164,53 @@ const createRelayControlError = (input: {
     code,
     statusCode: input.statusCode,
     details: input.details,
+  });
+};
+
+const normalizeRetryAfterSeconds = (input: {
+  readonly retryAfterMs?: number;
+  readonly retryAfterSeconds?: number;
+}): number | undefined => {
+  if (
+    typeof input.retryAfterSeconds === "number" &&
+    Number.isFinite(input.retryAfterSeconds) &&
+    input.retryAfterSeconds > 0
+  ) {
+    return Math.max(1, Math.ceil(input.retryAfterSeconds));
+  }
+
+  if (
+    typeof input.retryAfterMs === "number" &&
+    Number.isFinite(input.retryAfterMs) &&
+    input.retryAfterMs > 0
+  ) {
+    return Math.max(1, Math.ceil(input.retryAfterMs / 1000));
+  }
+
+  return undefined;
+};
+
+const createDisconnectError = (reason: unknown): PlugError =>
+  new PlugError("The Plug socket disconnected before the relay command finished.", {
+    code: "SOCKET_DISCONNECTED",
+    description: "Run the node again to open a new socket connection.",
+    technicalMessage: typeof reason === "string" ? reason : undefined,
+    retryable: true,
+  });
+
+const createConnectError = (payload: unknown): PlugError => {
+  const message =
+    payload instanceof Error
+      ? payload.message
+      : typeof payload === "string"
+        ? payload
+        : "Socket connection failed";
+
+  return new PlugError("Failed to connect to the Plug socket.", {
+    code: "SOCKET_CONNECT_ERROR",
+    description: "Run the node again to create a fresh socket connection.",
+    technicalMessage: message,
+    retryable: true,
   });
 };
 
@@ -143,26 +230,35 @@ export interface ExecuteRelayCommandInput {
   readonly command: RpcSingleCommand;
   readonly timeoutMs?: number;
   readonly payloadFrameCompression?: PayloadFrameCompression;
+  readonly payloadFrameSigning?: PayloadFrameSigningOptions;
   readonly responseMode: PlugResponseMode;
+  readonly bufferLimits?: {
+    readonly maxBufferedChunkItems?: number;
+    readonly maxBufferedRows?: number;
+    readonly maxBufferedBytes?: number;
+  };
+  readonly streamPullWindowSize?: number;
 }
 
 const waitForSingleEvent = <TPayload>(
   transport: RelaySocketTransport,
   eventName: string,
   timeoutMs: number,
-  parser: (payload: unknown) => TPayload,
+  parser: (payload: unknown) => TPayload | Promise<TPayload>,
 ): Promise<TPayload> =>
   new Promise<TPayload>((resolve, reject) => {
     const cleanup = (): void => {
       clearTimeout(timer);
       transport.off(eventName, handlePayload);
       transport.off(appErrorEvent, handleAppError);
+      transport.off(connectErrorEvent, handleConnectError);
+      transport.off(disconnectEvent, handleDisconnect);
     };
 
     const handlePayload = (payload: unknown): void => {
       cleanup();
       try {
-        resolve(parser(payload));
+        void Promise.resolve(parser(payload)).then(resolve, reject);
       } catch (error: unknown) {
         reject(error);
       }
@@ -171,6 +267,16 @@ const waitForSingleEvent = <TPayload>(
     const handleAppError = (payload: unknown): void => {
       cleanup();
       reject(createSocketAppError(payload));
+    };
+
+    const handleConnectError = (payload: unknown): void => {
+      cleanup();
+      reject(createConnectError(payload));
+    };
+
+    const handleDisconnect = (payload: unknown): void => {
+      cleanup();
+      reject(createDisconnectError(payload));
     };
 
     const timer = setTimeout(() => {
@@ -185,10 +291,17 @@ const waitForSingleEvent = <TPayload>(
 
     transport.on(eventName, handlePayload);
     transport.on(appErrorEvent, handleAppError);
+    transport.on(connectErrorEvent, handleConnectError);
+    transport.on(disconnectEvent, handleDisconnect);
   });
 
-const normalizeConnectionReady = (payload: unknown): RelayConnectionReadyPayload =>
-  decodePayloadFrame<RelayConnectionReadyPayload>(payload).data;
+const normalizeConnectionReady = (
+  payload: unknown,
+  signing?: PayloadFrameSigningOptions,
+): Promise<RelayConnectionReadyPayload> =>
+  decodePayloadFrameAsync<RelayConnectionReadyPayload>(payload, { signing }).then(
+    (decoded) => decoded.data,
+  );
 
 const normalizeConversationStarted = (
   payload: unknown,
@@ -201,8 +314,29 @@ const normalizeConversationStarted = (
 };
 
 const normalizeAcceptedPayload = (payload: unknown): RelayRpcAcceptedPayload => {
-  if (!isRecord(payload)) {
-    throw new PlugValidationError("relay:rpc.accepted must be an object");
+  if (!isRecord(payload) || typeof payload.success !== "boolean") {
+    throw new PlugValidationError("relay:rpc.accepted must include success boolean");
+  }
+
+  if (payload.success) {
+    if (!isNonEmptyString(payload.conversationId)) {
+      throw new PlugValidationError(
+        "relay:rpc.accepted success payload must include conversationId",
+      );
+    }
+    if (!isNonEmptyString(payload.requestId)) {
+      throw new PlugValidationError(
+        "relay:rpc.accepted success payload must include requestId",
+      );
+    }
+  } else if (
+    !isRecord(payload.error) ||
+    !isNonEmptyString(payload.error.code) ||
+    !isNonEmptyString(payload.error.message)
+  ) {
+    throw new PlugValidationError(
+      "relay:rpc.accepted failure payload must include error.code and error.message",
+    );
   }
 
   return payload as unknown as RelayRpcAcceptedPayload;
@@ -211,8 +345,41 @@ const normalizeAcceptedPayload = (payload: unknown): RelayRpcAcceptedPayload => 
 const normalizeStreamPullResponse = (
   payload: unknown,
 ): RelayStreamPullResponsePayload => {
-  if (!isRecord(payload)) {
-    throw new PlugValidationError("relay:rpc.stream.pull_response must be an object");
+  if (!isRecord(payload) || typeof payload.success !== "boolean") {
+    throw new PlugValidationError(
+      "relay:rpc.stream.pull_response must include success boolean",
+    );
+  }
+
+  if (payload.success) {
+    if (!isNonEmptyString(payload.conversationId)) {
+      throw new PlugValidationError(
+        "relay:rpc.stream.pull_response success payload must include conversationId",
+      );
+    }
+    if (!isNonEmptyString(payload.requestId)) {
+      throw new PlugValidationError(
+        "relay:rpc.stream.pull_response success payload must include requestId",
+      );
+    }
+    if (!isNonEmptyString(payload.streamId)) {
+      throw new PlugValidationError(
+        "relay:rpc.stream.pull_response success payload must include streamId",
+      );
+    }
+    if (!isPositiveInteger(payload.windowSize)) {
+      throw new PlugValidationError(
+        "relay:rpc.stream.pull_response success payload must include a positive windowSize",
+      );
+    }
+  } else if (
+    !isRecord(payload.error) ||
+    !isNonEmptyString(payload.error.code) ||
+    !isNonEmptyString(payload.error.message)
+  ) {
+    throw new PlugValidationError(
+      "relay:rpc.stream.pull_response failure payload must include error.code and error.message",
+    );
   }
 
   return payload as unknown as RelayStreamPullResponsePayload;
@@ -229,14 +396,11 @@ const assertAcceptedPayload = (
     code: payload.error.code,
     message: payload.error.message,
     statusCode: payload.error.statusCode,
+    retryAfterMs: payload.error.retryAfterMs,
   });
 };
 
 const ensureRelayCompatibleCommand = (command: RpcSingleCommand): RpcSingleCommand => {
-  if (command.method === "sql.executeBatch") {
-    throw new PlugValidationError("Socket channel does not support Execute Batch in v1");
-  }
-
   if (command.id === null) {
     throw new PlugValidationError(
       "Socket relay does not support JSON-RPC notifications (`id: null`)",
@@ -248,6 +412,69 @@ const ensureRelayCompatibleCommand = (command: RpcSingleCommand): RpcSingleComma
     id: command.id ?? randomUUID(),
   };
 };
+
+const countRows = (value: unknown): number => (Array.isArray(value) ? value.length : 0);
+
+const countResultRows = (payload: unknown): number => {
+  if (!isRecord(payload) || !isRecord(payload.result)) {
+    return 0;
+  }
+
+  return countRows(payload.result.rows);
+};
+
+const isRpcSuccessWithRows = (
+  payload: unknown,
+): payload is {
+  readonly result: {
+    readonly rows: unknown[];
+    readonly stream_id?: string;
+    readonly [key: string]: unknown;
+  };
+  readonly [key: string]: unknown;
+} => isRecord(payload) && isRecord(payload.result) && Array.isArray(payload.result.rows);
+
+const appendChunkRowsToResponse = (response: unknown, chunk: JsonObject): boolean => {
+  if (!isRpcSuccessWithRows(response) || !Array.isArray(chunk.rows)) {
+    return false;
+  }
+
+  for (const row of chunk.rows) {
+    response.result.rows.push(row);
+  }
+  return true;
+};
+
+const removeStreamMarkerFromResponse = (response: unknown): unknown => {
+  if (!isRpcSuccessWithRows(response)) {
+    return response;
+  }
+
+  const { stream_id: streamId, ...resultWithoutStreamId } = response.result;
+  void streamId;
+  return {
+    ...response,
+    result: {
+      ...resultWithoutStreamId,
+      rows: response.result.rows,
+    },
+  };
+};
+
+const buildSocketBufferError = (details: {
+  readonly maxBufferedBytes: number;
+  readonly maxBufferedRows: number;
+  readonly maxBufferedChunkItems: number;
+  readonly bufferedBytes: number;
+  readonly bufferedRows: number;
+  readonly chunkCount: number;
+}): PlugError =>
+  new PlugError("The socket response exceeded the local buffer safety limits.", {
+    code: "SOCKET_BUFFER_LIMIT",
+    description:
+      "Reduce Max Rows, paginate the query, or split the workflow into smaller requests before trying again.",
+    details,
+  });
 
 const getStreamIdFromNormalizedResponse = (payload: unknown): string | undefined => {
   if (!isRecord(payload) || !isRecord(payload.result)) {
@@ -266,50 +493,124 @@ const requestRelayStreamPull = async (
   requestId: string,
   streamId: string,
   timeoutMs: number,
+  signing?: PayloadFrameSigningOptions,
   windowSize = DEFAULT_RELAY_PULL_WINDOW,
 ): Promise<number> => {
-  const frame = encodePayloadFrame(
+  const normalizedWindowSize = normalizeStreamPullWindowSize(
+    windowSize,
+    DEFAULT_RELAY_PULL_WINDOW,
+  );
+  const frame = await encodePayloadFrameAsync(
     {
       stream_id: streamId,
       request_id: requestId,
-      window_size: windowSize,
+      window_size: normalizedWindowSize,
     },
     {
       requestId,
+      omitTraceId: true,
       compression: "default",
+      signing,
     },
   );
 
-  const responsePromise = waitForSingleEvent(
-    transport,
-    rpcStreamPullResponseEvent,
-    timeoutMs,
-    normalizeStreamPullResponse,
-  );
-  transport.emit(rpcStreamPullEvent, {
-    conversationId,
-    frame,
-  });
+  const response = await new Promise<RelayStreamPullResponsePayload>(
+    (resolve, reject) => {
+      const cleanup = (): void => {
+        clearTimeout(timer);
+        transport.off(rpcStreamPullResponseEvent, handlePullResponse);
+        transport.off(appErrorEvent, handleAppError);
+        transport.off(connectErrorEvent, handleConnectError);
+        transport.off(disconnectEvent, handleDisconnect);
+      };
 
-  const response = await responsePromise;
+      const handlePullResponse = (payload: unknown): void => {
+        try {
+          const response = normalizeStreamPullResponse(payload);
+          if (
+            response.success &&
+            (response.conversationId !== conversationId ||
+              response.requestId !== requestId ||
+              response.streamId !== streamId)
+          ) {
+            return;
+          }
+
+          cleanup();
+          resolve(response);
+        } catch (error: unknown) {
+          cleanup();
+          reject(error);
+        }
+      };
+
+      const handleAppError = (payload: unknown): void => {
+        cleanup();
+        reject(createSocketAppError(payload));
+      };
+
+      const handleConnectError = (payload: unknown): void => {
+        cleanup();
+        reject(createConnectError(payload));
+      };
+
+      const handleDisconnect = (payload: unknown): void => {
+        cleanup();
+        reject(createDisconnectError(payload));
+      };
+
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(
+          new PlugTimeoutError(
+            "Timed out while waiting for relay:rpc.stream.pull_response",
+            {
+              timeoutMs,
+              eventName: rpcStreamPullResponseEvent,
+              conversationId,
+              requestId,
+              streamId,
+            },
+          ),
+        );
+      }, timeoutMs);
+
+      transport.on(rpcStreamPullResponseEvent, handlePullResponse);
+      transport.on(appErrorEvent, handleAppError);
+      transport.on(connectErrorEvent, handleConnectError);
+      transport.on(disconnectEvent, handleDisconnect);
+      transport.emit(rpcStreamPullEvent, {
+        conversationId,
+        frame,
+      });
+    },
+  );
+
   if (!response.success) {
     throw createRelayControlError({
       code: response.error?.code ?? "RELAY_STREAM_PULL_FAILED",
       message: response.error?.message ?? "relay:rpc.stream.pull failed",
       statusCode: response.error?.statusCode,
+      retryAfterMs: response.error?.retryAfterMs,
       details: response.rateLimit ? { rateLimit: response.rateLimit } : undefined,
     });
   }
 
   return typeof response.windowSize === "number" && response.windowSize > 0
-    ? response.windowSize
-    : windowSize;
+    ? normalizeStreamPullWindowSize(response.windowSize, normalizedWindowSize)
+    : normalizedWindowSize;
 };
 
 export const executeRelayCommand = async (
   input: ExecuteRelayCommandInput,
 ): Promise<PlugCommandTransportResult> => {
   const timeoutMs = input.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const limits = {
+    maxBufferedChunkItems:
+      input.bufferLimits?.maxBufferedChunkItems ?? defaultMaxBufferedChunkItems,
+    maxBufferedRows: input.bufferLimits?.maxBufferedRows ?? defaultMaxBufferedRows,
+    maxBufferedBytes: input.bufferLimits?.maxBufferedBytes ?? defaultMaxBufferedBytes,
+  };
   const command = ensureRelayCompatibleCommand(input.command);
   const clientRequestId = String(command.id);
   let activeRequestId = clientRequestId;
@@ -322,7 +623,7 @@ export const executeRelayCommand = async (
       input.transport,
       connectionReadyEvent,
       timeoutMs,
-      normalizeConnectionReady,
+      (payload) => normalizeConnectionReady(payload, input.payloadFrameSigning),
     );
     plugLogger.debug("transport.socket.connected", {
       agentId: input.agentId,
@@ -344,6 +645,7 @@ export const executeRelayCommand = async (
         code: conversation.error?.code ?? "RELAY_CONVERSATION_START_FAILED",
         message: conversation.error?.message ?? "Failed to start relay conversation",
         statusCode: conversation.error?.statusCode,
+        retryAfterMs: conversation.error?.retryAfterMs,
       });
     }
 
@@ -352,9 +654,10 @@ export const executeRelayCommand = async (
       agentId: input.agentId,
       conversationId,
     });
-    const outboundFrame = encodePayloadFrame(command, {
+    const outboundFrame = await encodePayloadFrameAsync(command, {
       requestId: clientRequestId,
       compression: input.payloadFrameCompression ?? "default",
+      signing: input.payloadFrameSigning,
     });
 
     const acceptedPromise = waitForSingleEvent(
@@ -375,7 +678,25 @@ export const executeRelayCommand = async (
     let rawCompleteFrame: PayloadFrameEnvelope | undefined;
     let rawResponsePayload: unknown;
     let completePayload: JsonObject | undefined;
+    let bufferedBytes = 0;
+    let bufferedRows = 0;
+    let chunkCount = 0;
     const relayConversationId = conversationId;
+
+    const assertBufferLimits = (): void => {
+      if (
+        bufferedBytes > limits.maxBufferedBytes ||
+        bufferedRows > limits.maxBufferedRows ||
+        chunkCount > limits.maxBufferedChunkItems
+      ) {
+        throw buildSocketBufferError({
+          ...limits,
+          bufferedBytes,
+          bufferedRows,
+          chunkCount,
+        });
+      }
+    };
 
     const finalResponsePromise = new Promise<{
       readonly responseFrame: PayloadFrameEnvelope;
@@ -395,6 +716,8 @@ export const executeRelayCommand = async (
         input.transport.off(rpcChunkEvent, chunkListener);
         input.transport.off(rpcCompleteEvent, completeListener);
         input.transport.off(appErrorEvent, handleAppError);
+        input.transport.off(connectErrorEvent, handleConnectError);
+        input.transport.off(disconnectEvent, handleDisconnect);
       };
 
       const timer = setTimeout(() => {
@@ -409,7 +732,7 @@ export const executeRelayCommand = async (
       }, timeoutMs);
 
       const matchesRequestId = async (
-        frameRequestId: string | undefined,
+        frameRequestId: string | null | undefined,
       ): Promise<boolean> => {
         if (!frameRequestId) {
           return true;
@@ -445,6 +768,8 @@ export const executeRelayCommand = async (
             accepted.requestId,
             activeStreamId,
             timeoutMs,
+            input.payloadFrameSigning,
+            input.streamPullWindowSize ?? DEFAULT_RELAY_PULL_WINDOW,
           );
           streamCreditsRemaining = Math.max(nextWindowSize - pendingChunksDuringPull, 0);
           pendingChunksDuringPull = 0;
@@ -463,13 +788,18 @@ export const executeRelayCommand = async (
 
       const handleResponse = async (payload: unknown): Promise<void> => {
         try {
-          const decoded = decodePayloadFrame<unknown>(payload);
+          const decoded = await decodePayloadFrameAsync<unknown>(payload, {
+            signing: input.payloadFrameSigning,
+          });
           if (!(await matchesRequestId(decoded.frame.requestId))) {
             return;
           }
 
           rawResponseFrame = decoded.frame;
           rawResponsePayload = decoded.data;
+          bufferedBytes += estimateJsonUtf8Bytes(decoded.data);
+          bufferedRows += countResultRows(decoded.data);
+          assertBufferLimits();
 
           const streamId = getStreamIdFromNormalizedResponse(decoded.data);
           if (!streamId) {
@@ -491,13 +821,26 @@ export const executeRelayCommand = async (
 
       const handleChunk = async (payload: unknown): Promise<void> => {
         try {
-          const decoded = decodePayloadFrame<JsonObject>(payload);
+          const decoded = await decodePayloadFrameAsync<JsonObject>(payload, {
+            signing: input.payloadFrameSigning,
+          });
           if (!(await matchesRequestId(decoded.frame.requestId))) {
             return;
           }
 
-          rawChunkFrames.push(decoded.frame);
-          chunkPayloads.push(decoded.data);
+          chunkCount += 1;
+          bufferedBytes += estimateJsonUtf8Bytes(decoded.data);
+          bufferedRows += countRows(decoded.data.rows);
+          if (
+            input.responseMode === "aggregatedJson" &&
+            appendChunkRowsToResponse(rawResponsePayload, decoded.data)
+          ) {
+            rawResponsePayload = removeStreamMarkerFromResponse(rawResponsePayload);
+          } else {
+            rawChunkFrames.push(decoded.frame);
+            chunkPayloads.push(decoded.data);
+          }
+          assertBufferLimits();
 
           if (activeStreamId && streamPullInFlight) {
             pendingChunksDuringPull += 1;
@@ -516,7 +859,9 @@ export const executeRelayCommand = async (
 
       const handleComplete = (payload: unknown): void => {
         void (async () => {
-          const decoded = decodePayloadFrame<JsonObject>(payload);
+          const decoded = await decodePayloadFrameAsync<JsonObject>(payload, {
+            signing: input.payloadFrameSigning,
+          });
           if (!(await matchesRequestId(decoded.frame.requestId))) {
             return;
           }
@@ -524,18 +869,23 @@ export const executeRelayCommand = async (
           streamCompleted = true;
           rawCompleteFrame = decoded.frame;
           completePayload = decoded.data;
+          const responseFrame =
+            rawResponseFrame ??
+            (await encodePayloadFrameAsync(
+              {
+                jsonrpc: "2.0",
+                id: activeRequestId,
+                result: {},
+              },
+              {
+                requestId: activeRequestId,
+                compression: "none",
+                signing: input.payloadFrameSigning,
+              },
+            ));
           cleanup();
           resolve({
-            responseFrame:
-              rawResponseFrame ??
-              encodePayloadFrame(
-                {
-                  jsonrpc: "2.0",
-                  id: activeRequestId,
-                  result: {},
-                },
-                { requestId: activeRequestId, compression: "none" },
-              ),
+            responseFrame,
             completeFrame: decoded.frame,
             responsePayload: rawResponsePayload,
             completePayload,
@@ -549,6 +899,16 @@ export const executeRelayCommand = async (
       const handleAppError = (payload: unknown): void => {
         cleanup();
         reject(createSocketAppError(payload));
+      };
+
+      const handleConnectError = (payload: unknown): void => {
+        cleanup();
+        reject(createConnectError(payload));
+      };
+
+      const handleDisconnect = (payload: unknown): void => {
+        cleanup();
+        reject(createDisconnectError(payload));
       };
 
       const responseListener = (payload: unknown): void => {
@@ -565,6 +925,8 @@ export const executeRelayCommand = async (
       input.transport.on(rpcChunkEvent, chunkListener);
       input.transport.on(rpcCompleteEvent, completeListener);
       input.transport.on(appErrorEvent, handleAppError);
+      input.transport.on(connectErrorEvent, handleConnectError);
+      input.transport.on(disconnectEvent, handleDisconnect);
     });
     void finalResponsePromise.catch(() => undefined);
 
@@ -581,6 +943,13 @@ export const executeRelayCommand = async (
       agentId: input.agentId,
       conversationId,
       requestId: accepted.requestId,
+      clientRequestId: accepted.clientRequestId,
+      deduplicated: accepted.deduplicated,
+      replayed: accepted.replayed,
+      inFlight: accepted.inFlight,
+      chunkCount,
+      bufferedBytes,
+      bufferedRows,
     });
     const finalResponse = await finalResponsePromise;
 

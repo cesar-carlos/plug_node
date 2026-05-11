@@ -17,11 +17,17 @@ npm install n8n-nodes-plug-database-advanced
 - `Chunk Items` output mode for socket streams
 - client-to-agent access management over REST
 - automatic capability probe for `agents:command`, with silent relay fallback for older saved workflows
+- HTML-to-PDF generation for workflow documents
+- QR code and barcode generation as n8n binary data
 
 ## Included nodes
 
 - `Plug Database Advanced`
   - consolidated node with `Resource = SQL | Client Access | User Access`
+- `Plug Database Advanced PDF`
+  - renders trusted HTML strings to PDF binary data
+- `Plug Database Advanced Barcode`
+  - generates QR codes and barcodes as PNG or SVG binary data
 
 ## Supported operations
 
@@ -53,6 +59,14 @@ npm install n8n-nodes-plug-database-advanced
 - `Reject Access Request`
 - `List Agent Clients`
 - `Revoke Agent Client Access`
+
+`Plug Database Advanced PDF`:
+
+- `HTML to PDF`
+
+`Plug Database Advanced Barcode`:
+
+- `Generate Code`
 
 ## Credentials
 
@@ -88,7 +102,7 @@ Both access nodes also support:
 ## Notes
 
 - this package is published to npm but is not intended for n8n verification
-- it includes the `socket.io-client` runtime dependency required for consumer socket transport
+- it includes runtime dependencies for consumer socket transport, PDF rendering, and QR/barcode generation
 
 ## Quick examples
 
@@ -106,6 +120,18 @@ Both access nodes also support:
 - Large socket streams are protected by local buffer guardrails so the node fails clearly instead of letting memory grow without bounds.
 
 Legacy access-only nodes remain published for compatibility with existing workflows, but are hidden from the node creator for new users.
+
+## Tool nodes
+
+`Plug Database Advanced PDF` uses `playwright-core` and requires Chrome or Chromium to be available in the n8n runtime. Set `Browser Executable Path`, set `PLUG_TOOLS_CHROME_EXECUTABLE_PATH`, or use an installed browser channel.
+
+For Docker-based n8n deployments, install Chrome or Chromium in the image and set `PLUG_TOOLS_CHROME_EXECUTABLE_PATH` to the executable path. `playwright-core` does not download a browser at install time.
+
+For safety, the PDF node accepts HTML strings only, supports optional CSS injection, disables JavaScript by default, blocks external network requests, and always blocks `file:` URLs. It also exposes `Wait Until`, `Render Delay (ms)`, `Max HTML Size Bytes`, and `Max PDF Output Size Bytes` controls for larger templates.
+
+`Plug Database Advanced Barcode` uses `@bwip-js/node` and supports QR Code, Code 128, EAN, UPC, Data Matrix, PDF417, and Aztec output. EAN and UPC inputs are validated before rendering. PNG and SVG binary output include optional metadata with size and duration, and QR/barcode output can also be emitted as JSON base64 when needed.
+
+Use n8n's built-in `Compression`, `Convert to File`, and `Extract From File` nodes for gzip, base64, and generic file conversion.
 
 ## Documentation
 

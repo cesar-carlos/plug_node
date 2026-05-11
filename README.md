@@ -11,12 +11,12 @@ This repository contains the Plug Database n8n community node workspace.
 
 - `n8n-nodes-plug-database`
   - public REST-only package
-  - candidate for n8n verification
   - exposes one consolidated `Plug Database` node
+  - remains the clean candidate for n8n verification because it avoids extra runtime tool dependencies
 - `n8n-nodes-plug-database-advanced`
   - advanced npm package
   - REST + consumer socket support
-  - exposes one consolidated `Plug Database Advanced` node
+  - exposes one consolidated `Plug Database Advanced` node plus PDF and barcode tool nodes
 
 ## User experience
 
@@ -59,6 +59,12 @@ The `Client Access` resource manages approved agents, access requests, and per-a
 The `User Access` resource browses the agent catalog and manages owner-side approval and revocation flows over REST.
 
 Legacy access-only nodes remain registered for workflow compatibility, but they are hidden from the node creator for new users.
+
+Tool nodes:
+
+- `Plug Database Advanced PDF` renders trusted HTML strings to PDF binary files using `playwright-core` and an installed Chrome/Chromium browser.
+- `Plug Database Advanced Barcode` generates QR codes and common barcodes as PNG or SVG binary files using `@bwip-js/node`.
+- Use n8n's built-in `Compression`, `Convert to File`, and `Extract From File` nodes for gzip, base64, and generic file conversion.
 
 ## Example workflows
 
@@ -105,7 +111,7 @@ npm run scan:public
 
 ## Verification path
 
-For the verified community-node track, use only `n8n-nodes-plug-database`.
+`n8n-nodes-plug-database` is kept REST-only and dependency-light for the public verification path. Tooling that requires runtime dependencies lives in `n8n-nodes-plug-database-advanced`.
 
 After a GitHub Actions publish succeeds, run the dedicated `Scan Public Package` workflow or execute:
 

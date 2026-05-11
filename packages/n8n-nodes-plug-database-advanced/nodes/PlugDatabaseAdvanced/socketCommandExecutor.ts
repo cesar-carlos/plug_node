@@ -22,6 +22,18 @@ const appErrorEvent = "app:error";
 const connectErrorEvent = "connect_error";
 const disconnectEvent = "disconnect";
 const defaultCapabilityProbeTimeoutMs = 1_500;
+const capabilityTtlMs = 60_000;
+const capabilityProbeBackoffMinMs = 50;
+const capabilityProbeBackoffJitterMs = 100;
+
+const sleep = async (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const nextProbeBackoffMs = (): number =>
+  capabilityProbeBackoffMinMs +
+  Math.floor(Math.random() * capabilityProbeBackoffJitterMs);
 
 class SocketIoConsumerTransport implements ConsumerSocketTransport {
   constructor(private readonly socket: Socket) {}
@@ -71,6 +83,10 @@ export class ConsumerSocketExecutionManager {
 
   private capabilityProbeInFlight?: Promise<boolean>;
 
+  private capabilityCacheKey?: string;
+
+  private capabilityCheckedAtMs = 0;
+
   private readonly handleTerminalEvent = (): void => {
     this.stale = true;
   };
@@ -89,6 +105,8 @@ export class ConsumerSocketExecutionManager {
     this.accessToken = undefined;
     this.capability = "unknown";
     this.capabilityProbeInFlight = undefined;
+    this.capabilityCacheKey = undefined;
+    this.capabilityCheckedAtMs = 0;
   }
 
   private ensureTransport(baseUrl: string, accessToken: string): ConsumerSocketTransport {
@@ -122,6 +140,8 @@ export class ConsumerSocketExecutionManager {
       this.accessToken = accessToken;
       this.stale = false;
       this.capability = "unknown";
+      this.capabilityCacheKey = `${namespaceUrl}:${accessToken}`;
+      this.capabilityCheckedAtMs = 0;
       plugLogger.debug("transport.socket.manager.created", {
         socketMode: "agentsCommand",
         namespaceUrl,
@@ -139,11 +159,20 @@ export class ConsumerSocketExecutionManager {
   private async probeAgentsCommandCapability(
     input: Parameters<PlugSocketExecutor>[0],
   ): Promise<boolean> {
-    if (this.capability === "supported") {
+    const namespaceUrl = deriveSocketNamespaceUrl(
+      input.session.credentials.baseUrl,
+      "/consumers",
+    );
+    const capabilityKey = `${namespaceUrl}:${input.session.accessToken}`;
+    const cacheFresh =
+      this.capabilityCacheKey === capabilityKey &&
+      Date.now() - this.capabilityCheckedAtMs < capabilityTtlMs;
+
+    if (this.capability === "supported" && cacheFresh) {
       return true;
     }
 
-    if (this.capability === "unsupported") {
+    if (this.capability === "unsupported" && cacheFresh) {
       return false;
     }
 
@@ -170,6 +199,7 @@ export class ConsumerSocketExecutionManager {
             command: buildConsumerSocketCapabilityProbeCommand(),
             timeoutMs: probeTimeoutMs,
             payloadFrameCompression: "default",
+            payloadFrameSigning: input.payloadFrameSigning,
             responseMode: "aggregatedJson",
             bufferLimits: {
               maxBufferedBytes: 64 * 1024,
@@ -184,16 +214,22 @@ export class ConsumerSocketExecutionManager {
             agentId: input.agentId,
             durationMs: Date.now() - probeStartedAt,
           });
+          this.capabilityCacheKey = capabilityKey;
+          this.capabilityCheckedAtMs = Date.now();
           return true;
         } catch (error: unknown) {
           if (error instanceof PlugTimeoutError) {
+            await sleep(nextProbeBackoffMs());
             this.capability = "unsupported";
+            this.capabilityCacheKey = capabilityKey;
+            this.capabilityCheckedAtMs = Date.now();
             this.stale = true;
             this.socket?.disconnect();
             plugLogger.warn("transport.socket.capability_probe.fallback", {
               socketMode: "agentsCommand",
               agentId: input.agentId,
               durationMs: Date.now() - probeStartedAt,
+              fallbackReason: "probe_timeout",
             });
             return false;
           }
@@ -204,6 +240,8 @@ export class ConsumerSocketExecutionManager {
             error.code !== "SOCKET_DISCONNECTED"
           ) {
             this.capability = "supported";
+            this.capabilityCacheKey = capabilityKey;
+            this.capabilityCheckedAtMs = Date.now();
           }
 
           throw error;
@@ -267,7 +305,10 @@ export class ConsumerSocketExecutionManager {
         command: input.command,
         timeoutMs: input.timeoutMs,
         payloadFrameCompression: input.payloadFrameCompression,
+        payloadFrameSigning: input.payloadFrameSigning,
         responseMode: input.responseMode,
+        bufferLimits: input.bufferLimits,
+        streamPullWindowSize: input.streamPullWindowSize,
       });
       plugLogger.info("transport.socket.manager.completed", {
         socketMode: "agentsCommand",

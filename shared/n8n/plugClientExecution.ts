@@ -1,9 +1,4 @@
-import type {
-  IDataObject,
-  IExecuteFunctions,
-  IHttpRequestOptions,
-  INodeExecutionData,
-} from "n8n-workflow";
+import type { IDataObject, IExecuteFunctions, INodeExecutionData } from "n8n-workflow";
 import { NodeOperationError } from "n8n-workflow";
 
 import { DEFAULT_API_VERSION, DEFAULT_BASE_URL } from "../contracts/api";
@@ -11,6 +6,7 @@ import type {
   BridgeCommand,
   BuiltCommandRequest,
   JsonObject,
+  PayloadFrameCompression,
   PlugChannel,
   PlugCommandTransportResult,
   PlugCredentialDefaults,
@@ -27,6 +23,7 @@ import {
 } from "../auth/session";
 import { executePlugClientAccessNode } from "./plugClientAccessExecution";
 import { executePlugUserAccessNode } from "./plugUserAccessExecution";
+import { buildN8nHttpRequester } from "./httpRequester";
 import { buildNodeOutputItems } from "../output/nodeOutput";
 import { executeRestCommand } from "../rest/client";
 import { isRecord, parseOptionalJsonArray, parseOptionalJsonObject } from "../utils/json";
@@ -37,8 +34,18 @@ export interface PlugSocketExecutor {
     readonly agentId: string;
     readonly command: BridgeCommand;
     readonly timeoutMs?: number;
-    readonly payloadFrameCompression?: import("../contracts/api").PayloadFrameCompression;
+    readonly payloadFrameCompression?: PayloadFrameCompression;
+    readonly payloadFrameSigning?: {
+      readonly key?: string;
+      readonly keyId?: string;
+    };
     readonly responseMode: PlugResponseMode;
+    readonly bufferLimits?: {
+      readonly maxBufferedChunkItems?: number;
+      readonly maxBufferedRows?: number;
+      readonly maxBufferedBytes?: number;
+    };
+    readonly streamPullWindowSize?: number;
   }): Promise<PlugCommandTransportResult>;
 }
 
@@ -106,6 +113,15 @@ const getResponseMode = (
 const getIncludeMetadata = (context: IExecuteFunctions, itemIndex: number): boolean =>
   context.getNodeParameter("includePlugMetadata", itemIndex, true) as boolean;
 
+const defaultSocketBufferLimits = {
+  maxBufferedChunkItems: 512,
+  maxBufferedRows: 50_000,
+  maxBufferedBytes: 8 * 1024 * 1024,
+} as const;
+
+const defaultSocketStreamPullWindowSize = 32;
+const maxSocketStreamPullWindowSize = 1000;
+
 const operationsRequiringClientToken = new Set([
   "validateContext",
   "executeSql",
@@ -118,45 +134,6 @@ const resolveSocketImplementation = (
   context: IExecuteFunctions,
 ): PlugSocketImplementation =>
   context.getNode().typeVersion >= 2 ? "agentsCommand" : "relay";
-
-const buildHttpRequester = (
-  context: IExecuteFunctions,
-): import("../contracts/api").PlugHttpRequester => {
-  return async (options) => {
-    const requestOptions: IHttpRequestOptions = {
-      method: options.method,
-      url: options.url,
-      headers: options.headers,
-      ...(options.body !== undefined
-        ? {
-            body: options.body as NonNullable<IHttpRequestOptions["body"]>,
-          }
-        : {}),
-      timeout: options.timeoutMs,
-      returnFullResponse: true,
-      ignoreHttpStatusErrors: true,
-      json: true,
-    };
-
-    const response = await context.helpers.httpRequest(requestOptions);
-    const responseBody =
-      isRecord(response) && "body" in response ? response.body : response;
-    const responseHeaders =
-      isRecord(response) && isRecord(response.headers)
-        ? (response.headers as Record<string, string | string[] | undefined>)
-        : {};
-    const statusCode =
-      isRecord(response) && typeof response.statusCode === "number"
-        ? response.statusCode
-        : 200;
-
-    return {
-      statusCode,
-      headers: responseHeaders,
-      body: responseBody,
-    };
-  };
-};
 
 const readCredentials = async (
   context: IExecuteFunctions,
@@ -171,6 +148,8 @@ const readCredentials = async (
     password: String(rawCredentials.password ?? ""),
     agentId: toOptionalString(rawCredentials.agentId),
     clientToken: toOptionalString(rawCredentials.clientToken),
+    payloadSigningKey: toOptionalString(rawCredentials.payloadSigningKey),
+    payloadSigningKeyId: toOptionalString(rawCredentials.payloadSigningKeyId),
     baseUrl: DEFAULT_BASE_URL,
   };
 };
@@ -646,23 +625,69 @@ const buildBuiltCommandRequest = (
 
   return {
     ...builtRequest,
-    channel:
-      operation === "executeBatch" &&
-      (!config.supportsSocket || resolveSocketImplementation(context) === "relay")
-        ? "rest"
-        : !config.supportsSocket
-          ? "rest"
-          : channel,
+    channel: !config.supportsSocket ? "rest" : channel,
     ...(channel === "socket" && config.supportsSocket
       ? {
           socketImplementation: resolveSocketImplementation(context),
           payloadFrameCompression: "default" as const,
+          bufferLimits: resolveSocketBufferLimits(context, itemIndex),
+          streamPullWindowSize: resolveSocketStreamPullWindowSize(context, itemIndex),
         }
       : {}),
     responseMode:
       operation === "validateContext"
         ? "aggregatedJson"
         : getResponseMode(context, itemIndex),
+  };
+};
+
+const resolveSocketBufferLimits = (
+  context: IExecuteFunctions,
+  itemIndex: number,
+): BuiltCommandRequest["bufferLimits"] => {
+  const socketOptions = toCollection(context, "socketOptions", itemIndex);
+  const maxBufferedChunkItems = toOptionalPositiveNumber(socketOptions.maxBufferedChunks);
+  const maxBufferedRows = toOptionalPositiveNumber(socketOptions.maxBufferedRows);
+  const maxBufferedBytes = toOptionalPositiveNumber(socketOptions.maxBufferedBytes);
+
+  return {
+    maxBufferedChunkItems:
+      maxBufferedChunkItems ?? defaultSocketBufferLimits.maxBufferedChunkItems,
+    maxBufferedRows: maxBufferedRows ?? defaultSocketBufferLimits.maxBufferedRows,
+    maxBufferedBytes: maxBufferedBytes ?? defaultSocketBufferLimits.maxBufferedBytes,
+  };
+};
+
+const resolveSocketStreamPullWindowSize = (
+  context: IExecuteFunctions,
+  itemIndex: number,
+): number => {
+  const socketOptions = toCollection(context, "socketOptions", itemIndex);
+  const configured = toOptionalPositiveNumber(socketOptions.streamPullWindowSize);
+  if (configured === undefined) {
+    return defaultSocketStreamPullWindowSize;
+  }
+
+  return Math.min(maxSocketStreamPullWindowSize, Math.max(1, Math.floor(configured)));
+};
+
+const resolvePayloadFrameSigning = (
+  session: import("../contracts/api").PlugSession<PlugCredentialDefaults>,
+):
+  | {
+      readonly key?: string;
+      readonly keyId?: string;
+    }
+  | undefined => {
+  const key = toOptionalString(session.credentials.payloadSigningKey);
+  const keyId = toOptionalString(session.credentials.payloadSigningKeyId);
+  if (!key && !keyId) {
+    return undefined;
+  }
+
+  return {
+    ...(key ? { key } : {}),
+    ...(keyId ? { keyId } : {}),
   };
 };
 
@@ -698,7 +723,10 @@ const executeBuiltRequest = async (
         command: builtRequest.command,
         timeoutMs: builtRequest.timeoutMs,
         payloadFrameCompression: builtRequest.payloadFrameCompression,
+        payloadFrameSigning: resolvePayloadFrameSigning(session),
         responseMode: builtRequest.responseMode,
+        bufferLimits: builtRequest.bufferLimits,
+        streamPullWindowSize: builtRequest.streamPullWindowSize,
       });
     }
 
@@ -759,7 +787,7 @@ const executePlugSqlNode = async (
   const items =
     sourceItems.length > 0 ? sourceItems : [{ json: {} } as INodeExecutionData];
   const credentials = await readCredentials(context, config);
-  const requester = buildHttpRequester(context);
+  const requester = buildN8nHttpRequester(context);
   const sessionRunner = createExecutionSessionRunner(requester, credentials);
   const outputItems: INodeExecutionData[] = [];
 

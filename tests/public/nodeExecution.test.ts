@@ -764,6 +764,113 @@ describe("executePlugClientNode", () => {
     });
   });
 
+  it("passes socket options to socket executors with stream pull window clamped", async () => {
+    const socketExecutor = vi.fn(async (input) => ({
+      channel: "socket" as const,
+      socketMode: "agentsCommand" as const,
+      agentId: input.agentId,
+      requestId: "request-1",
+      notification: false as const,
+      response: {
+        type: "single" as const,
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            policy: "approved",
+          },
+        },
+      },
+      rawResponsePayload: {
+        policy: "approved",
+      },
+      chunkPayloads: [],
+      rawChunkFrames: [],
+    }));
+
+    const context = createMockExecuteContext({
+      credentials: {
+        ...credentials,
+        payloadSigningKey: "shared-secret",
+        payloadSigningKeyId: "hub-2026-q2",
+      },
+      nodeTypeVersion: 2,
+      parameters: {
+        operation: "getClientTokenPolicy",
+        channel: "socket",
+        inputMode: "guided",
+        responseMode: "rawJsonRpc",
+        includePlugMetadata: true,
+        profileOptions: {},
+        socketOptions: {
+          maxBufferedRows: 123,
+          maxBufferedBytes: 45678,
+          maxBufferedChunks: 9,
+          streamPullWindowSize: 5000,
+        },
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+      ],
+    });
+
+    await executePlugClientNode(context, {
+      supportsSocket: true,
+      socketExecutor,
+    });
+
+    expect(socketExecutor.mock.calls[0][0]).toMatchObject({
+      payloadFrameSigning: {
+        key: "shared-secret",
+        keyId: "hub-2026-q2",
+      },
+      bufferLimits: {
+        maxBufferedRows: 123,
+        maxBufferedBytes: 45678,
+        maxBufferedChunkItems: 9,
+      },
+      streamPullWindowSize: 1000,
+    });
+
+    socketExecutor.mockClear();
+    const defaultWindowContext = createMockExecuteContext({
+      credentials,
+      nodeTypeVersion: 2,
+      parameters: {
+        operation: "getClientTokenPolicy",
+        channel: "socket",
+        inputMode: "guided",
+        responseMode: "rawJsonRpc",
+        includePlugMetadata: true,
+        profileOptions: {},
+        socketOptions: {
+          streamPullWindowSize: 0,
+        },
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+      ],
+    });
+
+    await executePlugClientNode(defaultWindowContext, {
+      supportsSocket: true,
+      socketExecutor,
+    });
+
+    expect(socketExecutor.mock.calls[0][0]).toMatchObject({
+      streamPullWindowSize: 32,
+    });
+  });
+
   it("keeps socket workflows on relay for version 1 nodes without new metadata", async () => {
     const socketExecutor = vi.fn(async () => {
       throw new Error(

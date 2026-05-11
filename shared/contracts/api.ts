@@ -43,6 +43,8 @@ export type PlugUserAuthCredentials = PlugEmailPasswordCredentials;
 export interface PlugCredentialDefaults extends PlugClientAuthCredentials {
   readonly agentId?: string;
   readonly clientToken?: string;
+  readonly payloadSigningKey?: string;
+  readonly payloadSigningKeyId?: string;
 }
 
 export type PlugCredentials = PlugCredentialDefaults;
@@ -315,6 +317,7 @@ export interface RelayConversationStartedPayload {
     readonly code?: string;
     readonly message?: string;
     readonly statusCode?: number;
+    readonly retryAfterMs?: number;
   };
 }
 
@@ -334,6 +337,7 @@ export interface RelayRpcAcceptedFailurePayload {
     readonly code: string;
     readonly message: string;
     readonly statusCode?: number;
+    readonly retryAfterMs?: number;
   };
 }
 
@@ -356,6 +360,7 @@ export interface RelayStreamPullResponsePayload {
     readonly code: string;
     readonly message: string;
     readonly statusCode?: number;
+    readonly retryAfterMs?: number;
   };
 }
 
@@ -370,6 +375,7 @@ export interface ConsumerCommandSocketSuccessPayload {
   readonly requestId: string;
   readonly response: NormalizedAgentRpcResponse | ConsumerCommandNotificationResponse;
   readonly streamId?: string;
+  readonly retryAfterSeconds?: number;
 }
 
 export interface ConsumerCommandSocketFailurePayload {
@@ -379,6 +385,7 @@ export interface ConsumerCommandSocketFailurePayload {
     readonly code: string;
     readonly message: string;
     readonly statusCode?: number;
+    readonly retryAfterMs?: number;
   };
 }
 
@@ -408,6 +415,11 @@ export interface ConsumerCommandStreamPullResponseSuccessPayload {
   readonly requestId: string;
   readonly streamId: string;
   readonly windowSize: number;
+  readonly rateLimit?: {
+    readonly remainingCredits: number;
+    readonly limit: number;
+    readonly scope: "user" | "anon";
+  };
 }
 
 export interface ConsumerCommandStreamPullResponseFailurePayload {
@@ -416,6 +428,12 @@ export interface ConsumerCommandStreamPullResponseFailurePayload {
     readonly code: string;
     readonly message: string;
     readonly statusCode?: number;
+    readonly retryAfterMs?: number;
+  };
+  readonly rateLimit?: {
+    readonly remainingCredits: number;
+    readonly limit: number;
+    readonly scope: "user" | "anon";
   };
 }
 
@@ -484,4 +502,10 @@ export interface BuiltCommandRequest {
   readonly command: BridgeCommand;
   readonly timeoutMs?: number;
   readonly payloadFrameCompression?: PayloadFrameCompression;
+  readonly bufferLimits?: {
+    readonly maxBufferedChunkItems?: number;
+    readonly maxBufferedRows?: number;
+    readonly maxBufferedBytes?: number;
+  };
+  readonly streamPullWindowSize?: number;
 }

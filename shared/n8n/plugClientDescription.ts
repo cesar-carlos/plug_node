@@ -325,6 +325,57 @@ const validateContextOptions: INodeProperties = {
   ],
 };
 
+const socketAdvancedOptions: INodeProperties = {
+  displayName: "Socket Options",
+  name: "socketOptions",
+  type: "collection",
+  placeholder: "Add socket option",
+  default: {},
+  displayOptions: {
+    show: {
+      channel: ["socket"],
+    },
+  },
+  options: [
+    {
+      displayName: "Max Buffered Rows",
+      name: "maxBufferedRows",
+      type: "number",
+      default: 50000,
+      description:
+        "Maximum rows the node buffers locally while collecting socket stream output.",
+    },
+    {
+      displayName: "Max Buffered Bytes",
+      name: "maxBufferedBytes",
+      type: "number",
+      default: 8388608,
+      description:
+        "Maximum approximate JSON bytes the node buffers locally while collecting socket stream output.",
+    },
+    {
+      displayName: "Max Buffered Chunks",
+      name: "maxBufferedChunks",
+      type: "number",
+      default: 512,
+      description:
+        "Maximum socket stream chunks the node buffers locally before failing clearly.",
+    },
+    {
+      displayName: "Stream Pull Window Size",
+      name: "streamPullWindowSize",
+      type: "number",
+      default: 32,
+      typeOptions: {
+        minValue: 1,
+        maxValue: 1000,
+      },
+      description:
+        "Number of socket stream chunks requested from Plug in each pull window. Must be between 1 and 1000; defaults to 32.",
+    },
+  ],
+};
+
 const addResourceDisplayOption = (
   property: INodeProperties,
   resource: string,
@@ -558,6 +609,7 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
     discoverAdvancedOptions,
     profileAdvancedOptions,
     validateContextOptions,
+    ...(supportsSocket ? [socketAdvancedOptions] : []),
   );
 
   return properties;

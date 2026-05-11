@@ -260,6 +260,100 @@ class StreamingConsumerTransport implements ConsumerSocketTransport {
   }
 }
 
+class LargeChunkConsumerTransport implements ConsumerSocketTransport {
+  connected = false;
+
+  private readonly handlers = new Map<string, Set<(payload: unknown) => void>>();
+
+  connect(): void {
+    this.connected = true;
+
+    queueMicrotask(() => {
+      this.dispatch(
+        "connection:ready",
+        encodePayloadFrame(
+          {
+            id: "socket-1",
+            message: "Consumer socket connected successfully",
+            user: {
+              sub: "client-1",
+              role: "client",
+            },
+          } as RelayConnectionReadyPayload,
+          { requestId: "handshake", compression: "none" },
+        ),
+      );
+    });
+  }
+
+  disconnect(): void {
+    this.connected = false;
+  }
+
+  on(event: string, handler: (payload: unknown) => void): void {
+    const eventHandlers =
+      this.handlers.get(event) ?? new Set<(payload: unknown) => void>();
+    eventHandlers.add(handler);
+    this.handlers.set(event, eventHandlers);
+  }
+
+  off(event: string, handler: (payload: unknown) => void): void {
+    this.handlers.get(event)?.delete(handler);
+  }
+
+  emit(event: string): void {
+    if (event === "agents:command") {
+      queueMicrotask(() => {
+        this.dispatch("agents:command_response", {
+          success: true,
+          requestId: "request-1",
+          streamId: "stream-1",
+          response: {
+            type: "single",
+            success: true,
+            item: {
+              id: "rpc-1",
+              success: true,
+              result: {
+                rows: [],
+                stream_id: "stream-1",
+              },
+            },
+          },
+        });
+      });
+      return;
+    }
+
+    if (event === "agents:stream_pull") {
+      queueMicrotask(() => {
+        this.dispatch("agents:stream_pull_response", {
+          success: true,
+          requestId: "request-1",
+          streamId: "stream-1",
+          windowSize: 1,
+        });
+        this.dispatch("agents:command_stream_chunk", {
+          request_id: "request-1",
+          stream_id: "stream-1",
+          rows: Array.from({ length: 130_000 }, (_, index) => ({ id: index })),
+        });
+        this.dispatch("agents:command_stream_complete", {
+          request_id: "request-1",
+          stream_id: "stream-1",
+          terminal_status: "completed",
+        });
+      });
+    }
+  }
+
+  private dispatch(event: string, payload: unknown): void {
+    for (const handler of this.handlers.get(event) ?? []) {
+      handler(payload);
+    }
+  }
+}
+
 class InvalidStreamPullTransport implements ConsumerSocketTransport {
   connected = false;
 
@@ -495,6 +589,133 @@ class AppErrorConsumerTransport implements ConsumerSocketTransport {
   }
 }
 
+class RateLimitedConsumerTransport implements ConsumerSocketTransport {
+  connected = false;
+
+  private readonly handlers = new Map<string, Set<(payload: unknown) => void>>();
+
+  connect(): void {
+    this.connected = true;
+
+    queueMicrotask(() => {
+      this.dispatch(
+        "connection:ready",
+        encodePayloadFrame(
+          {
+            id: "socket-1",
+            message: "Consumer socket connected successfully",
+            user: {
+              sub: "client-1",
+              role: "client",
+            },
+          } as RelayConnectionReadyPayload,
+          { requestId: "handshake", compression: "none" },
+        ),
+      );
+    });
+  }
+
+  disconnect(): void {
+    this.connected = false;
+  }
+
+  on(event: string, handler: (payload: unknown) => void): void {
+    const eventHandlers =
+      this.handlers.get(event) ?? new Set<(payload: unknown) => void>();
+    eventHandlers.add(handler);
+    this.handlers.set(event, eventHandlers);
+  }
+
+  off(event: string, handler: (payload: unknown) => void): void {
+    this.handlers.get(event)?.delete(handler);
+  }
+
+  emit(event: string): void {
+    if (event === "agents:command") {
+      queueMicrotask(() => {
+        this.dispatch("agents:command_response", {
+          success: false,
+          error: {
+            code: "TOO_MANY_REQUESTS",
+            message: "slow down",
+            statusCode: 429,
+            retryAfterMs: 1250,
+          },
+        });
+      });
+    }
+  }
+
+  private dispatch(event: string, payload: unknown): void {
+    for (const handler of this.handlers.get(event) ?? []) {
+      handler(payload);
+    }
+  }
+}
+
+class ServiceUnavailableConsumerTransport implements ConsumerSocketTransport {
+  connected = false;
+
+  private readonly handlers = new Map<string, Set<(payload: unknown) => void>>();
+
+  connect(): void {
+    this.connected = true;
+
+    queueMicrotask(() => {
+      this.dispatch(
+        "connection:ready",
+        encodePayloadFrame(
+          {
+            id: "socket-1",
+            message: "Consumer socket connected successfully",
+            user: {
+              sub: "client-1",
+              role: "client",
+            },
+          } as RelayConnectionReadyPayload,
+          { requestId: "handshake", compression: "none" },
+        ),
+      );
+    });
+  }
+
+  disconnect(): void {
+    this.connected = false;
+  }
+
+  on(event: string, handler: (payload: unknown) => void): void {
+    const eventHandlers =
+      this.handlers.get(event) ?? new Set<(payload: unknown) => void>();
+    eventHandlers.add(handler);
+    this.handlers.set(event, eventHandlers);
+  }
+
+  off(event: string, handler: (payload: unknown) => void): void {
+    this.handlers.get(event)?.delete(handler);
+  }
+
+  emit(event: string): void {
+    if (event === "agents:command") {
+      queueMicrotask(() => {
+        this.dispatch("agents:command_response", {
+          success: false,
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "relay overloaded",
+            retryAfterMs: 2500,
+          },
+        });
+      });
+    }
+  }
+
+  private dispatch(event: string, payload: unknown): void {
+    for (const handler of this.handlers.get(event) ?? []) {
+      handler(payload);
+    }
+  }
+}
+
 const session: PlugSession = {
   credentials: {
     user: "client@example.com",
@@ -597,6 +818,37 @@ describe("executeConsumerCommand", () => {
     expect(transport.streamPullRequests).toBe(2);
   });
 
+  it("aggregates large agents:command chunks without spreading row arrays", async () => {
+    const result = await executeConsumerCommand({
+      transport: new LargeChunkConsumerTransport(),
+      session,
+      agentId: "agent-1",
+      command: {
+        jsonrpc: "2.0",
+        method: "sql.execute",
+        id: "request-1",
+        params: {
+          sql: "SELECT 1",
+          client_token: "client-token",
+        },
+      },
+      responseMode: "aggregatedJson",
+      timeoutMs: 5000,
+      payloadFrameCompression: "default",
+      bufferLimits: {
+        maxBufferedBytes: 20 * 1024 * 1024,
+        maxBufferedChunkItems: 2,
+        maxBufferedRows: 150_000,
+      },
+    });
+
+    const items = buildNodeOutputItems(result, "aggregatedJson");
+
+    expect(result.chunkPayloads).toHaveLength(0);
+    expect(items).toHaveLength(130_000);
+    expect(items[129_999]).toMatchObject({ id: 129_999 });
+  });
+
   it("fails clearly when agents:stream_pull_response is malformed", async () => {
     await expect(
       executeConsumerCommand({
@@ -670,6 +922,35 @@ describe("executeConsumerCommand", () => {
     ).rejects.toThrow("The socket response exceeded the local buffer safety limits.");
   });
 
+  it("enforces max chunk count for aggregated agents:command streams", async () => {
+    await expect(
+      executeConsumerCommand({
+        transport: new StreamingConsumerTransport(),
+        session,
+        agentId: "agent-1",
+        command: {
+          jsonrpc: "2.0",
+          method: "sql.execute",
+          id: "request-1",
+          params: {
+            sql: "SELECT 1",
+            client_token: "client-token",
+          },
+        },
+        responseMode: "aggregatedJson",
+        timeoutMs: 5000,
+        payloadFrameCompression: "default",
+        bufferLimits: {
+          maxBufferedBytes: 1024 * 1024,
+          maxBufferedChunkItems: 1,
+          maxBufferedRows: 100,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "SOCKET_BUFFER_LIMIT",
+    });
+  });
+
   it("fails clearly when the server emits app:error", async () => {
     await expect(
       executeConsumerCommand({
@@ -689,5 +970,55 @@ describe("executeConsumerCommand", () => {
         payloadFrameCompression: "default",
       }),
     ).rejects.toThrow("Client access to this agent was revoked.");
+  });
+
+  it("propagates retryAfterMs from agents:command_response failures", async () => {
+    await expect(
+      executeConsumerCommand({
+        transport: new RateLimitedConsumerTransport(),
+        session,
+        agentId: "agent-1",
+        command: {
+          jsonrpc: "2.0",
+          method: "client_token.getPolicy",
+          id: "request-1",
+          params: {
+            client_token: "client-token",
+          },
+        },
+        responseMode: "aggregatedJson",
+        timeoutMs: 5000,
+        payloadFrameCompression: "default",
+      }),
+    ).rejects.toMatchObject({
+      code: "TOO_MANY_REQUESTS",
+      retryable: true,
+      retryAfterSeconds: 2,
+    });
+  });
+
+  it("marks SERVICE_UNAVAILABLE socket command failures as retryable", async () => {
+    await expect(
+      executeConsumerCommand({
+        transport: new ServiceUnavailableConsumerTransport(),
+        session,
+        agentId: "agent-1",
+        command: {
+          jsonrpc: "2.0",
+          method: "client_token.getPolicy",
+          id: "request-1",
+          params: {
+            client_token: "client-token",
+          },
+        },
+        responseMode: "aggregatedJson",
+        timeoutMs: 5000,
+        payloadFrameCompression: "default",
+      }),
+    ).rejects.toMatchObject({
+      code: "SERVICE_UNAVAILABLE",
+      retryable: true,
+      retryAfterSeconds: 3,
+    });
   });
 });

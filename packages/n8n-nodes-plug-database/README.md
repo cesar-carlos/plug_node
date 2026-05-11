@@ -17,6 +17,7 @@ npm install n8n-nodes-plug-database
 - fixed Plug Database API base URL
 - guided mode for common operations
 - advanced mode for raw JSON-RPC commands
+- dependency-light REST-only runtime for the public verification path
 
 ## Included nodes
 
@@ -102,6 +103,7 @@ Legacy access-only nodes remain published for compatibility with existing workfl
 - no Socket relay support
 - no realtime trigger in v1
 - `Execute Batch` runs over REST only
+- PDF, QR code, and barcode tool nodes live in `n8n-nodes-plug-database-advanced` because they require runtime dependencies
 
 ## Documentation
 

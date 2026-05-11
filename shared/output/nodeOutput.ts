@@ -20,6 +20,14 @@ const toMetadata = (result: PlugCommandTransportResult): JsonObject => ({
         ...("conversationId" in result && result.conversationId
           ? { conversationId: result.conversationId }
           : {}),
+        ...("accepted" in result && result.accepted
+          ? {
+              clientRequestId: result.accepted.clientRequestId,
+              deduplicated: result.accepted.deduplicated,
+              replayed: result.accepted.replayed,
+              inFlight: result.accepted.inFlight,
+            }
+          : {}),
       }
     : {}),
 });

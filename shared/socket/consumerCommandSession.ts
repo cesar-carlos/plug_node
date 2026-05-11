@@ -17,9 +17,10 @@ import {
   type RelayConnectionReadyPayload,
   type RpcSingleCommand,
 } from "../contracts/api";
+import type { PayloadFrameSigningOptions } from "../contracts/payload-frame";
 import { PlugError, PlugTimeoutError, PlugValidationError } from "../contracts/errors";
 import { plugLogger } from "../logging/plugLogger";
-import { decodePayloadFrame } from "./payloadFrameCodec";
+import { decodePayloadFrameAsync } from "./payloadFrameCodec";
 import { estimateJsonUtf8Bytes, isRecord } from "../utils/json";
 
 const appErrorEvent = "app:error";
@@ -35,6 +36,7 @@ const streamPullResponseEvent = "agents:stream_pull_response";
 const defaultMaxBufferedChunkItems = 512;
 const defaultMaxBufferedRows = 50_000;
 const defaultMaxBufferedBytes = 8 * 1024 * 1024;
+const maxStreamPullWindowSize = 1000;
 
 export interface ConsumerSocketTransport {
   readonly connected: boolean;
@@ -53,11 +55,13 @@ export interface ExecuteConsumerCommandInput {
   readonly timeoutMs?: number;
   readonly payloadFrameCompression?: PayloadFrameCompression;
   readonly responseMode: PlugResponseMode;
+  readonly payloadFrameSigning?: PayloadFrameSigningOptions;
   readonly bufferLimits?: {
     readonly maxBufferedChunkItems?: number;
     readonly maxBufferedRows?: number;
     readonly maxBufferedBytes?: number;
   };
+  readonly streamPullWindowSize?: number;
 }
 
 const createSocketAppError = (payload: unknown): PlugError => {
@@ -103,10 +107,21 @@ const createSocketAppError = (payload: unknown): PlugError => {
   );
 };
 
+const normalizeStreamPullWindowSize = (value: unknown, fallback: number): number => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+
+  return Math.min(maxStreamPullWindowSize, Math.max(1, Math.floor(value)));
+};
+
 const createConsumerControlError = (input: {
   readonly code?: string;
   readonly message?: string;
   readonly statusCode?: number;
+  readonly retryAfterMs?: number;
+  readonly retryAfterSeconds?: number;
+  readonly details?: Record<string, unknown>;
 }): PlugError => {
   const code =
     typeof input.code === "string" && input.code.trim() !== ""
@@ -118,9 +133,12 @@ const createConsumerControlError = (input: {
       code,
       statusCode: input.statusCode,
       description: "Review the node fields and any advanced JSON before trying again.",
+      details: input.details,
       technicalMessage: input.message,
     });
   }
+
+  const retryAfterSeconds = normalizeRetryAfterSeconds(input);
 
   if (
     code === "RATE_LIMITED" ||
@@ -130,19 +148,29 @@ const createConsumerControlError = (input: {
     return new PlugError("Plug rate limited the socket request.", {
       code,
       statusCode: input.statusCode,
-      description: "Wait a moment before trying this socket operation again.",
+      description:
+        retryAfterSeconds !== undefined
+          ? `Wait ${retryAfterSeconds} second(s) before trying this socket operation again.`
+          : "Wait a moment before trying this socket operation again.",
+      details: input.details,
       technicalMessage: input.message,
       retryable: true,
+      retryAfterSeconds,
     });
   }
 
-  if (input.statusCode === 503) {
+  if (input.statusCode === 503 || code === "SERVICE_UNAVAILABLE") {
     return new PlugError("Plug socket transport is temporarily unavailable.", {
       code,
       statusCode: input.statusCode,
-      description: "The hub or agent may be overloaded. Try again shortly.",
+      description:
+        retryAfterSeconds !== undefined
+          ? `The hub or agent may be overloaded. Try again in ${retryAfterSeconds} second(s).`
+          : "The hub or agent may be overloaded. Try again shortly.",
+      details: input.details,
       technicalMessage: input.message,
       retryable: true,
+      retryAfterSeconds,
     });
   }
 
@@ -151,6 +179,7 @@ const createConsumerControlError = (input: {
       code,
       statusCode: input.statusCode,
       description: "Run the command again and confirm that the agent is still connected.",
+      details: input.details,
       technicalMessage: input.message,
     });
   }
@@ -158,11 +187,40 @@ const createConsumerControlError = (input: {
   return new PlugError(input.message ?? "Socket command request failed.", {
     code,
     statusCode: input.statusCode,
+    details: input.details,
   });
 };
 
-const normalizeConnectionReady = (payload: unknown): RelayConnectionReadyPayload =>
-  decodePayloadFrame<RelayConnectionReadyPayload>(payload).data;
+const normalizeRetryAfterSeconds = (input: {
+  readonly retryAfterMs?: number;
+  readonly retryAfterSeconds?: number;
+}): number | undefined => {
+  if (
+    typeof input.retryAfterSeconds === "number" &&
+    Number.isFinite(input.retryAfterSeconds) &&
+    input.retryAfterSeconds > 0
+  ) {
+    return Math.max(1, Math.ceil(input.retryAfterSeconds));
+  }
+
+  if (
+    typeof input.retryAfterMs === "number" &&
+    Number.isFinite(input.retryAfterMs) &&
+    input.retryAfterMs > 0
+  ) {
+    return Math.max(1, Math.ceil(input.retryAfterMs / 1000));
+  }
+
+  return undefined;
+};
+
+const normalizeConnectionReady = (
+  payload: unknown,
+  signing?: PayloadFrameSigningOptions,
+): Promise<RelayConnectionReadyPayload> =>
+  decodePayloadFrameAsync<RelayConnectionReadyPayload>(payload, { signing }).then(
+    (decoded) => decoded.data,
+  );
 
 const normalizeCommandResponse = (
   payload: unknown,
@@ -315,7 +373,9 @@ const appendChunkRowsToResponse = (
     return false;
   }
 
-  response.item.result.rows.push(...chunk.rows);
+  for (const row of chunk.rows) {
+    response.item.result.rows.push(row);
+  }
   return true;
 };
 
@@ -338,6 +398,41 @@ const removeStreamMarkerFromResponse = (
       },
     },
   } as NormalizedAgentRpcResponse;
+};
+
+const attachRetryAfterToNormalizedResponse = (
+  response: NormalizedAgentRpcResponse | undefined,
+  retryAfterSeconds: number | undefined,
+): NormalizedAgentRpcResponse | undefined => {
+  if (
+    response?.type !== "single" ||
+    response.item.success ||
+    retryAfterSeconds === undefined
+  ) {
+    return response;
+  }
+
+  const retryAfterMs = retryAfterSeconds * 1000;
+  const currentData = isRecord(response.item.error?.data) ? response.item.error.data : {};
+
+  return {
+    ...response,
+    item: {
+      ...response.item,
+      error: response.item.error
+        ? {
+            ...response.item.error,
+            data: {
+              ...currentData,
+              retry_after_ms:
+                typeof currentData.retry_after_ms === "number"
+                  ? currentData.retry_after_ms
+                  : retryAfterMs,
+            },
+          }
+        : response.item.error,
+    },
+  };
 };
 
 const buildSocketBufferError = (details: {
@@ -365,6 +460,7 @@ const buildCapabilityProbeCommand = (): RpcSingleCommand => ({
 const waitForConnectionReady = async (
   transport: ConsumerSocketTransport,
   timeoutMs: number,
+  signing?: PayloadFrameSigningOptions,
 ): Promise<RelayConnectionReadyPayload | undefined> => {
   if (transport.connected) {
     return undefined;
@@ -381,11 +477,7 @@ const waitForConnectionReady = async (
 
     const handleReady = (payload: unknown): void => {
       cleanup();
-      try {
-        resolve(normalizeConnectionReady(payload));
-      } catch (error: unknown) {
-        reject(error);
-      }
+      void normalizeConnectionReady(payload, signing).then(resolve, reject);
     };
 
     const handleAppError = (payload: unknown): void => {
@@ -442,10 +534,15 @@ const requestStreamPull = async (
   windowSize = DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
 ): Promise<number> =>
   new Promise<number>((resolve, reject) => {
+    const normalizedWindowSize = normalizeStreamPullWindowSize(
+      windowSize,
+      DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
+    );
     const cleanup = (): void => {
       clearTimeout(timer);
       transport.off(streamPullResponseEvent, handlePullResponse);
       transport.off(appErrorEvent, handleAppError);
+      transport.off(connectErrorEvent, handleConnectError);
       transport.off(disconnectEvent, handleDisconnect);
     };
 
@@ -459,6 +556,8 @@ const requestStreamPull = async (
               code: response.error.code,
               message: response.error.message,
               statusCode: response.error.statusCode,
+              retryAfterMs: response.error.retryAfterMs,
+              details: response.rateLimit ? { rateLimit: response.rateLimit } : undefined,
             }),
           );
           return;
@@ -469,7 +568,7 @@ const requestStreamPull = async (
         }
 
         cleanup();
-        resolve(response.windowSize);
+        resolve(normalizeStreamPullWindowSize(response.windowSize, normalizedWindowSize));
       } catch (error: unknown) {
         cleanup();
         reject(error);
@@ -479,6 +578,24 @@ const requestStreamPull = async (
     const handleAppError = (payload: unknown): void => {
       cleanup();
       reject(createSocketAppError(payload));
+    };
+
+    const handleConnectError = (payload: unknown): void => {
+      cleanup();
+      const message =
+        payload instanceof Error
+          ? payload.message
+          : typeof payload === "string"
+            ? payload
+            : "Socket connection failed";
+      reject(
+        new PlugError("Failed to connect to the Plug socket.", {
+          code: "SOCKET_CONNECT_ERROR",
+          description: "Run the node again to create a fresh socket connection.",
+          technicalMessage: message,
+          retryable: true,
+        }),
+      );
     };
 
     const handleDisconnect = (payload: unknown): void => {
@@ -500,11 +617,12 @@ const requestStreamPull = async (
 
     transport.on(streamPullResponseEvent, handlePullResponse);
     transport.on(appErrorEvent, handleAppError);
+    transport.on(connectErrorEvent, handleConnectError);
     transport.on(disconnectEvent, handleDisconnect);
     transport.emit(streamPullEvent, {
       requestId,
       streamId,
-      windowSize,
+      windowSize: normalizedWindowSize,
     });
   });
 
@@ -519,7 +637,11 @@ export const executeConsumerCommand = async (
     maxBufferedBytes: input.bufferLimits?.maxBufferedBytes ?? defaultMaxBufferedBytes,
   };
   const commandStartMs = Date.now();
-  const connectionReady = await waitForConnectionReady(input.transport, timeoutMs);
+  const connectionReady = await waitForConnectionReady(
+    input.transport,
+    timeoutMs,
+    input.payloadFrameSigning,
+  );
   const connectedAfterMs = Date.now() - commandStartMs;
 
   plugLogger.debug("transport.socket.command.request", {
@@ -589,6 +711,7 @@ export const executeConsumerCommand = async (
           activeRequestId,
           activeStreamId,
           timeoutMs,
+          input.streamPullWindowSize ?? DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
         );
         pullCount += 1;
         streamCreditsRemaining = Math.max(nextWindowSize - pendingChunksDuringPull, 0);
@@ -626,6 +749,7 @@ export const executeConsumerCommand = async (
                 code: response.error.code,
                 message: response.error.message,
                 statusCode: response.error.statusCode,
+                retryAfterMs: response.error.retryAfterMs,
               }),
             );
             return;
@@ -643,6 +767,10 @@ export const executeConsumerCommand = async (
             typeof response.response.type === "string"
               ? (response.response as NormalizedAgentRpcResponse)
               : undefined;
+          normalizedResponse = attachRetryAfterToNormalizedResponse(
+            normalizedResponse,
+            response.retryAfterSeconds,
+          );
           bufferedBytes += estimateJsonUtf8Bytes(response.response);
 
           if (isSingleSuccessWithRows(response.response)) {
@@ -670,6 +798,7 @@ export const executeConsumerCommand = async (
               pullCount,
               bufferedBytes,
               bufferedRows,
+              retryAfterSeconds: response.retryAfterSeconds,
             });
             resolve({
               channel: "socket",
@@ -678,7 +807,7 @@ export const executeConsumerCommand = async (
               requestId: response.requestId,
               notification: false,
               ...(connectionReady ? { connectionReady } : {}),
-              response: response.response,
+              response: normalizedResponse ?? response.response,
               rawResponsePayload: response.response,
               chunkPayloads,
               rawChunkFrames: [],
@@ -723,7 +852,7 @@ export const executeConsumerCommand = async (
           if (
             bufferedBytes > limits.maxBufferedBytes ||
             bufferedRows > limits.maxBufferedRows ||
-            chunkPayloads.length > limits.maxBufferedChunkItems
+            chunkCount > limits.maxBufferedChunkItems
           ) {
             throw buildSocketBufferError({
               ...limits,

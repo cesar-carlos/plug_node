@@ -67,7 +67,11 @@ export const executeSocketCommand: PlugSocketExecutor = async (input) => {
       agentId: input.agentId,
       command: input.command,
       timeoutMs: input.timeoutMs,
+      payloadFrameCompression: input.payloadFrameCompression,
+      payloadFrameSigning: input.payloadFrameSigning,
       responseMode: input.responseMode,
+      bufferLimits: input.bufferLimits,
+      streamPullWindowSize: input.streamPullWindowSize,
     });
   } finally {
     transport.disconnect();

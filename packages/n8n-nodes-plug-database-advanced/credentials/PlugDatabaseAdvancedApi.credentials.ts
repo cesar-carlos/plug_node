@@ -61,6 +61,28 @@ export class PlugDatabaseAdvancedApi implements ICredentialType {
       description:
         "Optional default client token used by SQL operations when the node does not override Client Token.",
     },
+    {
+      displayName: "Payload Signing Key",
+      name: "payloadSigningKey",
+      type: "string",
+      typeOptions: {
+        password: true,
+      },
+      default: "",
+      description:
+        "Optional shared HMAC-SHA256 key used to sign and verify Socket PayloadFrame messages.",
+    },
+    {
+      displayName: "Payload Signing Key ID",
+      name: "payloadSigningKeyId",
+      type: "string",
+      typeOptions: {
+        password: true,
+      },
+      default: "",
+      description:
+        "Optional key identifier sent as PayloadFrame signature.key_id and required when verifying signed frames.",
+    },
   ];
 
   test: ICredentialTestRequest = {

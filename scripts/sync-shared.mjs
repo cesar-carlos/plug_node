@@ -44,7 +44,14 @@ for (const packageName of packageNames) {
     rmSync(path.join(targetRoot, "contracts", "payload-frame.ts"), {
       force: true,
     });
+    rmSync(path.join(targetRoot, "n8n", "plugToolsDescription.ts"), {
+      force: true,
+    });
+    rmSync(path.join(targetRoot, "n8n", "plugToolsExecution.ts"), {
+      force: true,
+    });
     rmSync(path.join(targetRoot, "socket"), { recursive: true, force: true });
+    rmSync(path.join(targetRoot, "tools"), { recursive: true, force: true });
   }
 
   console.log(`Synced shared -> packages/${packageName}/generated/shared`);

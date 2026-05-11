@@ -13,7 +13,7 @@ export interface PayloadFrameEnvelope {
   readonly compressedSize: number;
   readonly payload: Uint8Array | number[] | string;
   readonly traceId?: string;
-  readonly requestId?: string;
+  readonly requestId?: string | null;
   readonly signature?: PayloadFrameSignature;
 }
 
@@ -21,4 +21,9 @@ export interface DecodedPayloadFrame<TData = unknown> {
   readonly frame: PayloadFrameEnvelope;
   readonly bytes: Buffer;
   readonly data: TData;
+}
+
+export interface PayloadFrameSigningOptions {
+  readonly key?: string;
+  readonly keyId?: string;
 }
