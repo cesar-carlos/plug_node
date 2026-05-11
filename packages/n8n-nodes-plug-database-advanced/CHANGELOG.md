@@ -1,5 +1,11 @@
 # n8n-nodes-plug-database-advanced
 
+## 1.4.0
+
+### Minor Changes
+
+- d021800: Add the Plura.ai Automations Trigger webhook node and its credential to the advanced package.
+
 ## 1.3.0
 
 ### Minor Changes
