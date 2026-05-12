@@ -1,5 +1,11 @@
 # n8n-nodes-plug-database
 
+## 1.4.1
+
+### Patch Changes
+
+- b60d23b: Bundle Playwright Chromium for PDF rendering, switch the default browser channel to Auto, add the generic `PLUG_TOOLS_BROWSER_EXECUTABLE_PATH` alias, and return actionable browser setup errors instead of raw Playwright launch failures.
+
 ## 1.4.0
 
 ## 1.3.0
