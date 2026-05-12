@@ -1,10 +1,13 @@
 import { Buffer } from "node:buffer";
+import { existsSync } from "node:fs";
 
 import type { Browser, Page, Route } from "playwright-core";
 
 import { PlugValidationError } from "../contracts/errors";
 
 export type PdfBrowserChannel = "chrome" | "msedge" | "chromium";
+export type PdfBrowserChannelOption = "auto" | PdfBrowserChannel;
+export type PdfBrowserSource = "playwright-managed" | "executablePath" | "channel";
 export type PdfPaperFormat = "A3" | "A4" | "A5" | "Legal" | "Letter";
 export type PdfWaitUntil = "load" | "domcontentloaded" | "networkidle";
 export type PdfMedia = "print" | "screen";
@@ -12,6 +15,7 @@ export type PdfMedia = "print" | "screen";
 export interface PdfBrowserLaunchOptions {
   readonly executablePath?: string;
   readonly channel?: PdfBrowserChannel;
+  readonly source: PdfBrowserSource;
   readonly timeoutMs: number;
   readonly enableJavaScript: boolean;
 }
@@ -79,7 +83,7 @@ export interface PdfRenderHardLimits {
   readonly maxOutputSizeBytes: number;
 }
 
-const defaultBrowserChannel: PdfBrowserChannel = "chrome";
+const defaultBrowserChannel: PdfBrowserChannelOption = "auto";
 const defaultBrowserTimeoutMs = 30_000;
 const defaultPdfMargin = "20mm";
 const defaultRenderDelayMs = 0;
@@ -87,7 +91,8 @@ const defaultMaxHtmlSizeBytes = 1_000_000;
 const defaultMaxPdfOutputSizeBytes = 25_000_000;
 const defaultHardMaxHtmlSizeBytes = 5_000_000;
 const defaultHardMaxPdfOutputSizeBytes = 100_000_000;
-const allowedBrowserChannels = new Set<PdfBrowserChannel>([
+const allowedBrowserChannels = new Set<PdfBrowserChannelOption>([
+  "auto",
   "chrome",
   "msedge",
   "chromium",
@@ -187,6 +192,71 @@ const toScale = (value: unknown): number => {
 const normalizeMargin = (value: unknown): string =>
   toOptionalString(value) ?? defaultPdfMargin;
 
+const commonBrowserExecutablePaths =
+  process.platform === "linux"
+    ? [
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/opt/google/chrome/chrome",
+        "/usr/bin/microsoft-edge",
+        "/opt/microsoft/msedge/msedge",
+      ]
+    : process.platform === "darwin"
+      ? [
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+          "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        ]
+      : [];
+
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+export const resolvePdfBrowserExecutablePathEnv = (
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined =>
+  toOptionalString(env.PLUG_TOOLS_BROWSER_EXECUTABLE_PATH) ??
+  toOptionalString(env.PLUG_TOOLS_CHROME_EXECUTABLE_PATH);
+
+export const resolveCommonPdfBrowserExecutablePaths = (
+  candidates: readonly string[] = commonBrowserExecutablePaths,
+): readonly string[] => candidates.filter((candidate) => existsSync(candidate));
+
+export const toPdfBrowserLaunchError = (
+  error: unknown,
+  browser: PdfBrowserLaunchOptions,
+): PlugValidationError => {
+  const originalMessage = getErrorMessage(error);
+  if (browser.source === "playwright-managed") {
+    return new PlugValidationError(
+      [
+        "Chromium browser for PDF rendering was not found.",
+        "Reinstall this n8n node package with npm install scripts enabled so @playwright/browser-chromium can download Chromium, or set Browser Executable Path / PLUG_TOOLS_BROWSER_EXECUTABLE_PATH to an installed Chrome or Chromium executable.",
+        `Original error: ${originalMessage}`,
+      ].join(" "),
+    );
+  }
+
+  if (browser.source === "channel" && browser.channel) {
+    return new PlugValidationError(
+      [
+        `Browser channel "${browser.channel}" was not found for PDF rendering.`,
+        "Install that browser, select Auto or Chromium, or set Browser Executable Path / PLUG_TOOLS_BROWSER_EXECUTABLE_PATH to an installed Chrome or Chromium executable.",
+        `Original error: ${originalMessage}`,
+      ].join(" "),
+    );
+  }
+
+  return new PlugValidationError(
+    [
+      "Browser executable for PDF rendering was not found.",
+      "Check Browser Executable Path or PLUG_TOOLS_BROWSER_EXECUTABLE_PATH.",
+      `Original error: ${originalMessage}`,
+    ].join(" "),
+  );
+};
+
 export const resolvePdfRenderHardLimits = (
   env: NodeJS.ProcessEnv = process.env,
 ): PdfRenderHardLimits => ({
@@ -262,7 +332,7 @@ export const normalizePdfFileName = (value: unknown): string => {
 
 export const resolvePdfBrowserLaunchOptions = (
   options: RawPdfBrowserOptions,
-  envExecutablePath = process.env.PLUG_TOOLS_CHROME_EXECUTABLE_PATH,
+  envExecutablePath = resolvePdfBrowserExecutablePathEnv(),
 ): PdfBrowserLaunchOptions => {
   const executablePath =
     toOptionalString(options.executablePath) ?? toOptionalString(envExecutablePath);
@@ -277,17 +347,30 @@ export const resolvePdfBrowserLaunchOptions = (
   if (executablePath) {
     return {
       executablePath,
+      source: "executablePath",
       timeoutMs,
       enableJavaScript,
     };
   }
 
-  if (!allowedBrowserChannels.has(channelValue as PdfBrowserChannel)) {
-    throw new PlugValidationError("Browser Channel must be chrome, msedge, or chromium");
+  if (!allowedBrowserChannels.has(channelValue as PdfBrowserChannelOption)) {
+    throw new PlugValidationError(
+      "Browser Channel must be auto, chromium, chrome, or msedge",
+    );
+  }
+
+  if (channelValue === "auto") {
+    return {
+      channel: "chromium",
+      source: "playwright-managed",
+      timeoutMs,
+      enableJavaScript,
+    };
   }
 
   return {
     channel: channelValue as PdfBrowserChannel,
+    source: "channel",
     timeoutMs,
     enableJavaScript,
   };
@@ -385,7 +468,22 @@ const toLaunchKey = (browser: PdfBrowserLaunchOptions): string =>
   JSON.stringify({
     executablePath: browser.executablePath,
     channel: browser.channel,
+    source: browser.source,
   });
+
+const buildLaunchOptions = (
+  browser: PdfBrowserLaunchOptions,
+  executablePath?: string,
+): Parameters<(typeof import("playwright-core"))["chromium"]["launch"]>[0] => ({
+  headless: true,
+  timeout: browser.timeoutMs,
+  ...((executablePath ?? browser.executablePath)
+    ? { executablePath: executablePath ?? browser.executablePath }
+    : {}),
+  ...(executablePath || browser.executablePath || !browser.channel
+    ? {}
+    : { channel: browser.channel }),
+});
 
 export const createPlaywrightHtmlToPdfRenderer = (): HtmlToPdfRenderer => {
   let browser: Browser | undefined;
@@ -402,14 +500,26 @@ export const createPlaywrightHtmlToPdfRenderer = (): HtmlToPdfRenderer => {
 
       if (!browser) {
         const { chromium } = await import("playwright-core");
-        browser = await chromium.launch({
-          headless: true,
-          timeout: input.browser.timeoutMs,
-          ...(input.browser.executablePath
-            ? { executablePath: input.browser.executablePath }
-            : {}),
-          ...(input.browser.channel ? { channel: input.browser.channel } : {}),
-        });
+        try {
+          browser = await chromium.launch(buildLaunchOptions(input.browser));
+        } catch (error: unknown) {
+          if (input.browser.source === "playwright-managed") {
+            for (const executablePath of resolveCommonPdfBrowserExecutablePaths()) {
+              try {
+                browser = await chromium.launch(
+                  buildLaunchOptions(input.browser, executablePath),
+                );
+                break;
+              } catch {
+                continue;
+              }
+            }
+          }
+
+          if (!browser) {
+            throw toPdfBrowserLaunchError(error, input.browser);
+          }
+        }
         launchKey = currentLaunchKey;
       }
 

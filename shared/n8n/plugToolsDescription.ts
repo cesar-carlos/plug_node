@@ -400,20 +400,21 @@ const browserOptions: INodeProperties = {
       type: "string",
       default: "",
       description:
-        "Optional absolute path to Chrome or Chromium. Overrides PLUG_TOOLS_CHROME_EXECUTABLE_PATH and Browser Channel.",
+        "Optional absolute path to Chrome or Chromium. Overrides PLUG_TOOLS_BROWSER_EXECUTABLE_PATH, PLUG_TOOLS_CHROME_EXECUTABLE_PATH, and Browser Channel.",
     },
     {
       displayName: "Browser Channel",
       name: "browserChannel",
       type: "options",
-      default: "chrome",
+      default: "auto",
       options: [
-        { name: "Chrome", value: "chrome" },
+        { name: "Auto", value: "auto" },
         { name: "Chromium", value: "chromium" },
+        { name: "Chrome", value: "chrome" },
         { name: "Microsoft Edge", value: "msedge" },
       ],
       description:
-        "Installed browser channel to use when no executable path is provided.",
+        "Browser to use when no executable path is provided. Auto uses Playwright-managed Chromium, then common installed Chrome/Chromium paths if the bundled browser is unavailable.",
     },
     {
       displayName: "Timeout (ms)",

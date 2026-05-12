@@ -150,9 +150,9 @@ Legacy access-only nodes remain published for compatibility with existing workfl
 
 ## Tool nodes
 
-`Plug Database Advanced PDF` uses `playwright-core` and requires Chrome or Chromium to be available in the n8n runtime. Set `Browser Executable Path`, set `PLUG_TOOLS_CHROME_EXECUTABLE_PATH`, or use an installed browser channel.
+`Plug Database Advanced PDF` uses `Browser Channel = Auto` by default. Auto uses the Chromium browser downloaded by `@playwright/browser-chromium` during package installation, so Google Chrome is not required for the default PDF flow. If the Playwright-managed browser is unavailable, Auto also checks common installed Chrome/Chromium paths.
 
-For Docker-based n8n deployments, install Chrome or Chromium in the image and set `PLUG_TOOLS_CHROME_EXECUTABLE_PATH` to the executable path. `playwright-core` does not download a browser at install time.
+Do not install this package with npm scripts disabled, and do not set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`, unless your image provides a browser another way. If your deployment blocks Playwright browser downloads or runs offline, install Chromium in the image and set `Browser Executable Path` or `PLUG_TOOLS_BROWSER_EXECUTABLE_PATH` to the executable path. `PLUG_TOOLS_CHROME_EXECUTABLE_PATH` is still supported as a compatibility alias.
 
 Example Debian-based Docker layer:
 
@@ -161,11 +161,13 @@ USER root
 RUN apt-get update \
   && apt-get install -y --no-install-recommends chromium \
   && rm -rf /var/lib/apt/lists/*
-ENV PLUG_TOOLS_CHROME_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PLUG_TOOLS_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 USER node
 ```
 
-For Alpine-based images, use `apk add --no-cache chromium` and set `PLUG_TOOLS_CHROME_EXECUTABLE_PATH=/usr/bin/chromium-browser` when that is the installed executable path.
+For Alpine-based images, use `apk add --no-cache chromium` and set `PLUG_TOOLS_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium-browser` when that is the installed executable path. To force Google Chrome or Microsoft Edge instead of Auto, set `Browser Channel` explicitly to `Chrome` or `Microsoft Edge`.
+
+To smoke-test the real browser runtime locally or in a deployment image, run the test suite with `PLUG_TEST_REAL_PDF=1`. The smoke test is skipped by default because it launches Chromium and writes a real PDF buffer.
 
 For safety, the PDF node accepts HTML strings only, supports optional CSS injection, disables JavaScript by default, blocks external network requests, and always blocks `file:` URLs. It also exposes `PDF Media`, `Wait Until`, `Render Delay (ms)`, `Max HTML Size Bytes`, and `Max PDF Output Size Bytes` controls for larger templates.
 

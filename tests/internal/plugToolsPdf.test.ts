@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   resolvePdfBrowserLaunchOptions,
+  resolvePdfBrowserExecutablePathEnv,
   normalizeHtmlDocument,
   resolvePdfRenderHardLimits,
   resolvePdfRenderOptions,
   shouldBlockPdfRequestUrl,
+  toPdfBrowserLaunchError,
 } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/tools/pdf";
 
 describe("Plug tools PDF renderer helpers", () => {
@@ -22,6 +24,7 @@ describe("Plug tools PDF renderer helpers", () => {
       ),
     ).toEqual({
       executablePath: "C:\\Chrome\\chrome.exe",
+      source: "executablePath",
       timeoutMs: 1200,
       enableJavaScript: true,
     });
@@ -38,17 +41,48 @@ describe("Plug tools PDF renderer helpers", () => {
       ),
     ).toEqual({
       executablePath: "D:\\Env\\chrome.exe",
+      source: "executablePath",
       timeoutMs: 1500,
       enableJavaScript: false,
     });
   });
 
-  it("falls back to the installed Chrome channel", () => {
+  it("resolves the generic browser executable path environment alias first", () => {
+    expect(
+      resolvePdfBrowserExecutablePathEnv({
+        PLUG_TOOLS_BROWSER_EXECUTABLE_PATH: "/usr/bin/chromium",
+        PLUG_TOOLS_CHROME_EXECUTABLE_PATH: "/opt/google/chrome/chrome",
+      }),
+    ).toBe("/usr/bin/chromium");
+  });
+
+  it("falls back to auto Playwright-managed Chromium", () => {
     expect(resolvePdfBrowserLaunchOptions({}, undefined)).toEqual({
-      channel: "chrome",
+      channel: "chromium",
+      source: "playwright-managed",
       timeoutMs: 30000,
       enableJavaScript: false,
     });
+  });
+
+  it("keeps explicit browser channels distinct from auto", () => {
+    expect(resolvePdfBrowserLaunchOptions({ channel: "chrome" }, undefined)).toEqual({
+      channel: "chrome",
+      source: "channel",
+      timeoutMs: 30000,
+      enableJavaScript: false,
+    });
+  });
+
+  it("converts missing browser launches to actionable PDF errors", () => {
+    const error = toPdfBrowserLaunchError(
+      new Error("Executable doesn't exist"),
+      resolvePdfBrowserLaunchOptions({}, undefined),
+    );
+
+    expect(error.message).toContain("Chromium browser for PDF rendering was not found.");
+    expect(error.message).toContain("PLUG_TOOLS_BROWSER_EXECUTABLE_PATH");
+    expect(error.message).toContain("@playwright/browser-chromium");
   });
 
   it("blocks network and local file requests while allowing inline document URLs", () => {

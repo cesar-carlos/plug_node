@@ -63,7 +63,7 @@ Legacy access-only nodes remain registered for workflow compatibility, but they 
 
 Tools:
 
-- `HTML to PDF` renders trusted HTML strings to PDF binary files using `playwright-core` and an installed Chrome/Chromium browser.
+- `HTML to PDF` renders trusted HTML strings to PDF binary files using Auto browser resolution: Playwright-managed Chromium first, then common installed Chrome/Chromium paths.
 - Document tools include `Markdown to PDF`, `Text to PDF`, `Merge PDFs`, `Split PDF`, and `Extract PDF Text`.
 - Image tools include resize, convert, compress, watermark, and thumbnail operations powered by `sharp`.
 - Code and identity tools include `Generate Barcode`, `Read Barcode`, CPF/CNPJ validation and formatting, and UUID generation.

@@ -381,7 +381,7 @@ describe("Plug tools execution", () => {
 
     expect(output[0][0].json.error).toMatchObject({
       code: "PLUG_VALIDATION_ERROR",
-      message: "Browser Channel must be chrome, msedge, or chromium",
+      message: "Browser Channel must be auto, chromium, chrome, or msedge",
     });
   });
 
@@ -567,7 +567,8 @@ describe("Plug tools execution", () => {
       render: vi.fn(async (input) => {
         expect(input.html).toContain("<h1>Invoice</h1>");
         expect(input.browser).toMatchObject({
-          channel: "chrome",
+          channel: "chromium",
+          source: "playwright-managed",
           enableJavaScript: false,
         });
         expect(input.pdf).toMatchObject({
@@ -589,7 +590,7 @@ describe("Plug tools execution", () => {
         fileName: "invoice",
         outputBinaryProperty: "pdf",
         browserOptions: {
-          browserChannel: "chrome",
+          browserChannel: "auto",
           timeoutMs: 1000,
           enableJavaScript: false,
         },
@@ -618,6 +619,8 @@ describe("Plug tools execution", () => {
         sizeBytes: 9,
         durationMs: expect.any(Number),
         outputBinaryProperty: "pdf",
+        browser: "chromium",
+        browserSource: "playwright-managed",
       },
     });
     expect(output[0][0].binary?.pdf).toMatchObject({
@@ -658,7 +661,7 @@ describe("Plug tools execution", () => {
     expect(renderer.render).not.toHaveBeenCalled();
     expect(output[0][0].json.error).toMatchObject({
       code: "PLUG_VALIDATION_ERROR",
-      message: "Browser Channel must be chrome, msedge, or chromium",
+      message: "Browser Channel must be auto, chromium, chrome, or msedge",
     });
   });
 

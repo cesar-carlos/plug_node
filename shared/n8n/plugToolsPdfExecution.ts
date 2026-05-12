@@ -102,7 +102,10 @@ export const executePlugToolsPdfNode = async (
                     sizeBytes: buffer.length,
                     durationMs,
                     outputBinaryProperty,
-                    browser: browser.executablePath ? "executablePath" : browser.channel,
+                    browser: browser.executablePath
+                      ? "executablePath"
+                      : (browser.channel ?? "chromium"),
+                    browserSource: browser.source,
                   },
                 }
               : {}),

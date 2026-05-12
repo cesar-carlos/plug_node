@@ -119,6 +119,10 @@ const renderHtmlPdfOperation = async (
                     sizeBytes: buffer.length,
                     durationMs,
                     outputBinaryProperty,
+                    browser: browser.executablePath
+                      ? "executablePath"
+                      : (browser.channel ?? "chromium"),
+                    browserSource: browser.source,
                   },
                 }
               : {}),

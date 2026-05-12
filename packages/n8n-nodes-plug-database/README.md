@@ -68,6 +68,8 @@ This package is still REST-only, but it now includes local PDF and barcode tool 
 - Plug-specific: `Build Socket Event Payload`, `Validate Client Token`, `Validate Agent Context`, `Build SQL Request`, `Parse SQL Rows`, `Generate Access Request Summary`
 - `Publish Socket Event` over REST
 
+The PDF tools use `Browser Channel = Auto` by default. Auto uses Playwright Chromium through `@playwright/browser-chromium`, then common installed Chrome/Chromium paths if the bundled browser is unavailable, so Google Chrome is not required unless you explicitly select the Chrome browser channel. If npm install scripts are disabled or `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` is set, provide a browser with `Browser Executable Path` or `PLUG_TOOLS_BROWSER_EXECUTABLE_PATH`.
+
 ## Credentials
 
 The credential asks for:
