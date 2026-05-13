@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 
 import {
   createPlaywrightHtmlToPdfRenderer,
   normalizeHtmlDocument,
   resolvePdfBrowserLaunchOptions,
   resolvePdfRenderOptions,
-} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/tools/pdf";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/tools/pdf";
 
 describe.skipIf(process.env.PLUG_TEST_REAL_PDF !== "1")(
   "Plug tools real PDF renderer",

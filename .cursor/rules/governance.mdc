@@ -15,14 +15,13 @@ alwaysApply: true
 - Every intentional exception must be local, named, covered by tests, and documented with its reason plus a removal condition.
 - Avoid spreading one compatibility concern across multiple layers.
 - Prefer static enforcement in CI for architectural boundaries using ESLint import rules, dependency-cruiser, or equivalent tooling.
-- Do not create or switch to a new git branch unless the user explicitly asks for branch-based work or pull request
-  isolation.
+- Work on the current git branch by default. Do not create, switch, or delete branches unless the user explicitly asks for that branch operation in the current task.
 - Before concluding a long or multi-file task, run `npm run lint` plus the relevant automated tests, and resolve reported errors and warnings when they are caused by the current work.
 - Before concluding a refactor, run `npm run lint` plus the relevant automated tests; escalate to `npm run test` when shared contracts, core infrastructure, or cross-cutting behavior changed.
 - Run `npm run typecheck` when shared types, transport contracts, tsconfig-sensitive behavior, or broad refactors change TypeScript assumptions across files.
 - When a change affects package behavior, public node UX, runtime contracts, or releaseable package metadata, add a Changesets entry and keep package versioning aligned with SemVer.
 - If lint or tests cannot be run, or if failures remain outside the current scope, say so explicitly in the final handoff.
 - `shared` must not import from package-local `nodes` or `credentials`.
-- The public package must not import socket-only runtime dependencies.
-- n8n node entry files may import from shared modules and package-local helpers, but shared modules must stay reusable across both packages.
+- The canonical package may depend on `socket.io-client`, but keep Socket.IO usage behind package-local transport adapters.
+- n8n node entry files may import from shared modules and package-local helpers, but shared modules must stay reusable and independent from package-local nodes or credentials.
 - Tests may cross boundaries when necessary, but production code must keep package boundaries clean.

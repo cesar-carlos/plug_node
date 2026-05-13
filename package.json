@@ -34,6 +34,7 @@
     "format:check": "prettier --check .",
     "lint": "npm run lint --workspaces --if-present",
     "lint:fix": "npm run lint:fix --workspaces --if-present",
+    "migrate:workflows": "node ./scripts/migrate-advanced-workflows.mjs",
     "test": "npm run test:root && npm run test:packages",
     "test:packages": "npm run test --workspaces --if-present",
     "test:root": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config vitest.config.mts",

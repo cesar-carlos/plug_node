@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 
-import { PlugDatabaseAdvanced } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node";
+import { PlugDatabase } from "../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/PlugDatabase.node";
 import { getPlugE2EConfig } from "./helpers/e2eEnv";
 import { getInfrastructureSkipReason } from "./helpers/environmentSkips";
 import { executeOrSkipInfrastructure } from "./helpers/executeOrSkip";
@@ -116,7 +116,7 @@ describe.sequential("Plug Database Socket E2E", () => {
   it("validates the configured credentials and client token via Socket", async ({
     skip,
   }) => {
-    const node = new PlugDatabaseAdvanced();
+    const node = new PlugDatabase();
     const context = createLiveExecuteContext({
       credentials: e2eConfig.credentials,
       parameters: {
@@ -146,7 +146,7 @@ describe.sequential("Plug Database Socket E2E", () => {
     it(`executes smoke SQL over SOCKET: ${compactQueryLabel(query)}`, async ({
       skip,
     }) => {
-      const node = new PlugDatabaseAdvanced();
+      const node = new PlugDatabase();
       const context = createLiveExecuteContext({
         credentials: e2eConfig.credentials,
         parameters: {
@@ -191,7 +191,7 @@ describe.sequential("Plug Database Socket E2E", () => {
   it(`executes multi_result SQL over SOCKET with two successful SELECT statements: ${compactQueryLabel(
     e2eConfig.multiResultSuccessSqlQuery,
   )}`, async ({ skip }) => {
-    const node = new PlugDatabaseAdvanced();
+    const node = new PlugDatabase();
     const context = createLiveExecuteContext({
       credentials: e2eConfig.credentials,
       parameters: {
@@ -258,7 +258,7 @@ describe.sequential("Plug Database Socket E2E", () => {
   it(`fails the whole multi_result SQL over SOCKET when one statement is denied: ${compactQueryLabel(
     e2eConfig.multiResultMixedSqlQuery,
   )}`, async ({ skip }) => {
-    const node = new PlugDatabaseAdvanced();
+    const node = new PlugDatabase();
     const context = createLiveExecuteContext({
       credentials: e2eConfig.credentials,
       parameters: {
@@ -314,7 +314,7 @@ describe.sequential("Plug Database Socket E2E", () => {
   it(`returns a structured authorization error over SOCKET: ${compactQueryLabel(
     e2eConfig.unauthorizedSqlQuery,
   )}`, async ({ skip }) => {
-    const node = new PlugDatabaseAdvanced();
+    const node = new PlugDatabase();
     const context = createLiveExecuteContext({
       credentials: e2eConfig.credentials,
       parameters: {
@@ -362,7 +362,7 @@ describe.sequential("Plug Database Socket E2E", () => {
   it(`returns a structured SQL validation error over SOCKET: ${compactQueryLabel(
     e2eConfig.invalidSqlQuery,
   )}`, async ({ skip }) => {
-    const node = new PlugDatabaseAdvanced();
+    const node = new PlugDatabase();
     const context = createLiveExecuteContext({
       credentials: e2eConfig.credentials,
       parameters: {

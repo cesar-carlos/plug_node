@@ -74,13 +74,6 @@ for (const packageName of packageNames) {
     mkdirSync(tempRoot, { recursive: true });
     cpSync(sharedRoot, tempRoot, { recursive: true });
 
-    if (packageName === "n8n-nodes-plug-database") {
-      rmSync(path.join(tempRoot, "contracts", "payload-frame.ts"), {
-        force: true,
-      });
-      rmSync(path.join(tempRoot, "socket"), { recursive: true, force: true });
-    }
-
     rmSync(targetRoot, { recursive: true, force: true });
     renameSync(tempRoot, targetRoot);
     console.log(`Synced shared -> packages/${packageName}/generated/shared`);

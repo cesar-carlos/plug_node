@@ -353,22 +353,44 @@ const createBackpressureQueue = (input: {
   };
 };
 
-export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
+// eslint-disable-next-line @n8n/community-nodes/node-usable-as-tool -- Triggers are event sources, not AI-agent tools; n8n's type only supports truthy tool exposure.
+export class PlugDatabaseSocketEventTrigger implements INodeType {
   description: INodeTypeDescription = {
-    displayName: "Plug Database Advanced Trigger",
-    name: "plugDatabaseAdvancedSocketEventTrigger",
+    displayName: "Plug Database Socket Event Trigger",
+    name: "plugDatabaseSocketEventTrigger",
     icon: {
-      light: "file:plugDatabaseAdvancedV2.svg",
-      dark: "file:plugDatabaseAdvancedV2.dark.svg",
+      light: "file:plugDatabaseV2.svg",
+      dark: "file:plugDatabaseV2.dark.svg",
     },
     group: ["trigger"],
     version: 1,
     subtitle: '={{$parameter["eventNames"]?.values?.[0]?.eventName}}',
-    description: "Listen for custom Plug Socket events.",
-    defaults: {
-      name: "Plug Database Advanced Trigger",
+    description: "Starts a workflow when a Plug Database socket event is received.",
+    eventTriggerDescription:
+      "Emits one item when a subscribed Plug Database socket event is received.",
+    activationMessage: "Listening for Plug Database socket events.",
+    triggerPanel: {
+      header: "Listen for Plug Database socket events",
+      executionsHelp: {
+        active: "Waiting for matching socket events.",
+        inactive: "Activate the workflow to keep the socket listener online.",
+      },
+      activationHint: {
+        active: "Socket listener is active.",
+        inactive: "Activate this workflow to start listening.",
+      },
     },
-    usableAsTool: false as unknown as true,
+    defaults: {
+      name: "Plug Database Socket Event Trigger",
+    },
+    codex: {
+      alias: [
+        "Plug Database Advanced Trigger",
+        "Advanced Trigger",
+        "Plug Socket Event Trigger",
+        "Socket Event",
+      ],
+    },
     inputs: [],
     outputs: [NodeConnectionTypes.Main],
     credentials: [

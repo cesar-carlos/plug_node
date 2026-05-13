@@ -1,4 +1,4 @@
-import { Buffer } from "node:buffer";
+﻿import { Buffer } from "node:buffer";
 
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -13,17 +13,14 @@ import {
   executePlugToolsBarcodeNode,
   executePlugToolsPdfNode,
   executePlugToolsUtilityNode,
-} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/n8n/plugToolsExecution";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugToolsExecution";
 import type {
   PlugToolsSocketEventListenInput,
   PlugToolsSocketEventPublishInput,
-} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/n8n/plugToolsExecution";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugToolsExecution";
 import { executePlugClientNode } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugClientExecution";
-import { executePlugClientNode as executeAdvancedPlugClientNode } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/n8n/plugClientExecution";
-import { PlugError } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/errors";
-import { PlugDatabaseAdvancedBarcode } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedBarcode/PlugDatabaseAdvancedBarcode.node";
-import { PlugDatabaseAdvancedPdf } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedPdf/PlugDatabaseAdvancedPdf.node";
-import type { HtmlToPdfRenderer } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/tools/pdf";
+import { PlugError } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
+import type { HtmlToPdfRenderer } from "../../packages/n8n-nodes-plug-database/generated/shared/tools/pdf";
 
 const defaultNode: INode = {
   id: "plug-tools-node",
@@ -338,61 +335,7 @@ describe("Plug tools execution", () => {
     });
   });
 
-  it("keeps the legacy advanced Barcode node executable for existing workflows", async () => {
-    const node = new PlugDatabaseAdvancedBarcode();
-    const context = createToolContext({
-      parameters: {
-        operation: "generateCode",
-        text: "legacy-barcode",
-        barcodeType: "qrcode",
-        outputFormat: "svg",
-        fileName: "legacy-code",
-        outputBinaryProperty: "code",
-        renderOptions: {
-          scale: 2,
-        },
-        advancedOptionsJson: "{}",
-        includePlugToolsMetadata: true,
-        metadataProperty: "toolMeta",
-      },
-    });
-
-    const output = await node.execute.call(context);
-
-    expect(output[0][0].json.toolMeta).toMatchObject({
-      operation: "generateCode",
-      fileName: "legacy-code.svg",
-      outputBinaryProperty: "code",
-    });
-    expect(output[0][0].binary?.code?.mimeType).toBe("image/svg+xml");
-  });
-
-  it("keeps the legacy advanced PDF node on the shared execution path", async () => {
-    const node = new PlugDatabaseAdvancedPdf();
-    const context = createToolContext({
-      continueOnFail: true,
-      parameters: {
-        operation: "htmlToPdf",
-        html: "<html><body>Legacy PDF</body></html>",
-        css: "",
-        fileName: "legacy.pdf",
-        outputBinaryProperty: "data",
-        browserOptions: {
-          browserChannel: "safari",
-        },
-        pdfOptions: {},
-      },
-    });
-
-    const output = await node.execute.call(context);
-
-    expect(output[0][0].json.error).toMatchObject({
-      code: "PLUG_VALIDATION_ERROR",
-      message: "Browser Channel must be auto, chromium, chrome, or msedge",
-    });
-  });
-
-  it("publishes Socket Event through public Tools over REST only", async () => {
+  it("publishes Socket Event through Plug Database Tools over REST", async () => {
     const context = createToolContext({
       parameters: {
         resource: "tools",
@@ -409,7 +352,7 @@ describe("Plug tools execution", () => {
     });
 
     const output = await executePlugClientNode(context, {
-      supportsSocket: false,
+      supportsSocket: true,
       credentialName: "plugDatabaseAccountApi",
       nodeDisplayName: "Plug Database",
     });
@@ -443,36 +386,7 @@ describe("Plug tools execution", () => {
     });
   });
 
-  it("rejects Socket Event socket publishing in public Tools", async () => {
-    const context = createToolContext({
-      continueOnFail: true,
-      parameters: {
-        resource: "tools",
-        operation: "publishSocketEvent",
-        publishChannel: "socket",
-        eventName: "client:custom.status.changed",
-        payloadJson: '{"status":"ready"}',
-        payloadFrameCompression: "default",
-        idempotencyKey: "",
-        timeoutMs: 15000,
-        attachments: {},
-      },
-    });
-
-    const output = await executePlugClientNode(context, {
-      supportsSocket: false,
-      credentialName: "plugDatabaseAccountApi",
-      nodeDisplayName: "Plug Database",
-    });
-
-    expect(output[0][0].json.error).toMatchObject({
-      message: "Publish Channel must be REST",
-      name: "NodeOperationError",
-    });
-    expect(context.requests).toHaveLength(0);
-  });
-
-  it("publishes Socket Event through advanced Tools with an injected Socket publisher", async () => {
+  it("publishes Socket Event through Plug Database Tools with an injected Socket publisher", async () => {
     const socketEventPublisher = vi.fn(
       async (input: PlugToolsSocketEventPublishInput) => {
         expect(input).toMatchObject({
@@ -521,10 +435,10 @@ describe("Plug tools execution", () => {
       },
     });
 
-    const output = await executeAdvancedPlugClientNode(context, {
+    const output = await executePlugClientNode(context, {
       supportsSocket: true,
       credentialName: "plugDatabaseAccountApi",
-      nodeDisplayName: "Plug Database Advanced",
+      nodeDisplayName: "Plug Database",
       toolSocketEventPublisher: socketEventPublisher,
     });
 
@@ -547,7 +461,7 @@ describe("Plug tools execution", () => {
     expect(socketEventPublisher).toHaveBeenCalledOnce();
   });
 
-  it("waits for a Socket Event through advanced Tools with an injected listener", async () => {
+  it("waits for a Socket Event through Plug Database Tools with an injected listener", async () => {
     const socketEventListener = vi.fn(async (input: PlugToolsSocketEventListenInput) => {
       expect(input).toMatchObject({
         eventName: "client:custom.status.changed",
@@ -595,10 +509,10 @@ describe("Plug tools execution", () => {
       },
     });
 
-    const output = await executeAdvancedPlugClientNode(context, {
+    const output = await executePlugClientNode(context, {
       supportsSocket: true,
       credentialName: "plugDatabaseAccountApi",
-      nodeDisplayName: "Plug Database Advanced",
+      nodeDisplayName: "Plug Database",
       socketEventListener,
     });
 
@@ -659,10 +573,10 @@ describe("Plug tools execution", () => {
       },
     });
 
-    const output = await executeAdvancedPlugClientNode(context, {
+    const output = await executePlugClientNode(context, {
       supportsSocket: true,
       credentialName: "plugDatabaseAccountApi",
-      nodeDisplayName: "Plug Database Advanced",
+      nodeDisplayName: "Plug Database",
       socketEventListener,
     });
 
@@ -694,10 +608,10 @@ describe("Plug tools execution", () => {
       },
     });
 
-    const output = await executeAdvancedPlugClientNode(context, {
+    const output = await executePlugClientNode(context, {
       supportsSocket: true,
       credentialName: "plugDatabaseAccountApi",
-      nodeDisplayName: "Plug Database Advanced",
+      nodeDisplayName: "Plug Database",
       socketEventListener,
     });
 
@@ -725,10 +639,10 @@ describe("Plug tools execution", () => {
       },
     });
 
-    const output = await executeAdvancedPlugClientNode(context, {
+    const output = await executePlugClientNode(context, {
       supportsSocket: true,
       credentialName: "plugDatabaseAccountApi",
-      nodeDisplayName: "Plug Database Advanced",
+      nodeDisplayName: "Plug Database",
       socketEventListener,
     });
 
@@ -998,7 +912,7 @@ describe("Plug tools execution", () => {
     });
 
     const output = await executePlugToolsBarcodeNode(context, {
-      nodeDisplayName: "Plug Database Advanced Barcode",
+      nodeDisplayName: "Plug Database Barcode",
     });
 
     expect(output[0][0].json.error).toMatchObject({

@@ -10,7 +10,7 @@ Use `Validate Context` as a quick end-to-end check for:
 
 ## Query rows over REST
 
-Use the public package with:
+Use `Plug Database` with:
 
 - operation: `Execute SQL`
 - SQL: `SELECT * FROM Cliente`
@@ -20,7 +20,9 @@ Expected result: one n8n item per returned row.
 
 ## Query rows over Socket
 
-Use the advanced package with:
+See [Socket examples](./socket/examples.md) for full Socket publish/listen/trigger examples and exported node JSON snippets.
+
+Use `Plug Database` with:
 
 - operation: `Execute SQL`
 - channel: `Socket`
@@ -30,9 +32,9 @@ Expected result: normalized JSON output with optional chunk emission for streami
 
 ## Generate a PDF document
 
-Use either package with:
+Use `Plug Database` with:
 
-- node: `Plug Database` or `Plug Database Advanced`
+- node: `Plug Database`
 - resource: `Tools`
 - operation: `HTML to PDF`
 - HTML: an HTML string from a previous node or an expression
@@ -45,9 +47,9 @@ Expected result: the input JSON is preserved and the generated PDF is attached a
 
 ## Generate a QR code or barcode
 
-Use either package with:
+Use `Plug Database` with:
 
-- node: `Plug Database` or `Plug Database Advanced`
+- node: `Plug Database`
 - resource: `Tools`
 - operation: `Generate Barcode`
 - barcode type: `QR Code` for URLs or text, or a supported linear/2D barcode type
@@ -59,9 +61,9 @@ Expected result: the input JSON is preserved and the generated image is attached
 
 ## Transform and validate payload data
 
-Use either package with:
+Use `Plug Database` with:
 
-- node: `Plug Database` or `Plug Database Advanced`
+- node: `Plug Database`
 - resource: `Tools`
 - operation: `Transform JSON` for JSONata projections, or `Validate JSON Schema` before sending payloads downstream
 - output JSON property: defaults to `result`
@@ -70,9 +72,9 @@ Use these before SQL or access workflows when a workflow receives loose webhook 
 
 ## Prepare files without standalone nodes
 
-Use either package with:
+Use `Plug Database` with:
 
-- node: `Plug Database` or `Plug Database Advanced`
+- node: `Plug Database`
 - resource: `Tools`
 - operations: document and image helpers such as `Merge PDFs`, `Extract PDF Text`, `Resize Image`, and `Create Thumbnail`
 - binary input: `Binary Property`, default `data`

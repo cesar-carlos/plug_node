@@ -1,54 +1,36 @@
 # Architecture
 
-## Workspace layout
+## Workspace Layout
 
 - `packages/n8n-nodes-plug-database`
-- `packages/n8n-nodes-plug-database-advanced`
 - `shared`
 - `tests`
 - `docs`
 
-## Package responsibilities
+## Package Responsibility
 
-### Public package
+`n8n-nodes-plug-database` is the single published Plug package. It includes:
 
-- REST-only
-- includes PDF and barcode tool runtime dependencies
-- exposes Socket Event publish over REST only
-- not Cloud-strict by dependency profile; n8n Cloud verification is tracked separately from the REST-only transport boundary
+- REST command execution
+- consumer Socket command execution through `/consumers`
+- Socket Event publish and one-shot wait operations
+- Socket Event trigger
+- Plura.ai Automations trigger
+- PDF, barcode, document, image, data, security, date/value, identity, and Plug-specific tools
 
-### Advanced package
-
-- REST + Socket relay
-- includes `socket.io-client`, PDF, and barcode tool runtime dependencies
-- exposes advanced-only Socket Event publish and one-shot wait operations over `/consumers`
-- npm-only distribution
-
-## Shared core
+## Shared Core
 
 The shared layer is copied into package-local `generated/shared` during build and test preparation.
 
 Main shared areas:
 
-- `auth`
-  - login
-  - refresh
-  - session reuse
-- `contracts`
-  - REST and JSON-RPC types
-  - error contracts
-- `rest`
-  - bridge execution
-- `socket`
-  - relay session and frame codec
-- `output`
-  - n8n item shaping
-- `n8n`
-  - node description builder
-  - node execution helper
+- `auth`: login, refresh, session reuse
+- `contracts`: REST, JSON-RPC, PayloadFrame, and error contracts
+- `rest`: bridge execution and REST Socket Event publish
+- `socket`: relay, consumer command, custom event sessions, and frame codec
+- `output`: n8n item shaping
+- `n8n`: node description builders and execution helpers
 
-## Public package isolation
+## Package-Local Wiring
 
-The sync process removes socket-only code from the public package output so the published REST package does not include runtime socket modules.
-
-The public package intentionally keeps the Socket runtime out while still shipping PDF and barcode runtimes. This means the package boundary is transport-focused, not dependency-minimal.
+n8n entry files stay thin. `Plug Database` gathers parameters and credentials, then delegates REST and Socket work to shared helpers. Package-local Socket.IO adapters are limited to transport wiring for `socket.io-client`; protocol decisions stay in `shared/socket`.

@@ -7,12 +7,11 @@ alwaysApply: true
 
 - This is a project-specific rule file. It defines where code lives in this repository.
 - Keep the workspace rooted around:
-  - `packages/n8n-nodes-plug-database-advanced`
   - `packages/n8n-nodes-plug-database`
   - `shared`
   - `docs`
   - `scripts`
-- Each package should follow n8n conventions at the package root:
+- The package should follow n8n conventions at the package root:
   - `nodes/`
   - `credentials/`
   - package-local `package.json`

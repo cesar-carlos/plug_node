@@ -25,4 +25,6 @@ export class PlugDatabaseApi implements ICredentialType {
   properties = credentialAlias.properties;
 
   test = credentialAlias.test;
+
+  __skipManagedCreation = credentialAlias.__skipManagedCreation;
 }

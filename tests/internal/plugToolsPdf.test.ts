@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 
 import {
   resolvePdfBrowserLaunchOptions,
@@ -8,7 +8,7 @@ import {
   resolvePdfRenderOptions,
   shouldBlockPdfRequestUrl,
   toPdfBrowserLaunchError,
-} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/tools/pdf";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/tools/pdf";
 
 describe("Plug tools PDF renderer helpers", () => {
   it("resolves browser executable path before environment and channel", () => {

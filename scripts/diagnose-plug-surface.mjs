@@ -25,6 +25,8 @@ const assertEqualJson = (actual, expected, label) => {
 const credentialClassNameFromFile = (credentialFile) =>
   credentialFile.replace(/\.credentials\.js$/, "");
 
+const nodeClassNameFromFile = (nodeFile) => nodeFile.replace(/\.node\.js$/, "");
+
 const loadBuiltCredential = (pkg, credentialPath) => {
   const absolutePath = path.join(rootDir, "packages", pkg.workspace, credentialPath);
   if (!existsSync(absolutePath)) {
@@ -39,6 +41,22 @@ const loadBuiltCredential = (pkg, credentialPath) => {
   }
 
   return new CredentialClass();
+};
+
+const loadBuiltNode = (pkg, nodePath) => {
+  const absolutePath = path.join(rootDir, "packages", pkg.workspace, nodePath);
+  if (!existsSync(absolutePath)) {
+    throw new Error(`Built node file is missing: ${absolutePath}`);
+  }
+
+  const className = nodeClassNameFromFile(path.basename(nodePath));
+  const nodeModule = require(absolutePath);
+  const NodeClass = nodeModule[className];
+  if (typeof NodeClass !== "function") {
+    throw new Error(`${nodePath} does not export ${className}`);
+  }
+
+  return new NodeClass();
 };
 
 const verifyBuiltCredentialAliases = (pkg) => {
@@ -76,6 +94,12 @@ const verifyBuiltCredentialAliases = (pkg) => {
       );
     }
 
+    if (credential.__skipManagedCreation !== true) {
+      throw new Error(
+        `${pkg.workspace} ${alias.name} must skip managed credential creation`,
+      );
+    }
+
     assertEqualJson(
       credential.test?.request?.body,
       {
@@ -84,6 +108,25 @@ const verifyBuiltCredentialAliases = (pkg) => {
       },
       `${pkg.workspace} ${alias.name} login test body`,
     );
+  }
+};
+
+const verifyBuiltNodeSurface = (pkg) => {
+  for (const nodePath of pkg.manifest.nodes) {
+    const node = loadBuiltNode(pkg, nodePath);
+    const { displayName, group, usableAsTool } = node.description;
+
+    if (displayName.includes("Advanced")) {
+      throw new Error(`${pkg.workspace} ${displayName} must not expose Advanced`);
+    }
+
+    if (!displayName.startsWith("Plug Database")) {
+      throw new Error(`${pkg.workspace} ${displayName} must group under Plug Database`);
+    }
+
+    if (group?.includes("trigger") && usableAsTool === true) {
+      throw new Error(`${pkg.workspace} ${displayName} trigger must not be a tool`);
+    }
   }
 };
 
@@ -148,6 +191,7 @@ const summarizePackage = (pkg) => {
     `${pkg.workspace} dist nodes`,
   );
   verifyBuiltCredentialAliases(pkg);
+  verifyBuiltNodeSurface(pkg);
 };
 
 console.log("Plug package surface diagnostic");

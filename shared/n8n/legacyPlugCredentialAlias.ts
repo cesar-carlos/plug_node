@@ -15,6 +15,7 @@ export interface LegacyPlugCredentialAliasDefinition extends LegacyPlugCredentia
   readonly extends: string[];
   readonly properties: INodeProperties[];
   readonly test: ICredentialTestRequest;
+  readonly __skipManagedCreation: true;
 }
 
 export const createLegacyPlugCredentialAlias = (
@@ -24,4 +25,5 @@ export const createLegacyPlugCredentialAlias = (
   extends: [plugDatabaseAccountCredentialName],
   properties: [],
   test: plugDatabaseAccountCredentialTest,
+  __skipManagedCreation: true,
 });

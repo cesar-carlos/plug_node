@@ -4,7 +4,7 @@ Thanks for contributing to the Plug Database workspace.
 
 ## Before opening a pull request
 
-1. Work from a dedicated branch.
+1. Work from the current branch unless a branch change is explicitly requested.
 2. Run `npm ci`.
 3. Run `npm run verify`.
 4. Run `npm run test:e2e` when your change affects transport, authentication, or output behavior.
@@ -12,8 +12,7 @@ Thanks for contributing to the Plug Database workspace.
 
 ## Scope checklist
 
-- public package: `n8n-nodes-plug-database`
-- advanced package: `n8n-nodes-plug-database-advanced`
+- package: `n8n-nodes-plug-database`
 - shared core
 - docs
 - CI / tooling
@@ -22,7 +21,7 @@ Thanks for contributing to the Plug Database workspace.
 
 - keep all public documentation in English
 - do not commit `dist/`, `generated/`, `.env`, or credential material
-- keep the public package free from runtime dependencies
+- keep runtime dependencies scoped to the package features that require them
 - preserve the simple credential experience:
   - `User (email)`
   - `Password`

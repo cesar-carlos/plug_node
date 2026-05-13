@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 import type { IBinaryData, ITriggerFunctions, IHttpRequestOptions } from "n8n-workflow";
 
-import { PlugDatabaseAdvancedSocketEventTrigger } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEventTrigger/PlugDatabaseAdvancedSocketEventTrigger.node";
-import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
+import { PlugDatabaseSocketEventTrigger } from "../../packages/n8n-nodes-plug-database/nodes/PlugDatabaseSocketEventTrigger/PlugDatabaseSocketEventTrigger.node";
+import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/payloadFrameCodec";
 
 const socketMock = vi.hoisted(() => {
   type Handler = (payload: unknown) => void;
@@ -233,7 +233,7 @@ const flushAsync = async (iterations = 4): Promise<void> => {
   }
 };
 
-describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
+describe("PlugDatabaseSocketEventTrigger", () => {
   it("connects to /consumers, subscribes to multiple events, emits items, and cleans up", async () => {
     socketMock.state.sockets = [];
     socketMock.state.subscribeFailureSocketIndices = new Set<number>();
@@ -246,7 +246,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
       },
       { requestId: "handshake", compression: "none" },
     );
-    const node = new PlugDatabaseAdvancedSocketEventTrigger();
+    const node = new PlugDatabaseSocketEventTrigger();
     const context = createContext();
 
     const response = await node.trigger.call(context);
@@ -345,7 +345,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
         },
         { requestId: "handshake", compression: "none" },
       );
-      const node = new PlugDatabaseAdvancedSocketEventTrigger();
+      const node = new PlugDatabaseSocketEventTrigger();
       const context = createContext();
 
       const response = await node.trigger.call(context);
@@ -382,7 +382,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
         },
         { requestId: "handshake", compression: "none" },
       );
-      const node = new PlugDatabaseAdvancedSocketEventTrigger();
+      const node = new PlugDatabaseSocketEventTrigger();
       const context = createContext({
         maxReconnectAttempts: 2,
       });
@@ -418,7 +418,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
         },
         { requestId: "handshake", compression: "none" },
       );
-      const node = new PlugDatabaseAdvancedSocketEventTrigger();
+      const node = new PlugDatabaseSocketEventTrigger();
       const context = createContext({
         maxReconnectAttempts: 0,
         maxReconnectFailuresInWindow: 1,
@@ -448,7 +448,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
       },
       { requestId: "handshake", compression: "none" },
     );
-    const node = new PlugDatabaseAdvancedSocketEventTrigger();
+    const node = new PlugDatabaseSocketEventTrigger();
     const context = createContext({
       eventSource: "agentProfileUpdated",
     });
@@ -509,7 +509,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
       },
       { requestId: "handshake", compression: "none" },
     );
-    const node = new PlugDatabaseAdvancedSocketEventTrigger();
+    const node = new PlugDatabaseSocketEventTrigger();
     const context = createContext({
       eventSource: "agentProfileUpdated",
       requirePayloadSignature: true,
@@ -551,7 +551,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
       },
       { requestId: "handshake", compression: "none" },
     );
-    const node = new PlugDatabaseAdvancedSocketEventTrigger();
+    const node = new PlugDatabaseSocketEventTrigger();
     const context = createContext();
     let releasePrepare: (() => void) | undefined;
     const prepareStarted = new Promise<void>((resolve) => {

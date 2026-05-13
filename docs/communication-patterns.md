@@ -10,7 +10,7 @@
 
 ## Socket relay flow
 
-The advanced package opens a Socket.IO connection to `/consumers` for the execution only.
+`Plug Database` opens a Socket.IO connection to `/consumers` for the execution only when `Channel = Socket`.
 
 Flow:
 
@@ -26,9 +26,9 @@ Flow:
 
 ## Custom Socket Events
 
-Custom Socket Events also use `/consumers`. The advanced package can publish through REST or `socket:event.publish`, wait one-shot for the first matching `client:custom.*` event inside `Tools`, enforces server-aligned local payload limits before sending, and the trigger listens to exact `client:custom.*` names or the internal `client:agent.profile.updated` push.
+Custom Socket Events also use `/consumers`. `Plug Database` can publish through REST or `socket:event.publish`, wait one-shot for the first matching `client:custom.*` event inside `Tools`, enforces server-aligned local payload limits before sending, and the trigger listens to exact `client:custom.*` names or the internal `client:agent.profile.updated` push.
 
-See [Custom Socket Events](./custom-socket-events.md) for node fields, timeout phases, backpressure, HMAC, deduplication, reconnect controls, troubleshooting, and shared-code maintenance notes.
+See [Socket guide](./socket/README.md) for SQL over Socket, custom events, trigger behavior, PayloadFrame, examples, troubleshooting, and shared-code maintenance notes. The older [Custom Socket Events](./custom-socket-events.md) page remains as a focused reference for the custom event surface.
 
 ## PayloadFrame handling
 
@@ -45,4 +45,4 @@ See [Custom Socket Events](./custom-socket-events.md) for node fields, timeout p
 - `Raw JSON-RPC`
   - preserves the normalized RPC envelope
 - `Chunk Items`
-  - advanced package only
+  - available on the Socket-enabled `Plug Database` node

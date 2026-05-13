@@ -1,11 +1,11 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 
 import {
   decodePayloadFrame,
   decodePayloadFrameAsync,
   encodePayloadFrame,
   encodePayloadFrameAsync,
-} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/socket/payloadFrameCodec";
 
 describe("payloadFrameCodec", () => {
   it("encodes and decodes JSON payloads", () => {

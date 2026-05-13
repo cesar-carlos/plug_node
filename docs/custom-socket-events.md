@@ -1,10 +1,12 @@
 # Custom Socket Events
 
-The advanced package exposes the Plug Server custom event surface through the consolidated Tools resource and the realtime trigger:
+For the complete Socket documentation, including SQL over Socket, trigger lifecycle, PayloadFrame, examples, and troubleshooting, see [Socket no Plug Database](./socket/README.md).
 
-- `Plug Database Advanced` with `Resource = Tools` and `Operation = Publish Socket Event` publishes `client:custom.*` events.
-- `Plug Database Advanced` with `Resource = Tools` and `Operation = Wait for Socket Event` opens a one-shot `/consumers` listener for one `client:custom.*` event.
-- `Plug Database Advanced Socket Event Trigger` listens for custom events or the internal `client:agent.profile.updated` push.
+The canonical package exposes the Plug Server custom event surface through the consolidated Tools resource and the realtime trigger:
+
+- `Plug Database` with `Resource = Tools` and `Operation = Publish Socket Event` publishes `client:custom.*` events.
+- `Plug Database` with `Resource = Tools` and `Operation = Wait for Socket Event` opens a one-shot `/consumers` listener for one `client:custom.*` event.
+- `Plug Database Socket Event Trigger` listens for custom events or the internal `client:agent.profile.updated` push.
 
 All three authenticated entry points use the shared `Plug Database Account API` credential.
 
@@ -12,7 +14,7 @@ The normative server contract lives in the Plug Server docs under `plug_server/d
 
 ## Publisher Node
 
-`Plug Database Advanced` has one socket-event publisher operation under `Resource = Tools`: `Publish Socket Event`.
+`Plug Database` has one socket-event publisher operation under `Resource = Tools`: `Publish Socket Event`.
 
 Use `Publish Channel = REST` for the compatible default. It sends `POST /api/v1/client/me/socket-events` with JSON when no attachments are configured, and `multipart/form-data` when attachments are present.
 
@@ -42,7 +44,7 @@ For socket publishing, `__plug.publisherSocketId` is included when the local soc
 
 ## Wait Operation
 
-`Plug Database Advanced` also has `Resource = Tools` and `Operation = Wait for Socket Event` for workflows that need to wait inline instead of activating a trigger.
+`Plug Database` also has `Resource = Tools` and `Operation = Wait for Socket Event` for workflows that need to wait inline instead of activating a trigger.
 
 Behavior:
 
@@ -73,7 +75,7 @@ Timeout phases are intentionally separate:
 
 ## Trigger Node
 
-`Plug Database Advanced Socket Event Trigger` connects to `/consumers` and emits one item per event.
+`Plug Database Socket Event Trigger` connects to `/consumers` and emits one item per event.
 
 `Event Source = Custom Events` subscribes to exact `client:custom.*` names using `socket:event.subscribe` and unsubscribes best-effort on close. Wildcards are intentionally not exposed because the server subscribes exact names.
 
@@ -143,7 +145,7 @@ Socket lifecycle helpers live in `shared/socket/customSocketEventSession.ts`:
 - `startCustomSocketEventSession`
 - `startAgentProfileUpdatedSession`
 
-The advanced package provides only the Socket.IO transport adapter. The shared layer owns validation, correlation, timeout handling, HMAC policy, and user-safe error classification.
+The canonical package provides only the Socket.IO transport adapter. The shared layer owns validation, correlation, timeout handling, HMAC policy, and user-safe error classification.
 
 After changing `shared`, run `npm run sync-shared`. Do not manually edit files under `packages/*/generated/shared`.
 

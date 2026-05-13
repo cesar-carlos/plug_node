@@ -11,30 +11,21 @@ The node keeps a single simple credential:
 
 The API base URL is fixed in code.
 
-## Public vs advanced package
+## Unified package
 
-### Public package
-
-- REST-only
-- no Socket options in the UI
-- includes Tools operations without Socket publish
-- includes local PDF and barcode runtime dependencies, so Cloud verification is not assumed from the package name alone
-
-### Advanced package
-
-- explicit `Channel = REST | Socket`
-- `Chunk Items` output mode
-- includes Tools operations with REST or Socket publish where applicable
-- npm-only distribution
+- `Plug Database` is the only visible database tool entry.
+- SQL operations expose `Channel = REST | Socket`.
+- Socket mode enables the `Chunk Items` output mode.
+- Tools operations include REST and Socket Event publish where applicable.
+- Local PDF and barcode runtime dependencies are included, so Cloud verification is not assumed from the package name alone.
 
 ## Tool catalog exposure
 
 - only consolidated Plug nodes should appear in the n8n tool session
-- `Plug Database` is the public consolidated tool entry
-- `Plug Database Advanced` is the advanced consolidated tool entry
-- triggers and webhook-driven nodes stay workflow-only, even when they belong to the advanced package
+- `Plug Database` is the consolidated tool entry
+- triggers and webhook-driven nodes stay workflow-only
 - hidden compatibility wrappers stay workflow-only and must not create duplicate top-level tool entries
-- advanced event listening in tool sessions should go through `Plug Database Advanced > Tools > waitForSocketEvent`
+- event listening in tool sessions should go through `Plug Database > Tools > Wait for Socket Event`
 
 ## Output behavior
 

@@ -25,34 +25,8 @@ export const plugPackageSurface = [
   {
     workspace: "n8n-nodes-plug-database",
     packageName: "n8n-nodes-plug-database",
-    maxPackedSizeBytes: 200_000,
-    maxUnpackedSizeBytes: 1_200_000,
-    manifest: {
-      credentials: [
-        "dist/credentials/PlugDatabaseAccountApi.credentials.js",
-        ...allowedLegacyCredentialAliasPaths,
-      ],
-      nodes: ["dist/nodes/PlugDatabase/PlugDatabase.node.js"],
-    },
-    require: [
-      "dist/credentials/PlugDatabaseAccountApi.credentials.js",
-      ...allowedLegacyCredentialAliasPaths,
-      "dist/nodes/PlugDatabase/PlugDatabase.node.js",
-    ],
-    forbid: [
-      "dist/tsconfig.tsbuildinfo",
-      "dist/generated/shared/socket/",
-      "dist/generated/shared/contracts/payload-frame.",
-      "dist/nodes/PlugDatabaseClientAccess/PlugDatabaseClientAccess.node.js",
-      "dist/nodes/PlugDatabaseUserAccess/PlugDatabaseUserAccess.node.js",
-    ],
-    legacyCredentialAliases: allowedLegacyCredentialAliases,
-  },
-  {
-    workspace: "n8n-nodes-plug-database-advanced",
-    packageName: "n8n-nodes-plug-database-advanced",
-    maxPackedSizeBytes: 250_000,
-    maxUnpackedSizeBytes: 1_600_000,
+    maxPackedSizeBytes: 300_000,
+    maxUnpackedSizeBytes: 1_900_000,
     manifest: {
       credentials: [
         "dist/credentials/PlugDatabaseAccountApi.credentials.js",
@@ -60,26 +34,28 @@ export const plugPackageSurface = [
         "dist/credentials/PluraAiAutomationsApi.credentials.js",
       ],
       nodes: [
-        "dist/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node.js",
-        "dist/nodes/PlugDatabaseAdvancedPdf/PlugDatabaseAdvancedPdf.node.js",
-        "dist/nodes/PlugDatabaseAdvancedBarcode/PlugDatabaseAdvancedBarcode.node.js",
-        "dist/nodes/PlugDatabaseAdvancedSocketEventTrigger/PlugDatabaseAdvancedSocketEventTrigger.node.js",
+        "dist/nodes/PlugDatabase/PlugDatabase.node.js",
+        "dist/nodes/PlugDatabaseSocketEventTrigger/PlugDatabaseSocketEventTrigger.node.js",
         "dist/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node.js",
       ],
     },
     require: [
       "dist/credentials/PlugDatabaseAccountApi.credentials.js",
       ...allowedLegacyCredentialAliasPaths,
-      "dist/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node.js",
-      "dist/nodes/PlugDatabaseAdvancedSocketEventTrigger/PlugDatabaseAdvancedSocketEventTrigger.node.js",
+      "dist/credentials/PluraAiAutomationsApi.credentials.js",
+      "dist/nodes/PlugDatabase/PlugDatabase.node.js",
+      "dist/nodes/PlugDatabase/socketCommandExecutor.js",
+      "dist/nodes/PlugDatabaseSocketEventTrigger/PlugDatabaseSocketEventTrigger.node.js",
+      "dist/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node.js",
     ],
     forbid: [
       "dist/tsconfig.tsbuildinfo",
-      "dist/credentials/PlugDatabaseAdvancedClientApi.credentials.js",
-      "dist/credentials/PlugDatabaseAdvancedUserApi.credentials.js",
-      "dist/nodes/PlugDatabaseAdvancedClientAccess/PlugDatabaseAdvancedClientAccess.node.js",
-      "dist/nodes/PlugDatabaseAdvancedUserAccess/PlugDatabaseAdvancedUserAccess.node.js",
-      "dist/nodes/PlugDatabaseAdvancedSocketEvent/PlugDatabaseAdvancedSocketEvent.node.js",
+      "dist/nodes/PlugDatabaseAdvanced/",
+      "dist/nodes/PlugDatabaseAdvancedPdf/",
+      "dist/nodes/PlugDatabaseAdvancedBarcode/",
+      "dist/nodes/PlugDatabaseAdvancedSocketEventTrigger/",
+      "dist/nodes/PlugDatabaseClientAccess/PlugDatabaseClientAccess.node.js",
+      "dist/nodes/PlugDatabaseUserAccess/PlugDatabaseUserAccess.node.js",
     ],
     legacyCredentialAliases: allowedLegacyCredentialAliases,
   },
@@ -88,33 +64,48 @@ export const plugPackageSurface = [
 export const removedSourcePaths = [
   "packages/n8n-nodes-plug-database/nodes/PlugDatabaseClientAccess/PlugDatabaseClientAccess.node.ts",
   "packages/n8n-nodes-plug-database/nodes/PlugDatabaseUserAccess/PlugDatabaseUserAccess.node.ts",
+  "packages/n8n-nodes-plug-database-advanced/package.json",
   "packages/n8n-nodes-plug-database-advanced/credentials/PlugDatabaseAdvancedClientApi.credentials.ts",
   "packages/n8n-nodes-plug-database-advanced/credentials/PlugDatabaseAdvancedUserApi.credentials.ts",
+  "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node.ts",
   "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedClientAccess/PlugDatabaseAdvancedClientAccess.node.ts",
   "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedUserAccess/PlugDatabaseAdvancedUserAccess.node.ts",
   "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEvent/PlugDatabaseAdvancedSocketEvent.node.ts",
+  "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEventTrigger/PlugDatabaseAdvancedSocketEventTrigger.node.ts",
+  "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedPdf/PlugDatabaseAdvancedPdf.node.ts",
+  "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedBarcode/PlugDatabaseAdvancedBarcode.node.ts",
 ];
 
 export const removedSourceDirectories = [
   "packages/n8n-nodes-plug-database/nodes/PlugDatabaseClientAccess",
   "packages/n8n-nodes-plug-database/nodes/PlugDatabaseUserAccess",
-  "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedClientAccess",
-  "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedUserAccess",
-  "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEvent",
+  "packages/n8n-nodes-plug-database-advanced",
 ];
 
 export const forbiddenLegacyIdentifiers = [
   "plugDatabaseAdvancedClientApi",
   "plugDatabaseAdvancedUserApi",
+  "plugDatabaseAdvancedSocketEventTrigger",
+  "plugDatabaseAdvancedPdf",
+  "plugDatabaseAdvancedBarcode",
   "PlugDatabaseClientAccess",
   "PlugDatabaseUserAccess",
   "PlugDatabaseAdvancedClientAccess",
   "PlugDatabaseAdvancedUserAccess",
+  "PlugDatabaseAdvancedSocketEventTrigger",
+  "PlugDatabaseAdvancedPdf",
+  "PlugDatabaseAdvancedBarcode",
 ];
 
 export const bannedIdentifiers = forbiddenLegacyIdentifiers;
 
-export const bannedPathFragments = ["PlugDatabaseAdvancedSocketEvent/"];
+export const bannedPathFragments = [
+  "PlugDatabaseAdvanced/",
+  "PlugDatabaseAdvancedSocketEvent/",
+  "PlugDatabaseAdvancedSocketEventTrigger/",
+  "PlugDatabaseAdvancedPdf/",
+  "PlugDatabaseAdvancedBarcode/",
+];
 
 export const rootsToScan = [
   "README.md",

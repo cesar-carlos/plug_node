@@ -8,12 +8,11 @@ The workspace uses:
 - `Changesets`
 - `Conventional Commits` as the recommended commit style
 
-## Fixed version group
+## Published package
 
-These packages are versioned together:
+This workspace publishes:
 
 - `n8n-nodes-plug-database`
-- `n8n-nodes-plug-database-advanced`
 
 ## Release intent
 
@@ -36,10 +35,10 @@ Docs-only and repository-only changes can skip a changeset when package behavior
   - breaking parameter changes
   - incompatible output changes
   - removing previously published nodes or credentials
-  - changing package coexistence expectations
+  - removing a previously published package from the workspace
 
 ## Plug-specific guidance
 
-For this workspace, a change that renames, replaces, or removes a published Plug credential or Plug node must ship as the next major release in both packages.
+For this workspace, a change that renames, replaces, or removes a published Plug credential or Plug node must ship as the next major release of `n8n-nodes-plug-database`.
 
-If the change also makes simultaneous installation of `n8n-nodes-plug-database` and `n8n-nodes-plug-database-advanced` unsupported or behaviorally undefined, document that explicitly in the changeset and package READMEs.
+If the change removes or deprecates a package, document that explicitly in the changeset and package README. Credential aliases may remain as compatibility shims when they do not reintroduce duplicate node surfaces.

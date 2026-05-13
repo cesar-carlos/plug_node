@@ -42,20 +42,39 @@ const readAuthorizationHeader = (value: unknown): string | undefined => {
   return undefined;
 };
 
+// eslint-disable-next-line @n8n/community-nodes/node-usable-as-tool -- Triggers are event sources, not AI-agent tools; n8n's type only supports truthy tool exposure.
 export class PluraAiAutomationsTrigger implements INodeType {
   description: INodeTypeDescription = {
-    displayName: "Plura.ai Automations Trigger",
+    displayName: "Plug Database Plura.ai Automations Trigger",
     name: "pluraAiAutomationsTrigger",
-    icon: "file:plura.svg",
+    icon: {
+      light: "file:../PlugDatabase/plugDatabaseV2.svg",
+      dark: "file:../PlugDatabase/plugDatabaseV2.dark.svg",
+    },
     group: ["trigger"],
     version: 1,
     subtitle: '={{$parameter["automation_node_id"]}}',
-    description:
-      "Triggers when a Plura.ai automation node is executed. Plura.ai helps teams build, deploy, and manage AI agents for calls, chat, and workflows.",
-    defaults: {
-      name: "Plura.ai Automations Trigger",
+    description: "Starts a workflow from a Plura.ai automation webhook.",
+    eventTriggerDescription:
+      "Emits one item when Plura.ai calls the configured automation webhook.",
+    activationMessage: "Webhook registered with Plura.ai automations.",
+    triggerPanel: {
+      header: "Receive Plura.ai automation webhooks",
+      executionsHelp: {
+        active: "Waiting for Plura.ai automation webhook calls.",
+        inactive: "Activate the workflow to register the Plura.ai webhook.",
+      },
+      activationHint: {
+        active: "Plura.ai webhook is registered.",
+        inactive: "Activate this workflow to register the webhook.",
+      },
     },
-    usableAsTool: false as unknown as true,
+    defaults: {
+      name: "Plug Database Plura.ai Automations Trigger",
+    },
+    codex: {
+      alias: ["Plura", "Plura.ai", "Plura Automations", "Plug Database Plura"],
+    },
     inputs: [],
     outputs: [NodeConnectionTypes.Main],
     credentials: [

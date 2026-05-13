@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 
-import { PluraAiAutomationsTrigger } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node";
-import { requestPluraJson } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PluraAiAutomationsTrigger/pluraHelpers";
+import { PluraAiAutomationsTrigger } from "../../packages/n8n-nodes-plug-database/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node";
+import { requestPluraJson } from "../../packages/n8n-nodes-plug-database/nodes/PluraAiAutomationsTrigger/pluraHelpers";
 
 const createNodeReference = () => ({
   id: "node-id",

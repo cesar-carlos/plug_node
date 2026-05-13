@@ -2,7 +2,7 @@
 
 ![Plug Database logo](https://raw.githubusercontent.com/cesar-carlos/plug_node/main/assets/app_icons/plug_connect-blockchain-512px.png)
 
-`n8n-nodes-plug-database` is the public Plug Database package for n8n.
+`n8n-nodes-plug-database` is the canonical Plug Database package for n8n.
 
 ## Installation
 
@@ -10,23 +10,34 @@
 npm install n8n-nodes-plug-database
 ```
 
-## What this package does
+## What This Package Does
 
-- REST-only command execution
+- REST and consumer Socket command execution
 - client-to-agent access management over REST
-- fixed Plug Database API base URL
 - guided mode for common operations
 - advanced mode for raw JSON-RPC commands
-- Document, image, code/identity, data, security, date/value, Plug-specific, barcode, and REST socket-event publishing tools under `Resource = Tools`
+- Socket Event publish over REST or Socket
+- one-shot Socket Event waiting over `/consumers`
+- `Plug Database Socket Event Trigger`
+- `Plug Database Plura.ai Automations Trigger`
+- document, image, code/identity, data, security, date/value, Plug-specific, barcode, and PDF tools under `Resource = Tools`
 
-This package is still REST-only, but it now includes local PDF and barcode tool runtime dependencies. Treat n8n Cloud verification as a separate compatibility check rather than assuming the package is Cloud-strict.
+This package now contains the surface that used to live in `n8n-nodes-plug-database-advanced`. The advanced package should be deprecated on npm after this major release.
 
-## Included nodes
+## Included Nodes
 
 - `Plug Database`
-  - consolidated REST-only node with `Resource = SQL | Client Access | User Access | Tools`
+  - consolidated node with `Resource = SQL | Client Access | User Access | Tools`
+- `Plug Database Socket Event Trigger`
+  - listens for `client:custom.*` events or `client:agent.profile.updated`
+- `Plug Database Plura.ai Automations Trigger`
+  - receives webhook events when a Plura.ai automation node executes
 
-## Supported operations
+The two trigger nodes are intentionally separate n8n nodes. n8n activates triggers through `trigger()` or webhook lifecycle methods, while `Plug Database` runs normal workflow executions through `execute()`. Socket waiting and publishing operations are available inside `Plug Database > Resource = Tools`, but continuous triggers must remain separate for n8n activation, deactivation, and webhook registration.
+
+The Plura.ai trigger display name is grouped under Plug Database for discoverability, but its internal node name intentionally remains `pluraAiAutomationsTrigger` so existing Plura workflows keep loading after the package consolidation.
+
+## Supported Operations
 
 `Resource = SQL`:
 
@@ -66,9 +77,7 @@ This package is still REST-only, but it now includes local PDF and barcode tool 
 - Security: `Generate Hash`, `HMAC Sign`, `Base64 Encode/Decode`, `JWT Decode`, `Encrypt Text`, `Decrypt Text`
 - Dates and values: `Format Date`, `Parse Date`, `Add Business Days`, `Format Currency`, `Number to Words`
 - Plug-specific: `Build Socket Event Payload`, `Validate Client Token`, `Validate Agent Context`, `Build SQL Request`, `Parse SQL Rows`, `Generate Access Request Summary`
-- `Publish Socket Event` over REST
-
-The PDF tools use `Browser Channel = Auto` by default. Auto uses Playwright Chromium through `@playwright/browser-chromium`, then common installed Chrome/Chromium paths if the bundled browser is unavailable, so Google Chrome is not required unless you explicitly select the Chrome browser channel. If npm install scripts are disabled or `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` is set, provide a browser with `Browser Executable Path` or `PLUG_TOOLS_BROWSER_EXECUTABLE_PATH`.
+- Socket events: `Publish Socket Event`, `Wait for Socket Event`
 
 ## Credentials
 
@@ -81,10 +90,7 @@ The PDF tools use `Browser Channel = Auto` by default. Auto uses Playwright Chro
 - optional `Payload Signing Key`
 - optional `Payload Signing Key ID`
 
-Credentials saved with older internal names are still selectable after upgrade.
-This package registers `plugDatabaseApi`, `plugDatabaseAdvancedApi`,
-`plugDatabaseClientApi`, and `plugDatabaseUserApi` as compatibility aliases that
-extend `plugDatabaseAccountApi`.
+Credentials saved with older internal names are still selectable after upgrade. This package registers `plugDatabaseApi`, `plugDatabaseAdvancedApi`, `plugDatabaseClientApi`, and `plugDatabaseUserApi` as compatibility aliases that extend `plugDatabaseAccountApi`.
 
 The SQL node can override `Agent ID` and `Client Token` per node. Resolution order is:
 
@@ -96,40 +102,51 @@ The package uses the fixed API base URL:
 
 - `https://plug-server.se7esistemassinop.com.br/api/v1`
 
-## Output modes
+`Plura.ai Automations API` asks for:
 
-- `Aggregated JSON`
-- `Raw JSON-RPC`
-- optional `Include Plug Metadata`
+- `Email`
+- `Password`
+- optional `API Key`
 
-`Execute SQL` returns one n8n item per row when the response contains tabular rows.
+## Socket Compatibility
 
-Both access nodes also support:
+- `Resource = SQL` with `Channel = Socket` prefers `agents:command` on `/consumers`.
+- When the server does not answer the newer consumer Socket transport, the runtime falls back to relay for single-command flows.
+- `Execute Batch` over Socket requires `agents:command`; use REST or upgrade the server when the server does not support it.
+- Custom Socket Events can be published over REST or Socket.
+- `Wait for Socket Event` uses `/consumers`, `socket:event.subscribe`, and best-effort unsubscribe.
+- `Plug Database Socket Event Trigger` supports reconnect controls, backpressure controls, optional PayloadFrame signature enforcement, and eventId deduplication.
 
-- `Return All` for paginated listing operations
-- optional `Include Plug Metadata`
-- standardized summary items with `success`, `operation`, `resourceType`, `resourceId`/`resourceIds`, and `raw`
+## Migration From Advanced
 
-## Quick examples
+This is a major release. Saved workflows that reference removed advanced node type names must be migrated:
 
-- Use `Plug Database` with `Resource = Client Access` to request access to several agents with repeated `Agent ID` rows instead of raw JSON arrays.
-- Use `Plug Database` with `Resource = Client Access` and `Return All` to fetch the full approved-agent list in one step.
-- Use `Plug Database` with `Resource = SQL` and credential defaults for the common agent, then override `Agent ID` or `Client Token` only in the steps that need a different target.
-- Use `Plug Database` with `Resource = User Access` to review pending access requests, then approve or reject each request by `Request ID`.
-- Use `Plug Database` with `Resource = User Access` to list clients approved for one agent and revoke a single `Client ID` when necessary.
+- `plugDatabaseAdvanced` -> `plugDatabase`
+- `plugDatabaseAdvancedSocketEventTrigger` -> `plugDatabaseSocketEventTrigger`
+- `plugDatabaseAdvancedPdf` and `plugDatabaseAdvancedBarcode` -> `Plug Database` with `Resource = Tools`
 
-## Limitations
+Legacy credential aliases remain supported, so saved credentials can still be selected after the node migration.
 
-- no Socket relay support
-- no realtime trigger in v1
-- `Execute Batch` runs over REST only
-- Socket Event publish uses REST only in this package
-- install this package instead of the advanced package when you only want the REST-only node set
-- do not install this package together with `n8n-nodes-plug-database-advanced` in the same n8n instance because both packages register the same internal Plug credential names
+For exported n8n workflow JSON files, run a dry run first and then write changes after reviewing the output:
+
+```bash
+npm run migrate:workflows -- ./workflow.json
+npm run migrate:workflows -- --write ./workflow.json
+```
+
+After upgrading, uninstall `n8n-nodes-plug-database-advanced` from the n8n instance and restart n8n. If old `Plug Database Advanced` menu entries still appear, reload the community node cache or reinstall `n8n-nodes-plug-database` so n8n indexes the canonical package only.
+
+## Tool Runtime Notes
+
+PDF tools use `Browser Channel = Auto` by default. Auto uses Playwright Chromium through `@playwright/browser-chromium`, then common installed Chrome/Chromium paths if the bundled browser is unavailable. If npm install scripts are disabled or `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` is set, provide a browser with `Browser Executable Path` or `PLUG_TOOLS_BROWSER_EXECUTABLE_PATH`.
+
+Use n8n's built-in `Compression`, `Convert to File`, and `Extract From File` nodes for gzip, base64, and generic file conversion.
 
 ## Documentation
 
 - [Workspace overview](https://github.com/cesar-carlos/plug_node/blob/main/README.md)
 - [Project summary](https://github.com/cesar-carlos/plug_node/blob/main/docs/project-summary.md)
+- [Communication patterns](https://github.com/cesar-carlos/plug_node/blob/main/docs/communication-patterns.md)
+- [Socket guide](https://github.com/cesar-carlos/plug_node/blob/main/docs/socket/README.md)
+- [Custom Socket Events](https://github.com/cesar-carlos/plug_node/blob/main/docs/custom-socket-events.md)
 - [Workflow examples](https://github.com/cesar-carlos/plug_node/blob/main/docs/workflow-examples.md)
-- [Release process](https://github.com/cesar-carlos/plug_node/blob/main/docs/release-process.md)

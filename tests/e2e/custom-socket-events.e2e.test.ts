@@ -1,12 +1,12 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 
-import type { CustomSocketEventAttachment } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/custom-socket-events";
+import type { CustomSocketEventAttachment } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/custom-socket-events";
 import {
   publishCustomSocketEventOverSocket,
   waitForCustomSocketEvent,
   type CustomSocketEventTransport,
-} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/customSocketEventSession";
-import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/socket/customSocketEventSession";
+import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/payloadFrameCodec";
 
 class BrokeredSocketEnvironment {
   private readonly subscriptions = new Map<string, Set<BrokeredCustomEventTransport>>();

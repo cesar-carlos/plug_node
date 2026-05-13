@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { PlugDatabase } from "../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/PlugDatabase.node";
-import { PlugDatabaseAdvancedBarcode } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedBarcode/PlugDatabaseAdvancedBarcode.node";
-import { PlugDatabaseAdvancedPdf } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedPdf/PlugDatabaseAdvancedPdf.node";
 
 describe("Plug tools node description enhancements", () => {
   it("exposes PDF media and configurable metadata fields", () => {
-    const node = new PlugDatabaseAdvancedPdf();
+    const node = new PlugDatabase();
     const pdfOptions = node.description.properties.find(
       (property) => property.name === "pdfOptions",
     );
@@ -27,9 +25,11 @@ describe("Plug tools node description enhancements", () => {
   });
 
   it("exposes QR error correction and configurable base64 fields", () => {
-    const node = new PlugDatabaseAdvancedBarcode();
+    const node = new PlugDatabase();
     const renderOptions = node.description.properties.find(
-      (property) => property.name === "renderOptions",
+      (property) =>
+        property.name === "renderOptions" &&
+        property.displayOptions?.show?.operation?.[0] === "generateCode",
     );
 
     expect(renderOptions?.options).toEqual(

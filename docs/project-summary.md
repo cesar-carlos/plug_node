@@ -11,17 +11,15 @@ The user only provides:
 - `Agent ID`
 - `Client Token`
 
-The node handles login, session refresh, command execution, response normalization, and, in the advanced package, Socket relay transport.
+The node handles login, session refresh, command execution, response normalization, Socket relay transport, local tool operations, and Socket Event workflows.
 
 ## Published packages
 
 - `n8n-nodes-plug-database`
-  - public REST-only package
+  - canonical REST + Socket package
   - includes local PDF and barcode tool runtimes
+  - includes Socket Event trigger and Plura.ai Automations trigger
   - n8n Cloud verification must be checked separately
-- `n8n-nodes-plug-database-advanced`
-  - advanced npm package
-  - REST + Socket relay support
 
 ## Fixed API base URL
 
@@ -37,13 +35,6 @@ The node handles login, session refresh, command execution, response normalizati
 - `Get Agent Profile`
 - `Get Client Token Policy`
 
-## Out of scope for the public package
-
-- Socket relay transport
-- Socket Event publish over Socket
-- one-shot Socket Event waiting
-- realtime trigger nodes
-
 ## Tooling
 
 - `@changesets/cli`
@@ -54,4 +45,4 @@ The node handles login, session refresh, command execution, response normalizati
 - `vitest`
 - `release-it`
 
-Both packages include the PDF and barcode tool runtime dependencies. The advanced package also adds `socket.io-client` for Socket relay, Socket Event publishing, and one-shot Socket Event waiting.
+The package includes PDF and barcode tool runtime dependencies plus `socket.io-client` for Socket relay, Socket Event publishing, and one-shot Socket Event waiting.

@@ -55,11 +55,21 @@ const ignoredDirectories = new Set([
   "dist",
   "generated",
 ]);
-const ignoredFiles = new Set(["package-lock.json"]);
+const ignoredFiles = new Set(["package-lock.json", "package-surface.config.mjs"]);
+const legacyMigrationFiles = new Set([
+  "scripts/migrate-advanced-workflows.mjs",
+  "tests/public/workflowMigration.test.ts",
+]);
 
 const scanFile = (absolutePath) => {
   const relativePath = path.relative(rootDir, absolutePath).replaceAll("\\", "/");
+  if (legacyMigrationFiles.has(relativePath)) {
+    return;
+  }
   if (relativePath.endsWith("CHANGELOG.md")) {
+    return;
+  }
+  if (path.extname(absolutePath).toLowerCase() === ".md") {
     return;
   }
 

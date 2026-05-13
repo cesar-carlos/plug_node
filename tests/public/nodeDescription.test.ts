@@ -1,19 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { PlugDatabase } from "../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/PlugDatabase.node";
-import { PlugDatabaseAdvanced } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node";
-import { PlugDatabaseAdvancedBarcode } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedBarcode/PlugDatabaseAdvancedBarcode.node";
-import { PlugDatabaseAdvancedPdf } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedPdf/PlugDatabaseAdvancedPdf.node";
-import { PlugDatabaseAdvancedSocketEventTrigger } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEventTrigger/PlugDatabaseAdvancedSocketEventTrigger.node";
-import { PluraAiAutomationsTrigger } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node";
+import { PlugDatabaseSocketEventTrigger } from "../../packages/n8n-nodes-plug-database/nodes/PlugDatabaseSocketEventTrigger/PlugDatabaseSocketEventTrigger.node";
+import { PluraAiAutomationsTrigger } from "../../packages/n8n-nodes-plug-database/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node";
 
 describe("consolidated Plug node descriptions", () => {
-  const getToolsOperationProperties = (node: PlugDatabase | PlugDatabaseAdvanced) =>
+  const getToolsOperationProperties = (node: PlugDatabase) =>
     node.description.properties.filter(
       (property) =>
         property.name === "operation" &&
         property.displayOptions?.show?.resource?.[0] === "tools",
     );
+
   const getToolExposedNodeNames = (
     nodes: Array<{
       readonly description: {
@@ -26,7 +24,7 @@ describe("consolidated Plug node descriptions", () => {
       .filter((node) => node.description.usableAsTool === true)
       .map((node) => node.description.name);
 
-  it("shows resource selection on the public consolidated node", () => {
+  it("shows the unified Plug Database resource selection", () => {
     const node = new PlugDatabase();
     const resourceProperty = node.description.properties.find(
       (property) => property.name === "resource",
@@ -35,6 +33,16 @@ describe("consolidated Plug node descriptions", () => {
       (property) => property.name === "operation",
     );
 
+    expect(node.description).toMatchObject({
+      displayName: "Plug Database",
+      name: "plugDatabase",
+      version: [1, 2],
+      defaultVersion: 2,
+      usableAsTool: true,
+      codex: {
+        alias: expect.arrayContaining(["Plug Database Advanced", "Plug Socket"]),
+      },
+    });
     expect(resourceProperty).toMatchObject({
       name: "resource",
       default: "sql",
@@ -50,23 +58,19 @@ describe("consolidated Plug node descriptions", () => {
     expect(operationProperties).toHaveLength(11);
   });
 
-  it("exposes only consolidated Plug nodes as tools across both packages", () => {
-    expect(getToolExposedNodeNames([new PlugDatabase()])).toEqual(["plugDatabase"]);
+  it("exposes only Plug Database as a tool", () => {
     expect(
       getToolExposedNodeNames([
-        new PlugDatabaseAdvanced(),
-        new PlugDatabaseAdvancedPdf(),
-        new PlugDatabaseAdvancedBarcode(),
-        new PlugDatabaseAdvancedSocketEventTrigger(),
+        new PlugDatabase(),
+        new PlugDatabaseSocketEventTrigger(),
         new PluraAiAutomationsTrigger(),
       ]),
-    ).toEqual(["plugDatabaseAdvanced"]);
+    ).toEqual(["plugDatabase"]);
   });
 
   it("keeps the consolidated Tools operation contract stable", () => {
-    const publicNode = new PlugDatabase();
-    const advancedNode = new PlugDatabaseAdvanced();
-    const publicExpectedOperations = [
+    const node = new PlugDatabase();
+    const expectedOperations = [
       "htmlToPdf",
       "markdownToPdf",
       "textToPdf",
@@ -107,131 +111,47 @@ describe("consolidated Plug node descriptions", () => {
       "parseSqlRows",
       "generateAccessRequestSummary",
       "publishSocketEvent",
-    ];
-    const advancedExpectedOperations = [
-      ...publicExpectedOperations,
       "waitForSocketEvent",
     ];
 
     expect(
-      getToolsOperationProperties(publicNode).flatMap(
+      getToolsOperationProperties(node).flatMap(
         (property) => property.options?.map((option) => option.value) ?? [],
       ),
-    ).toEqual(publicExpectedOperations);
-    expect(
-      getToolsOperationProperties(advancedNode).flatMap(
-        (property) => property.options?.map((option) => option.value) ?? [],
-      ),
-    ).toEqual(advancedExpectedOperations);
+    ).toEqual(expectedOperations);
   });
 
-  it("keeps the advanced PDF and barcode compatibility nodes hidden and out of tools", () => {
-    expect(
-      [new PlugDatabaseAdvancedPdf(), new PlugDatabaseAdvancedBarcode()].map((node) => ({
-        name: node.description.name,
-        hidden: node.description.hidden,
-        usableAsTool: node.description.usableAsTool,
-      })),
-    ).toEqual([
-      {
-        name: "plugDatabaseAdvancedPdf",
-        hidden: true,
-        usableAsTool: false,
-      },
-      {
-        name: "plugDatabaseAdvancedBarcode",
-        hidden: true,
-        usableAsTool: false,
-      },
-    ]);
-  });
-
-  it("exposes tools inside both consolidated Plug nodes", () => {
-    const publicNode = new PlugDatabase();
-    const advancedNode = new PlugDatabaseAdvanced();
-
-    for (const node of [publicNode, advancedNode]) {
-      const toolCategory = node.description.properties.find(
-        (property) => property.name === "toolCategory",
-      );
-      const toolOperationOptions = getToolsOperationProperties(node).flatMap(
-        (property) => property.options ?? [],
-      );
-
-      expect(toolCategory?.options).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ value: "documents" }),
-          expect.objectContaining({ value: "image" }),
-          expect.objectContaining({ value: "identity" }),
-          expect.objectContaining({ value: "data" }),
-          expect.objectContaining({ value: "security" }),
-          expect.objectContaining({ value: "dateValue" }),
-          expect.objectContaining({ value: "plugSpecific" }),
-          expect.objectContaining({ value: "socket" }),
-        ]),
-      );
-      expect(toolOperationOptions).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ value: "htmlToPdf" }),
-          expect.objectContaining({ value: "markdownToPdf" }),
-          expect.objectContaining({ value: "resizeImage" }),
-          expect.objectContaining({ value: "generateCode" }),
-          expect.objectContaining({ value: "transformJson" }),
-          expect.objectContaining({ value: "encryptText" }),
-          expect.objectContaining({ value: "formatDate" }),
-          expect.objectContaining({ value: "buildSqlRequest" }),
-          expect.objectContaining({ value: "publishSocketEvent" }),
-          expect.objectContaining({ name: "HTML to PDF" }),
-          expect.objectContaining({ name: "Markdown to PDF" }),
-          expect.objectContaining({ name: "Resize Image" }),
-          expect.objectContaining({ name: "Generate Barcode" }),
-          expect.objectContaining({ name: "Transform JSON" }),
-          expect.objectContaining({ name: "Encrypt Text" }),
-          expect.objectContaining({ name: "Format Date" }),
-          expect.objectContaining({ name: "Build SQL Request" }),
-          expect.objectContaining({ name: "Publish Socket Event" }),
-        ]),
-      );
-    }
-
-    const publicPublishChannel = publicNode.description.properties.find(
-      (property) =>
-        property.name === "publishChannel" &&
-        property.displayOptions?.show?.resource?.[0] === "tools",
+  it("exposes tools, Socket publish, and one-shot Socket Event waiting in Plug Database", () => {
+    const node = new PlugDatabase();
+    const toolCategory = node.description.properties.find(
+      (property) => property.name === "toolCategory",
     );
-    const advancedPublishChannel = advancedNode.description.properties.find(
+    const publishChannel = node.description.properties.find(
       (property) =>
         property.name === "publishChannel" &&
         property.displayOptions?.show?.resource?.[0] === "tools",
     );
 
-    expect(publicPublishChannel?.options).toEqual([
-      expect.objectContaining({ value: "rest" }),
-    ]);
-    expect(advancedPublishChannel?.options).toEqual(
+    expect(toolCategory?.options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: "documents" }),
+        expect.objectContaining({ value: "image" }),
+        expect.objectContaining({ value: "identity" }),
+        expect.objectContaining({ value: "data" }),
+        expect.objectContaining({ value: "security" }),
+        expect.objectContaining({ value: "dateValue" }),
+        expect.objectContaining({ value: "plugSpecific" }),
+        expect.objectContaining({ value: "socket" }),
+      ]),
+    );
+    expect(publishChannel?.options).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ value: "rest" }),
         expect.objectContaining({ value: "socket" }),
       ]),
     );
-    expect(
-      publicNode.description.properties.some(
-        (property) =>
-          property.name === "listenTimeoutMs" &&
-          property.displayOptions?.show?.operation?.[0] === "waitForSocketEvent",
-      ),
-    ).toBe(false);
-    expect(advancedNode.description.properties).toEqual(
+    expect(node.description.properties).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          name: "eventName",
-          displayOptions: expect.objectContaining({
-            show: expect.objectContaining({
-              resource: ["tools"],
-              operation: ["waitForSocketEvent"],
-            }),
-          }),
-        }),
         expect.objectContaining({
           name: "listenTimeoutMs",
           typeOptions: expect.objectContaining({
@@ -258,8 +178,8 @@ describe("consolidated Plug node descriptions", () => {
     );
   });
 
-  it("limits advanced socket controls to the SQL resource", () => {
-    const node = new PlugDatabaseAdvanced();
+  it("limits Socket SQL controls to the SQL resource", () => {
+    const node = new PlugDatabase();
     const channelProperties = node.description.properties.filter(
       (property) => property.name === "channel",
     );
@@ -270,15 +190,11 @@ describe("consolidated Plug node descriptions", () => {
     }
   });
 
-  it("uses the shared account credential across public, advanced, and trigger nodes", () => {
-    const publicNode = new PlugDatabase();
-    const advancedNode = new PlugDatabaseAdvanced();
-    const trigger = new PlugDatabaseAdvancedSocketEventTrigger();
+  it("uses the shared account credential across Plug Database and the Socket Event trigger", () => {
+    const node = new PlugDatabase();
+    const trigger = new PlugDatabaseSocketEventTrigger();
 
-    expect(publicNode.description.credentials).toEqual([
-      expect.objectContaining({ name: "plugDatabaseAccountApi", required: true }),
-    ]);
-    expect(advancedNode.description.credentials).toEqual([
+    expect(node.description.credentials).toEqual([
       expect.objectContaining({ name: "plugDatabaseAccountApi", required: true }),
     ]);
     expect(trigger.description.credentials).toEqual([
@@ -286,11 +202,28 @@ describe("consolidated Plug node descriptions", () => {
     ]);
   });
 
-  it("exposes the advanced custom socket event trigger", () => {
-    const trigger = new PlugDatabaseAdvancedSocketEventTrigger();
+  it("exposes the renamed custom Socket Event trigger", () => {
+    const trigger = new PlugDatabaseSocketEventTrigger();
 
-    expect(trigger.description.inputs).toEqual([]);
-    expect(trigger.description.usableAsTool).toBe(false);
+    expect(trigger.description).toMatchObject({
+      displayName: "Plug Database Socket Event Trigger",
+      name: "plugDatabaseSocketEventTrigger",
+      icon: {
+        light: "file:plugDatabaseV2.svg",
+        dark: "file:plugDatabaseV2.dark.svg",
+      },
+      inputs: [],
+      eventTriggerDescription:
+        "Emits one item when a subscribed Plug Database socket event is received.",
+      activationMessage: "Listening for Plug Database socket events.",
+      codex: {
+        alias: expect.arrayContaining(["Plug Database Advanced Trigger", "Socket Event"]),
+      },
+    });
+    expect(trigger.description.usableAsTool).toBeUndefined();
+    expect(trigger.description.triggerPanel).toMatchObject({
+      header: "Listen for Plug Database socket events",
+    });
     expect(trigger.description.properties).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "eventSource" }),
@@ -298,66 +231,60 @@ describe("consolidated Plug node descriptions", () => {
         expect.objectContaining({ name: "ackTimeoutMs" }),
         expect.objectContaining({ name: "reconnectOnDisconnect" }),
         expect.objectContaining({ name: "maxReconnectAttempts" }),
-        expect.objectContaining({ name: "reconnectFailureWindowMs" }),
-        expect.objectContaining({ name: "maxReconnectFailuresInWindow" }),
         expect.objectContaining({ name: "maxInflightEvents" }),
         expect.objectContaining({ name: "maxQueueSize" }),
         expect.objectContaining({ name: "overflowPolicy" }),
         expect.objectContaining({ name: "requirePayloadSignature" }),
-        expect.objectContaining({ name: "requirePayloadSignatureFor" }),
         expect.objectContaining({ name: "deduplicateEvents" }),
-        expect.objectContaining({ name: "deduplicationTtlMs" }),
         expect.objectContaining({ name: "binaryPropertyPrefix" }),
       ]),
     );
   });
 
-  it("keeps advanced socket event listening inside the consolidated advanced tool menu", () => {
-    const advancedNode = new PlugDatabaseAdvanced();
-    const trigger = new PlugDatabaseAdvancedSocketEventTrigger();
-    const waitForSocketEventOperation = getToolsOperationProperties(advancedNode)
-      .flatMap((property) => property.options ?? [])
-      .find((option) => option.value === "waitForSocketEvent");
-
-    expect(waitForSocketEventOperation).toMatchObject({
-      value: "waitForSocketEvent",
-    });
-    expect(trigger.description.usableAsTool).toBe(false);
-  });
-
-  it("exposes the Plura.ai automations trigger in the advanced package", () => {
+  it("exposes the Plura.ai automations trigger in the unified package with its compatible internal name", () => {
     const trigger = new PluraAiAutomationsTrigger();
 
     expect(trigger.description).toMatchObject({
-      displayName: "Plura.ai Automations Trigger",
+      displayName: "Plug Database Plura.ai Automations Trigger",
       name: "pluraAiAutomationsTrigger",
+      icon: {
+        light: "file:../PlugDatabase/plugDatabaseV2.svg",
+        dark: "file:../PlugDatabase/plugDatabaseV2.dark.svg",
+      },
       group: ["trigger"],
       inputs: [],
+      eventTriggerDescription:
+        "Emits one item when Plura.ai calls the configured automation webhook.",
+      activationMessage: "Webhook registered with Plura.ai automations.",
+      codex: {
+        alias: expect.arrayContaining(["Plura", "Plug Database Plura"]),
+      },
     });
-    expect(trigger.description.usableAsTool).toBe(false);
+    expect(trigger.description.usableAsTool).toBeUndefined();
+    expect(trigger.description.triggerPanel).toMatchObject({
+      header: "Receive Plura.ai automation webhooks",
+    });
     expect(trigger.description.outputs).toEqual(["main"]);
     expect(trigger.description.credentials).toEqual([
       expect.objectContaining({ name: "pluraAiAutomationsApi", required: true }),
     ]);
   });
 
-  it("keeps legacy PDF and barcode tool nodes registered in the advanced package", () => {
-    const nodes = [new PlugDatabaseAdvancedPdf(), new PlugDatabaseAdvancedBarcode()];
+  it("keeps visible node names grouped under Plug Database without Advanced", () => {
+    const visibleNames = [
+      new PlugDatabase().description.displayName,
+      new PlugDatabaseSocketEventTrigger().description.displayName,
+      new PluraAiAutomationsTrigger().description.displayName,
+    ];
 
-    for (const node of nodes) {
-      expect(node.description.usableAsTool).toBe(false);
-      expect(node.description.credentials).toBeUndefined();
-      expect(node.description.properties).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ name: "operation" }),
-          expect.objectContaining({ name: "outputBinaryProperty" }),
-          expect.objectContaining({ name: "includePlugToolsMetadata" }),
-        ]),
-      );
-    }
-  });
-
-  it("keeps the public package focused on the verified REST-only node set", () => {
-    expect([new PlugDatabase().description.name]).toEqual(["plugDatabase"]);
+    expect(visibleNames).toEqual([
+      "Plug Database",
+      "Plug Database Socket Event Trigger",
+      "Plug Database Plura.ai Automations Trigger",
+    ]);
+    expect(visibleNames.every((name) => name.startsWith("Plug Database"))).toBe(true);
+    expect(visibleNames).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("Advanced")]),
+    );
   });
 });

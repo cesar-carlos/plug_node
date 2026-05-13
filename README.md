@@ -5,22 +5,23 @@
 
 ![Plug Database logo](https://raw.githubusercontent.com/cesar-carlos/plug_node/main/assets/app_icons/plug_connect-blockchain-512px.png)
 
-This repository contains the Plug Database n8n community node workspace.
+This repository contains the unified Plug Database n8n community node package.
 
-## Packages
+## Package
 
 - `n8n-nodes-plug-database`
-  - public REST-only package
+  - one canonical Plug Database package
   - exposes one consolidated `Plug Database` node
-  - includes local PDF and barcode tool runtimes, so n8n Cloud verification should be treated as a separate compatibility check
-- `n8n-nodes-plug-database-advanced`
-  - advanced npm package
-  - REST + consumer socket support
-  - exposes one consolidated `Plug Database Advanced` node plus PDF and barcode tool nodes
+  - supports REST and consumer Socket execution
+  - includes Socket Event publishing, one-shot Socket Event waiting, `Plug Database Socket Event Trigger`, `Plug Database Plura.ai Automations Trigger`, PDF, barcode, document, image, data, security, date/value, identity, and Plug-specific tools
 
-## User experience
+The former `n8n-nodes-plug-database-advanced` package has been folded into `n8n-nodes-plug-database`. Deprecate the advanced package on npm after publishing this major release, and migrate workflows to the unified node surface.
 
-The consolidated nodes are designed to keep setup simple. End users provide:
+After upgrading, uninstall `n8n-nodes-plug-database-advanced` from the n8n instance and restart n8n. If the old `Plug Database Advanced` entries still appear, reload the community node cache or reinstall the canonical package so n8n indexes only `n8n-nodes-plug-database`.
+
+## User Experience
+
+End users provide one shared Plug credential:
 
 - `User (email)`
 - `Password`
@@ -29,30 +30,32 @@ The consolidated nodes are designed to keep setup simple. End users provide:
 - optional `Payload Signing Key`
 - optional `Payload Signing Key ID`
 
-All authenticated Plug surfaces now share the same credential type:
+All authenticated Plug surfaces share:
 
 - `Plug Database Account API`
 
-Saved credentials created by older package versions remain supported through
-compatibility aliases. The legacy internal credential names
-`plugDatabaseApi`, `plugDatabaseAdvancedApi`, `plugDatabaseClientApi`, and
-`plugDatabaseUserApi` now extend `plugDatabaseAccountApi`, so n8n can still show
-previously saved credentials in nodes that use the shared account credential.
+Saved credentials created by older package versions remain supported through compatibility aliases. The legacy internal credential names `plugDatabaseApi`, `plugDatabaseAdvancedApi`, `plugDatabaseClientApi`, and `plugDatabaseUserApi` extend `plugDatabaseAccountApi`, so n8n can still show previously saved credentials in nodes that use the shared account credential.
+
+Saved workflows that reference removed advanced node type names must be migrated:
+
+- `plugDatabaseAdvanced` -> `plugDatabase`
+- `plugDatabaseAdvancedSocketEventTrigger` -> `plugDatabaseSocketEventTrigger`
+- `plugDatabaseAdvancedPdf` and `plugDatabaseAdvancedBarcode` -> `Plug Database` with `Resource = Tools`
+
+For exported n8n workflow JSON files, run a dry run first and then write changes after reviewing the output:
+
+```bash
+npm run migrate:workflows -- ./workflow.json
+npm run migrate:workflows -- --write ./workflow.json
+```
 
 The API base URL is fixed to:
 
 - `https://plug-server.se7esistemassinop.com.br/api/v1`
 
-The implementation handles login, token refresh, REST execution, consumer socket execution, binary frame decoding, gzip handling, and normalized JSON output.
+The implementation handles login, token refresh, REST execution, consumer Socket execution, binary frame decoding, gzip handling, and normalized JSON output.
 
-For the advanced SQL node:
-
-- `Channel = Socket` prefers `agents:command` on `/consumers`
-- older saved advanced workflows stay compatible with relay when needed
-- the runtime probes socket capability once per execution and falls back to relay only when the newer transport does not answer
-- large socket streams are protected by local buffer guardrails to avoid runaway memory use during node execution
-
-Both consolidated nodes start with `Resource`, then `Operation`.
+`Plug Database` starts with `Resource`, then `Operation`.
 
 Resources:
 
@@ -61,40 +64,19 @@ Resources:
 - `User Access`
 - `Tools`
 
-The SQL resource can override `Agent ID` and `Client Token` per workflow step. Resolution order is:
+For SQL, `Channel = Socket` prefers `agents:command` on `/consumers`, with relay fallback when the newer transport does not answer. Large Socket streams are protected by local buffer guardrails.
 
-- node field
-- credential default
-- validation error only when the selected operation requires the missing value
+Tools include PDF/document conversion, image operations, barcode read/generation, CPF/CNPJ and UUID helpers, JSON/data utilities, security helpers, date/value helpers, SQL/socket payload helpers, REST or Socket custom event publishing, and one-shot Socket Event waiting.
 
-The `Client Access` resource manages approved agents, access requests, and per-agent client tokens over REST.
+Triggers stay as separate n8n nodes because n8n activates them through `trigger()` or webhook lifecycle methods, while `Plug Database` is an execution node that runs through `execute()`. They share the same package and naming prefix, but cannot be embedded as normal operations without losing trigger behavior.
 
-The `User Access` resource browses the agent catalog and manages owner-side approval and revocation flows over REST.
+`Plug Database Socket Event Trigger` listens on `/consumers` for exact `client:custom.*` events or `client:agent.profile.updated`.
 
-Install either the public package or the advanced package for a given n8n instance. Concurrent package coexistence is not treated as a supported compatibility target because both packages register the same internal Plug credential names, including the shared account credential and the legacy compatibility aliases.
+`Plug Database Plura.ai Automations Trigger` receives webhook events when a Plura.ai automation node executes.
 
-Tools:
+Detailed Socket documentation is available in [docs/socket](./docs/socket/README.md), including SQL over Socket, custom events, the continuous trigger, PayloadFrame, examples, and troubleshooting.
 
-- `HTML to PDF` renders trusted HTML strings to PDF binary files using Auto browser resolution: Playwright-managed Chromium first, then common installed Chrome/Chromium paths.
-- Document tools include `Markdown to PDF`, `Text to PDF`, `Merge PDFs`, `Split PDF`, and `Extract PDF Text`.
-- Image tools include resize, convert, compress, watermark, and thumbnail operations powered by `sharp`.
-- Code and identity tools include `Generate Barcode`, `Read Barcode`, CPF/CNPJ validation and formatting, and UUID generation.
-- Data tools include JSONata transforms, CSV/JSON conversion, text normalization, regex extraction, and JSON Schema validation.
-- Security tools include hash, HMAC, Base64, JWT decode, and AES-256-GCM text encrypt/decrypt helpers.
-- Date and value tools include date parsing/formatting, business-day math, currency formatting, and number-to-words conversion.
-- Plug-specific helpers build socket event payloads and SQL request/row/access-request summaries without adding new endpoints.
-- `Publish Socket Event` publishes `client:custom.*` events over REST in both packages and over Socket in the advanced package.
-- `Wait for Socket Event` is advanced-only and waits one-shot for the first matching `client:custom.*` event on `/consumers`, with separate listen and socket ACK timeouts.
-- Use n8n's built-in `Compression`, `Convert to File`, and `Extract From File` nodes for gzip, base64, and generic file conversion.
-
-## Example workflows
-
-- `Plug Database`
-  - choose `Resource = SQL` to run SQL against one approved agent with credential defaults or per-node overrides
-  - choose `Resource = Client Access` to list agents, request access, and manage per-agent client tokens
-  - choose `Resource = User Access` to browse the shared agent catalog and manage owner approvals
-
-## Local development
+## Local Development
 
 Recommended Node.js version:
 
@@ -123,6 +105,7 @@ npm run scan:public
 - [Project summary](https://github.com/cesar-carlos/plug_node/blob/main/docs/project-summary.md)
 - [Architecture](https://github.com/cesar-carlos/plug_node/blob/main/docs/architecture.md)
 - [Communication patterns](https://github.com/cesar-carlos/plug_node/blob/main/docs/communication-patterns.md)
+- [Socket guide](https://github.com/cesar-carlos/plug_node/blob/main/docs/socket/README.md)
 - [Error and authorization contracts](https://github.com/cesar-carlos/plug_node/blob/main/docs/error-and-authorization-contracts.md)
 - [UX decisions](https://github.com/cesar-carlos/plug_node/blob/main/docs/ux-decisions.md)
 - [Testing strategy](https://github.com/cesar-carlos/plug_node/blob/main/docs/testing-strategy.md)
@@ -130,11 +113,9 @@ npm run scan:public
 - [Release process](https://github.com/cesar-carlos/plug_node/blob/main/docs/release-process.md)
 - [Versioning strategy](https://github.com/cesar-carlos/plug_node/blob/main/docs/versioning-strategy.md)
 
-## Verification path
+## Verification Path
 
-`n8n-nodes-plug-database` is kept REST-only. Document, image, data, security, date/value, identity, Plug-specific, barcode, and REST socket-event publishing tools now live under `Resource = Tools` in both consolidated packages; `n8n-nodes-plug-database-advanced` additionally supports Socket publish, one-shot Socket Event waiting, and Socket relay behavior.
-
-Because the public package now ships local tool runtime dependencies, passing `scan:public` is still useful but should not be read as an n8n Cloud verification guarantee.
+`n8n-nodes-plug-database` now ships the full Plug surface, including Socket and local tool runtime dependencies. `scan:public` is still useful, but do not read it as an n8n Cloud verification guarantee.
 
 After a GitHub Actions publish succeeds, run the dedicated `Scan Public Package` workflow or execute:
 
@@ -144,11 +125,11 @@ npm run scan:public
 
 This runs the official `@n8n/scan-community-package` check against the published npm package.
 
-## Project rules
+## Project Rules
 
 Read [AGENTS.md](https://github.com/cesar-carlos/plug_node/blob/main/AGENTS.md) first, then the source rules in [`.cursor/rules`](https://github.com/cesar-carlos/plug_node/tree/main/.cursor/rules).
 
-## Contributing and security
+## Contributing and Security
 
 - [Contributing guide](https://github.com/cesar-carlos/plug_node/blob/main/CONTRIBUTING.md)
 - [Security policy](https://github.com/cesar-carlos/plug_node/blob/main/SECURITY.md)

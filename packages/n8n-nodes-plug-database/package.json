@@ -1,7 +1,7 @@
 {
   "name": "n8n-nodes-plug-database",
   "version": "2.0.0",
-  "description": "Plug Database n8n nodes with REST-only support",
+  "description": "Plug Database n8n nodes with REST and consumer socket support",
   "license": "MIT",
   "author": {
     "name": "cesar-carlos"
@@ -23,7 +23,10 @@
     "n8n",
     "plug",
     "database",
-    "rest"
+    "rest",
+    "socket.io",
+    "relay",
+    "consumer-socket"
   ],
   "scripts": {
     "sync-shared": "node ../../scripts/sync-shared.mjs --package n8n-nodes-plug-database",
@@ -56,10 +59,13 @@
       "dist/credentials/PlugDatabaseApi.credentials.js",
       "dist/credentials/PlugDatabaseAdvancedApi.credentials.js",
       "dist/credentials/PlugDatabaseClientApi.credentials.js",
-      "dist/credentials/PlugDatabaseUserApi.credentials.js"
+      "dist/credentials/PlugDatabaseUserApi.credentials.js",
+      "dist/credentials/PluraAiAutomationsApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/PlugDatabase/PlugDatabase.node.js"
+      "dist/nodes/PlugDatabase/PlugDatabase.node.js",
+      "dist/nodes/PlugDatabaseSocketEventTrigger/PlugDatabaseSocketEventTrigger.node.js",
+      "dist/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node.js"
     ]
   },
   "devDependencies": {
@@ -90,6 +96,7 @@
     "pdfjs-dist": "^5.7.284",
     "playwright-core": "1.59.1",
     "sharp": "^0.34.5",
+    "socket.io-client": "4.8.3",
     "to-words": "^5.5.0"
   }
 }

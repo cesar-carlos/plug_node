@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+﻿import { readFileSync } from "node:fs";
 import { Buffer } from "node:buffer";
 
 import { describe, expect, it, vi } from "vitest";
@@ -11,10 +11,9 @@ import type {
 } from "n8n-workflow";
 
 import { executePlugClientNode } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugClientExecution";
-import { executePlugClientNode as executeAdvancedPlugClientNode } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/n8n/plugClientExecution";
-import type { PlugToolsSocketEventListenInput } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/n8n/plugToolsCommon";
-import { PlugDatabaseAdvancedSocketEventTrigger } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEventTrigger/PlugDatabaseAdvancedSocketEventTrigger.node";
-import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
+import type { PlugToolsSocketEventListenInput } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugToolsCommon";
+import { PlugDatabaseSocketEventTrigger } from "../../packages/n8n-nodes-plug-database/nodes/PlugDatabaseSocketEventTrigger/PlugDatabaseSocketEventTrigger.node";
+import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/payloadFrameCodec";
 import { createMockExecuteContext } from "../helpers/mockExecuteFunctions";
 
 const loadFixture = <T>(name: string): T =>
@@ -397,10 +396,10 @@ describe("shared Plug account credential coverage", () => {
       includePlugMetadata: true,
     });
 
-    await executeAdvancedPlugClientNode(waitContext, {
+    await executePlugClientNode(waitContext, {
       supportsSocket: true,
       credentialName: "plugDatabaseAccountApi",
-      nodeDisplayName: "Plug Database Advanced",
+      nodeDisplayName: "Plug Database",
       socketEventListener,
     });
 
@@ -408,7 +407,7 @@ describe("shared Plug account credential coverage", () => {
     expect(socketEventListener).toHaveBeenCalledOnce();
   });
 
-  it("covers the advanced trigger with the same credential name", async () => {
+  it("covers the Socket Event trigger with the same credential name", async () => {
     const getCredentials = vi.fn(async () => sharedCredentials);
     const httpRequest = vi.fn(async (request: IHttpRequestOptions) => {
       if (String(request.url).endsWith("/client-auth/login")) {
@@ -421,7 +420,7 @@ describe("shared Plug account credential coverage", () => {
 
       throw new Error(`Unexpected request ${request.url}`);
     });
-    const node = new PlugDatabaseAdvancedSocketEventTrigger();
+    const node = new PlugDatabaseSocketEventTrigger();
     const context = {
       getCredentials,
       getNodeParameter: vi.fn((name: string, fallback?: unknown) => {

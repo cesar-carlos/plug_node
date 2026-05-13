@@ -2,12 +2,11 @@
 
 ## Supported packages
 
-This repository contains two npm packages:
+This repository contains one npm package:
 
 - `n8n-nodes-plug-database`
-- `n8n-nodes-plug-database-advanced`
 
-Security issues affecting either package or the shared core should be reported privately.
+Security issues affecting the package or the shared core should be reported privately.
 
 ## Reporting a vulnerability
 

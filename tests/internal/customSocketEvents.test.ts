@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 
 import type {
   PlugHttpRequestOptions,
   PlugSession,
-} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/api";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 import {
   assertAgentProfileUpdatedPayload,
   assertCustomSocketEventFramePayload,
@@ -14,16 +14,16 @@ import {
   assertSocketEventControlAck,
   defaultSocketEventListenTimeoutMaxMs,
   toAttachmentMetadata,
-} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/custom-socket-events";
-import { publishCustomSocketEvent } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/rest/customSocketEvents";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/custom-socket-events";
+import { publishCustomSocketEvent } from "../../packages/n8n-nodes-plug-database/generated/shared/rest/customSocketEvents";
 import {
   publishCustomSocketEventOverSocket,
   startAgentProfileUpdatedSession,
   startCustomSocketEventSession,
   waitForCustomSocketEvent,
   type CustomSocketEventTransport,
-} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/customSocketEventSession";
-import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/socket/customSocketEventSession";
+import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/payloadFrameCodec";
 
 class MockCustomEventTransport implements CustomSocketEventTransport {
   connected = false;

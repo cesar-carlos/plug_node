@@ -36,7 +36,6 @@ jobs:
           echo "ref=${GITHUB_REF}"
           echo "sha=${GITHUB_SHA}"
           npm view n8n-nodes-plug-database version || true
-          npm view n8n-nodes-plug-database-advanced version || true
 
       - name: Install dependencies
         run: npm ci

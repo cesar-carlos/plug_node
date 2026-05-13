@@ -42,24 +42,25 @@ const runSyncShared = (packageName: string): Promise<string> =>
   });
 
 describe("shared sync boundaries", () => {
-  it("keeps socket runtime code out of the public package while syncing shared tools", () => {
-    const publicGeneratedShared = path.join(
+  it("syncs socket runtime code into the unified package", () => {
+    const generatedShared = path.join(
       workspaceRoot,
       "packages/n8n-nodes-plug-database/generated/shared",
     );
 
-    expect(existsSync(path.join(publicGeneratedShared, "socket"))).toBe(false);
-    expect(existsSync(path.join(publicGeneratedShared, "tools"))).toBe(true);
+    expect(existsSync(path.join(generatedShared, "socket"))).toBe(true);
+    expect(existsSync(path.join(generatedShared, "contracts/payload-frame.ts"))).toBe(
+      true,
+    );
+    expect(existsSync(path.join(generatedShared, "tools"))).toBe(true);
+    expect(existsSync(path.join(generatedShared, "n8n/plugToolsDescription.ts"))).toBe(
+      true,
+    );
+    expect(existsSync(path.join(generatedShared, "n8n/plugToolsExecution.ts"))).toBe(
+      true,
+    );
     expect(
-      existsSync(path.join(publicGeneratedShared, "n8n/plugToolsDescription.ts")),
-    ).toBe(true);
-    expect(
-      existsSync(path.join(publicGeneratedShared, "n8n/plugToolsExecution.ts")),
-    ).toBe(true);
-    expect(
-      existsSync(
-        path.join(publicGeneratedShared, "n8n/plugToolsSocketEventExecution.ts"),
-      ),
+      existsSync(path.join(generatedShared, "n8n/plugToolsSocketEventExecution.ts")),
     ).toBe(true);
   });
 

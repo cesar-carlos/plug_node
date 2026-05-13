@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 
 import {
   normalizeBarcodeFileName,
   resolveBarcodeRenderHardLimits,
   resolveBarcodeRenderInput,
-} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/tools/barcode";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/tools/barcode";
 
 describe("Plug tools barcode helpers", () => {
   it("normalizes file names for the selected output format", () => {
