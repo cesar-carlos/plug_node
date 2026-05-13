@@ -25,8 +25,18 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 22.22.0
-          cache: npm
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Print release context
+        run: |
+          node --version
+          npm --version
+          echo "event=${GITHUB_EVENT_NAME}"
+          echo "ref=${GITHUB_REF}"
+          echo "sha=${GITHUB_SHA}"
+          npm view n8n-nodes-plug-database version || true
+          npm view n8n-nodes-plug-database-advanced version || true
 
       - name: Install dependencies
         run: npm ci
@@ -41,7 +51,7 @@ jobs:
         run: npm run pack:check
 
       - name: Upgrade npm for trusted publishing
-        run: npm install --global npm@^11.5.1
+        run: npm install --global npm@^11.10.0
 
       - name: Create version PR or publish packages
         uses: changesets/action@v1
