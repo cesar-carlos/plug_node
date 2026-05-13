@@ -12,6 +12,7 @@ import {
   assertSocketEventPublishedAck,
   clientAgentProfileUpdatedEventName,
   assertSocketEventControlAck,
+  defaultSocketEventListenTimeoutMaxMs,
   toAttachmentMetadata,
 } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/custom-socket-events";
 import { publishCustomSocketEvent } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/rest/customSocketEvents";
@@ -19,6 +20,7 @@ import {
   publishCustomSocketEventOverSocket,
   startAgentProfileUpdatedSession,
   startCustomSocketEventSession,
+  waitForCustomSocketEvent,
   type CustomSocketEventTransport,
 } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/customSocketEventSession";
 import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
@@ -722,6 +724,176 @@ describe("custom socket events", () => {
       eventName: "client:custom.status.changed",
       payload: { status: "ready" },
     });
+  });
+
+  it("waits for one custom socket event and closes after success", async () => {
+    const transport = new MockCustomEventTransport();
+    const waitPromise = waitForCustomSocketEvent({
+      transport,
+      eventName: "client:custom.status.changed",
+      ackTimeoutMs: 1000,
+      listenTimeoutMs: 1000,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    transport.dispatch(
+      "client:custom.status.changed",
+      encodePayloadFrame(
+        {
+          eventId: "event-wait-1",
+          eventName: "client:custom.status.changed",
+          emittedAt: "2026-05-11T12:00:00.000Z",
+          publisher: { principalType: "client", clientId: "client-1" },
+          payload: { status: "ready" },
+          attachments: [],
+        },
+        { requestId: "event-wait-1", compression: "none" },
+      ),
+    );
+
+    const result = await waitPromise;
+
+    expect(result.event).toMatchObject({
+      eventId: "event-wait-1",
+      eventName: "client:custom.status.changed",
+      payload: { status: "ready" },
+    });
+    expect(result.metadata).toMatchObject({
+      eventName: "client:custom.status.changed",
+      socketId: "socket-1",
+      subscriptionCount: 1,
+      payloadFrameRequestId: "event-wait-1",
+    });
+    expect(
+      transport.emittedEvents.some(({ event }) => event === "socket:event.unsubscribe"),
+    ).toBe(true);
+    expect(transport.connected).toBe(false);
+  });
+
+  it("rejects one-shot custom socket waits on listen timeout", async () => {
+    const transport = new MockCustomEventTransport();
+
+    await expect(
+      waitForCustomSocketEvent({
+        transport,
+        eventName: "client:custom.status.changed",
+        ackTimeoutMs: 1000,
+        listenTimeoutMs: 1,
+      }),
+    ).rejects.toMatchObject({
+      code: "SOCKET_EVENT_LISTEN_TIMEOUT",
+      details: {
+        timeoutMs: 1,
+        eventName: "client:custom.status.changed",
+      },
+    });
+
+    expect(transport.connected).toBe(false);
+  });
+
+  it("rejects one-shot custom socket waits before connecting when signature verification has no key", async () => {
+    const transport = new MockCustomEventTransport();
+
+    await expect(
+      waitForCustomSocketEvent({
+        transport,
+        eventName: "client:custom.status.changed",
+        ackTimeoutMs: 1000,
+        listenTimeoutMs: 1000,
+        payloadFrameSigning: { keyId: "test-key" },
+        requirePayloadSignature: true,
+      }),
+    ).rejects.toMatchObject({
+      code: "PLUG_VALIDATION_ERROR",
+      message:
+        "Payload Signing Key is required when Require Payload Signature is enabled.",
+    });
+
+    expect(transport.connected).toBe(false);
+    expect(transport.emittedEvents).toHaveLength(0);
+  });
+
+  it("rejects one-shot custom socket waits above the listen timeout limit", async () => {
+    const transport = new MockCustomEventTransport();
+
+    await expect(
+      waitForCustomSocketEvent({
+        transport,
+        eventName: "client:custom.status.changed",
+        listenTimeoutMs: defaultSocketEventListenTimeoutMaxMs + 1,
+      }),
+    ).rejects.toMatchObject({
+      code: "PLUG_VALIDATION_ERROR",
+      message: `Listen Timeout (MS) must be at most ${defaultSocketEventListenTimeoutMaxMs}`,
+    });
+
+    expect(transport.connected).toBe(false);
+  });
+
+  it("rejects one-shot custom socket waits with invalid event payloads", async () => {
+    const transport = new MockCustomEventTransport();
+    const waitPromise = waitForCustomSocketEvent({
+      transport,
+      eventName: "client:custom.status.changed",
+      ackTimeoutMs: 1000,
+      listenTimeoutMs: 1000,
+    });
+    const rejection = expect(waitPromise).rejects.toMatchObject({
+      code: "PLUG_VALIDATION_ERROR",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    transport.dispatch(
+      "client:custom.status.changed",
+      encodePayloadFrame(
+        {
+          eventId: "event-invalid",
+          eventName: "client:custom.other",
+          emittedAt: "2026-05-11T12:00:00.000Z",
+          publisher: { principalType: "client", clientId: "client-1" },
+          payload: { status: "ready" },
+          attachments: [],
+        },
+        { requestId: "event-invalid", compression: "none" },
+      ),
+    );
+
+    await rejection;
+    expect(transport.connected).toBe(false);
+  });
+
+  it("requires signed PayloadFrames for one-shot custom socket waits when configured", async () => {
+    const transport = new MockCustomEventTransport();
+    const waitPromise = waitForCustomSocketEvent({
+      transport,
+      eventName: "client:custom.status.changed",
+      ackTimeoutMs: 1000,
+      listenTimeoutMs: 1000,
+      payloadFrameSigning: { key: "secret" },
+      requirePayloadSignature: true,
+    });
+    const rejection = expect(waitPromise).rejects.toThrow(
+      "PayloadFrame signature is required",
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    transport.dispatch(
+      "client:custom.status.changed",
+      encodePayloadFrame(
+        {
+          eventId: "event-unsigned",
+          eventName: "client:custom.status.changed",
+          emittedAt: "2026-05-11T12:00:00.000Z",
+          publisher: { principalType: "client", clientId: "client-1" },
+          payload: { status: "ready" },
+          attachments: [],
+        },
+        { requestId: "event-unsigned", compression: "none" },
+      ),
+    );
+
+    await rejection;
+    expect(transport.connected).toBe(false);
   });
 
   it("validates socket:event.published ack shape", () => {

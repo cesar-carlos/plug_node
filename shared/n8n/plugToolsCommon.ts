@@ -9,7 +9,9 @@ import type {
 } from "../contracts/api";
 import type {
   CustomSocketEventAttachment,
+  CustomSocketEventFramePayload,
   PublishCustomSocketEventResponse,
+  SocketEventRuntimeMetadata,
 } from "../contracts/custom-socket-events";
 import type { HtmlToPdfRenderer } from "../tools/pdf";
 import { isRecord, parseJsonText } from "../utils/json";
@@ -43,11 +45,35 @@ export interface PlugToolsSocketEventPublisher {
   (input: PlugToolsSocketEventPublishInput): Promise<PublishCustomSocketEventResponse>;
 }
 
+export interface PlugToolsSocketEventListenInput {
+  readonly session: PlugSession<PlugCredentialDefaults>;
+  readonly eventName: string;
+  readonly listenTimeoutMs: number;
+  readonly ackTimeoutMs: number;
+  readonly payloadFrameSigning?:
+    | {
+        readonly key?: string;
+        readonly keyId?: string;
+      }
+    | undefined;
+  readonly requirePayloadSignature: boolean;
+}
+
+export interface PlugToolsSocketEventListenResult {
+  readonly event: CustomSocketEventFramePayload;
+  readonly metadata: SocketEventRuntimeMetadata;
+}
+
+export interface PlugToolsSocketEventListener {
+  (input: PlugToolsSocketEventListenInput): Promise<PlugToolsSocketEventListenResult>;
+}
+
 export interface PlugToolsExecutionConfig {
   readonly credentialName?: string;
   readonly nodeDisplayName: string;
   readonly renderer?: HtmlToPdfRenderer;
   readonly socketEventPublisher?: PlugToolsSocketEventPublisher;
+  readonly socketEventListener?: PlugToolsSocketEventListener;
 }
 
 export const emptyInputItem: INodeExecutionData = { json: {} };

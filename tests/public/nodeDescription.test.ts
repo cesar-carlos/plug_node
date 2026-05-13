@@ -62,7 +62,7 @@ describe("consolidated Plug node descriptions", () => {
   it("keeps the consolidated Tools operation contract stable", () => {
     const publicNode = new PlugDatabase();
     const advancedNode = new PlugDatabaseAdvanced();
-    const expectedOperations = [
+    const publicExpectedOperations = [
       "htmlToPdf",
       "markdownToPdf",
       "textToPdf",
@@ -104,14 +104,21 @@ describe("consolidated Plug node descriptions", () => {
       "generateAccessRequestSummary",
       "publishSocketEvent",
     ];
+    const advancedExpectedOperations = [
+      ...publicExpectedOperations,
+      "waitForSocketEvent",
+    ];
 
-    for (const node of [publicNode, advancedNode]) {
-      expect(
-        getToolsOperationProperties(node).flatMap(
-          (property) => property.options?.map((option) => option.value) ?? [],
-        ),
-      ).toEqual(expectedOperations);
-    }
+    expect(
+      getToolsOperationProperties(publicNode).flatMap(
+        (property) => property.options?.map((option) => option.value) ?? [],
+      ),
+    ).toEqual(publicExpectedOperations);
+    expect(
+      getToolsOperationProperties(advancedNode).flatMap(
+        (property) => property.options?.map((option) => option.value) ?? [],
+      ),
+    ).toEqual(advancedExpectedOperations);
   });
 
   it("keeps legacy advanced tool nodes hidden with stable technical names", () => {
@@ -250,6 +257,48 @@ describe("consolidated Plug node descriptions", () => {
       expect.arrayContaining([
         expect.objectContaining({ value: "rest" }),
         expect.objectContaining({ value: "socket" }),
+      ]),
+    );
+    expect(
+      publicNode.description.properties.some(
+        (property) =>
+          property.name === "listenTimeoutMs" &&
+          property.displayOptions?.show?.operation?.[0] === "waitForSocketEvent",
+      ),
+    ).toBe(false);
+    expect(advancedNode.description.properties).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "eventName",
+          displayOptions: expect.objectContaining({
+            show: expect.objectContaining({
+              resource: ["tools"],
+              operation: ["waitForSocketEvent"],
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          name: "listenTimeoutMs",
+          typeOptions: expect.objectContaining({
+            minValue: 1,
+            maxValue: 300000,
+          }),
+          displayOptions: expect.objectContaining({
+            show: expect.objectContaining({
+              resource: ["tools"],
+              operation: ["waitForSocketEvent"],
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          name: "requirePayloadSignature",
+          displayOptions: expect.objectContaining({
+            show: expect.objectContaining({
+              resource: ["tools"],
+              operation: ["waitForSocketEvent"],
+            }),
+          }),
+        }),
       ]),
     );
   });

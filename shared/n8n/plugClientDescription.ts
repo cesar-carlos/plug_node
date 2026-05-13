@@ -619,6 +619,7 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
 export interface PlugNodeDescriptionOptions {
   readonly supportsSocket: boolean;
   readonly supportsSocketEventSocketPublish?: boolean;
+  readonly supportsSocketEventSocketListen?: boolean;
   readonly displayName: string;
   readonly technicalName: string;
   readonly credentialName: string;
@@ -695,6 +696,7 @@ export const buildPlugClientNodeDescription = (
     ...buildPlugToolsProperties({
       supportsSocketPublish:
         options.supportsSocketEventSocketPublish ?? options.supportsSocket,
+      supportsSocketListen: options.supportsSocketEventSocketListen ?? false,
     }).map((property) => addResourceDisplayOption(property, "tools")),
   ],
 });

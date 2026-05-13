@@ -41,6 +41,7 @@ The node handles login, session refresh, command execution, response normalizati
 
 - Socket relay transport
 - Socket Event publish over Socket
+- one-shot Socket Event waiting
 - realtime trigger nodes
 
 ## Tooling
@@ -53,4 +54,4 @@ The node handles login, session refresh, command execution, response normalizati
 - `vitest`
 - `release-it`
 
-Both packages include the PDF and barcode tool runtime dependencies. The advanced package also adds `socket.io-client` for Socket relay and Socket Event publishing.
+Both packages include the PDF and barcode tool runtime dependencies. The advanced package also adds `socket.io-client` for Socket relay, Socket Event publishing, and one-shot Socket Event waiting.

@@ -5,7 +5,12 @@ import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   type PayloadFrameCompression,
 } from "../contracts/api";
-import { defaultSocketEventAckTimeoutMs } from "../contracts/custom-socket-events";
+import {
+  defaultBinaryPropertyPrefix,
+  defaultManualListenTimeoutMs,
+  defaultSocketEventAckTimeoutMs,
+  defaultSocketEventListenTimeoutMaxMs,
+} from "../contracts/custom-socket-events";
 
 export interface PlugToolNodeDescriptionOptions {
   readonly displayName: string;
@@ -16,6 +21,7 @@ export interface PlugToolNodeDescriptionOptions {
 
 export interface PlugToolsPropertiesOptions {
   readonly supportsSocketPublish: boolean;
+  readonly supportsSocketListen?: boolean;
   readonly operation?: string;
 }
 
@@ -61,6 +67,7 @@ export const plugToolParseSqlRowsOperation = "parseSqlRows" as const;
 export const plugToolGenerateAccessRequestSummaryOperation =
   "generateAccessRequestSummary" as const;
 export const plugToolPublishSocketEventOperation = "publishSocketEvent" as const;
+export const plugToolWaitForSocketEventOperation = "waitForSocketEvent" as const;
 
 export const plugToolCategoryDocuments = "documents" as const;
 export const plugToolCategoryImage = "image" as const;
@@ -135,7 +142,10 @@ const plugToolOperationsByCategory = {
     plugToolParseSqlRowsOperation,
     plugToolGenerateAccessRequestSummaryOperation,
   ],
-  [plugToolCategorySocket]: [plugToolPublishSocketEventOperation],
+  [plugToolCategorySocket]: [
+    plugToolPublishSocketEventOperation,
+    plugToolWaitForSocketEventOperation,
+  ],
 } satisfies Record<PlugToolCategory, readonly string[]>;
 
 const plugToolCategoryOptions: readonly {
@@ -181,7 +191,7 @@ const plugToolCategoryOptions: readonly {
   {
     name: "Socket",
     value: plugToolCategorySocket,
-    description: "Publish Plug custom socket events.",
+    description: "Publish or wait for Plug custom socket events.",
   },
 ];
 
@@ -788,6 +798,12 @@ export const buildPlugToolsOperationProperty = (): INodeProperties => ({
       description: "Publish a client:custom.* event through Plug.",
       action: "Publish a socket event",
     },
+    {
+      name: "Wait for Socket Event",
+      value: plugToolWaitForSocketEventOperation,
+      description: "Wait for the next matching client:custom.* event.",
+      action: "Wait for a socket event",
+    },
   ],
 });
 
@@ -801,9 +817,21 @@ export const buildPlugToolsCategoryProperty = (): INodeProperties => ({
   description: "Choose the group of tools to show.",
 });
 
-export const buildPlugToolsOperationProperties = (): INodeProperties[] => {
+export const buildPlugToolsOperationProperties = (
+  options: PlugToolsPropertiesOptions,
+): INodeProperties[] => {
   const operationProperty = buildPlugToolsOperationProperty();
-  const operationOptions = operationProperty.options ?? [];
+  const operationOptions = (operationProperty.options ?? []).filter((option) => {
+    if (
+      "value" in option &&
+      option.value === plugToolWaitForSocketEventOperation &&
+      !options.supportsSocketListen
+    ) {
+      return false;
+    }
+
+    return true;
+  });
 
   return plugToolCategoryOptions.map((categoryOption) => {
     const categoryOperations = new Set<string>(
@@ -1050,8 +1078,8 @@ export const buildPlugToolsBarcodeProperties = (): INodeProperties[] => {
 export const buildPlugToolsSocketEventProperties = (
   options: PlugToolsPropertiesOptions,
 ): INodeProperties[] => {
-  const operation = options.operation ?? plugToolPublishSocketEventOperation;
-  const properties: INodeProperties[] = [
+  const publishOperation = options.operation ?? plugToolPublishSocketEventOperation;
+  const publishProperties: INodeProperties[] = [
     {
       displayName: "Publish Channel",
       name: "publishChannel",
@@ -1181,7 +1209,75 @@ export const buildPlugToolsSocketEventProperties = (
     },
   ];
 
-  return properties.map((property) => addOperationDisplayOption(property, operation));
+  const properties = publishProperties.map((property) =>
+    addOperationDisplayOption(property, publishOperation),
+  );
+
+  if (options.operation !== undefined || !options.supportsSocketListen) {
+    return properties;
+  }
+
+  const waitProperties: INodeProperties[] = [
+    {
+      displayName: "Event Name",
+      name: "eventName",
+      type: "string",
+      default: "client:custom.status.changed",
+      required: true,
+      description: "Exact custom event name to wait for. Must start with client:custom.",
+    },
+    {
+      displayName: "Listen Timeout (MS)",
+      name: "listenTimeoutMs",
+      type: "number",
+      default: defaultManualListenTimeoutMs,
+      typeOptions: {
+        minValue: 1,
+        maxValue: defaultSocketEventListenTimeoutMaxMs,
+      },
+      description: `Maximum time to wait for the first matching socket event after subscribing. Max ${defaultSocketEventListenTimeoutMaxMs} ms.`,
+    },
+    {
+      displayName: "Socket ACK Timeout (MS)",
+      name: "socketAckTimeoutMs",
+      type: "number",
+      default: defaultSocketEventAckTimeoutMs,
+      typeOptions: {
+        minValue: 1,
+      },
+      description:
+        "Time to wait for connection:ready and socket:event.subscribe acknowledgements.",
+    },
+    {
+      displayName: "Binary Property Prefix",
+      name: "binaryPropertyPrefix",
+      type: "string",
+      default: defaultBinaryPropertyPrefix,
+      description: "Prefix for binary properties created from inline event attachments.",
+    },
+    {
+      displayName: "Require Payload Signature",
+      name: "requirePayloadSignature",
+      type: "boolean",
+      default: false,
+      description: "Whether inbound PayloadFrames must include a valid HMAC signature.",
+    },
+    {
+      displayName: "Include Plug Metadata",
+      name: "includePlugMetadata",
+      type: "boolean",
+      default: true,
+      description:
+        "Whether to include the __plug object with channel and event metadata in the output.",
+    },
+  ];
+
+  return [
+    ...properties,
+    ...waitProperties.map((property) =>
+      addOperationDisplayOption(property, plugToolWaitForSocketEventOperation),
+    ),
+  ];
 };
 
 const binaryInputProperty = (operation: string): INodeProperties =>
@@ -1735,7 +1831,7 @@ export const buildPlugToolsProperties = (
   options: PlugToolsPropertiesOptions,
 ): INodeProperties[] => [
   buildPlugToolsCategoryProperty(),
-  ...buildPlugToolsOperationProperties(),
+  ...buildPlugToolsOperationProperties(options),
   ...buildPlugToolsPdfProperties(),
   ...buildPlugToolsDocumentProperties(),
   ...buildPlugToolsImageProperties(),

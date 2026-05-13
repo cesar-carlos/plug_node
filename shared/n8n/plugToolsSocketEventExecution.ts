@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 
 import type {
   IBinaryData,
+  IBinaryKeyData,
   IDataObject,
   IExecuteFunctions,
   IHttpRequestOptions,
@@ -20,13 +21,17 @@ import {
 import {
   assertPublishCustomSocketEventInput,
   assertPublishCustomSocketEventResponse,
+  defaultBinaryPropertyPrefix,
   defaultCustomSocketEventFileMaxBytes,
   defaultCustomSocketEventMaxFiles,
   defaultCustomSocketEventPayloadJsonMaxBytes,
   defaultCustomSocketEventTotalFilesMaxBytes,
+  defaultManualListenTimeoutMs,
   defaultSocketEventAckTimeoutMs,
+  defaultSocketEventListenTimeoutMaxMs,
   getJsonUtf8ByteLength,
   normalizeOptionalIdempotencyKey,
+  toAttachmentMetadata,
   type CustomSocketEventAttachment,
   type PublishCustomSocketEventResponse,
 } from "../contracts/custom-socket-events";
@@ -39,17 +44,23 @@ import {
 import { publishCustomSocketEvent } from "../rest/customSocketEvents";
 import { buildN8nHttpRequester } from "./httpRequester";
 import {
+  plugToolPublishSocketEventOperation,
+  plugToolWaitForSocketEventOperation,
+} from "./plugToolsDescription";
+import {
   emptyInputItem,
   serializeErrorForContinueOnFail,
   toNodeOperationError,
   toOptionalString,
   type PlugToolsExecutionConfig,
+  type PlugToolsSocketEventListenResult,
 } from "./plugToolsCommon";
 import { isRecord, parseJsonText } from "../utils/json";
 import { buildApiUrl } from "../utils/url";
 
 type PublishChannel = "rest" | "socket";
 type SocketEventDeliveryStatus = "delivered" | "noRecipients";
+const legacyPublishSocketEventOperation = "publishEvent";
 
 interface BinarySocketEventAttachment {
   readonly fieldName: string;
@@ -101,6 +112,7 @@ const normalizePositiveInteger = (
   fieldName: string,
   fallback: number,
   node: INode,
+  max?: number,
 ): number => {
   if (value === undefined || value === null || value === "") {
     return fallback;
@@ -117,7 +129,28 @@ const normalizePositiveInteger = (
     throw new NodeOperationError(node, `${fieldName} must be a positive number`);
   }
 
-  return Math.floor(numeric);
+  const normalized = Math.floor(numeric);
+  if (max !== undefined && normalized > max) {
+    throw new NodeOperationError(node, `${fieldName} must be at most ${max}`);
+  }
+
+  return normalized;
+};
+
+const normalizeBinaryPropertyPrefix = (value: unknown, node: INode): string => {
+  const prefix =
+    typeof value === "string" && value.trim() !== ""
+      ? value.trim()
+      : defaultBinaryPropertyPrefix;
+
+  if (!/^[A-Za-z0-9_-]+$/.test(prefix)) {
+    throw new NodeOperationError(
+      node,
+      "Binary Property Prefix may contain only letters, numbers, underscores, and hyphens",
+    );
+  }
+
+  return prefix;
 };
 
 const resolvePayloadFrameSigning = (
@@ -138,6 +171,16 @@ const resolvePayloadFrameSigning = (
     ...(key ? { key } : {}),
     ...(keyId ? { keyId } : {}),
   };
+};
+
+const assertPayloadSigningKeyForRequiredFrames = (
+  credentials: PlugCredentialDefaults,
+): void => {
+  if (!credentials.payloadSigningKey?.trim()) {
+    throw new PlugValidationError(
+      "Payload Signing Key is required when Require Payload Signature is enabled.",
+    );
+  }
 };
 
 const readSocketEventAttachments = async (
@@ -327,6 +370,61 @@ const publishCustomSocketEventMultipart = async (
   return assertPublishCustomSocketEventResponse(response.body);
 };
 
+const buildWaitForSocketEventOutputItem = async (
+  context: IExecuteFunctions,
+  input: {
+    readonly result: PlugToolsSocketEventListenResult;
+    readonly binaryPropertyPrefix: string;
+    readonly includeMetadata: boolean;
+    readonly itemIndex: number;
+  },
+): Promise<INodeExecutionData> => {
+  const binary: IBinaryKeyData = {};
+  const { event, metadata } = input.result;
+
+  for (let index = 0; index < event.attachments.length; index += 1) {
+    const attachment = event.attachments[index];
+    const propertyName = `${input.binaryPropertyPrefix}_${index}`;
+    binary[propertyName] = await context.helpers.prepareBinaryData(
+      Buffer.from(attachment.base64.trim(), "base64"),
+      attachment.originalName,
+      attachment.mimeType,
+    );
+  }
+
+  return {
+    json: {
+      eventId: event.eventId,
+      eventName: event.eventName,
+      emittedAt: event.emittedAt,
+      publisher: event.publisher,
+      payload: event.payload as IDataObject,
+      attachments: event.attachments.map(
+        toAttachmentMetadata,
+      ) as unknown as IDataObject[],
+      ...(input.includeMetadata
+        ? {
+            __plug: {
+              channel: "socket",
+              operation: "waitForSocketEvent",
+              eventName: event.eventName,
+              eventId: event.eventId,
+              socketId: metadata.socketId,
+              receivedAt: new Date().toISOString(),
+              payloadFrameRequestId: metadata.payloadFrameRequestId,
+              subscriptionCount: metadata.subscriptionCount,
+              attachmentCount: event.attachments.length,
+            },
+          }
+        : {}),
+    },
+    pairedItem: {
+      item: input.itemIndex,
+    },
+    ...(Object.keys(binary).length > 0 ? { binary } : {}),
+  };
+};
+
 export const executePlugToolsSocketEventNode = async (
   context: IExecuteFunctions,
   config: PlugToolsExecutionConfig,
@@ -343,7 +441,98 @@ export const executePlugToolsSocketEventNode = async (
 
   for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
     try {
+      const rawOperation = context.getNodeParameter(
+        "operation",
+        itemIndex,
+        plugToolPublishSocketEventOperation,
+      );
+      const operation =
+        typeof rawOperation === "string" && rawOperation.trim() !== ""
+          ? rawOperation
+          : plugToolPublishSocketEventOperation;
       const eventName = context.getNodeParameter("eventName", itemIndex) as string;
+      const includeMetadata = context.getNodeParameter(
+        "includePlugMetadata",
+        itemIndex,
+        true,
+      ) as boolean;
+
+      if (operation === plugToolWaitForSocketEventOperation) {
+        const socketEventListener = config.socketEventListener;
+        if (!socketEventListener) {
+          throw new PlugValidationError(
+            "This package does not support waiting for socket events.",
+          );
+        }
+
+        const listenTimeoutMs = normalizePositiveInteger(
+          context.getNodeParameter(
+            "listenTimeoutMs",
+            itemIndex,
+            defaultManualListenTimeoutMs,
+          ),
+          "Listen Timeout (MS)",
+          defaultManualListenTimeoutMs,
+          context.getNode(),
+          defaultSocketEventListenTimeoutMaxMs,
+        );
+        const socketAckTimeoutMs = normalizePositiveInteger(
+          context.getNodeParameter(
+            "socketAckTimeoutMs",
+            itemIndex,
+            defaultSocketEventAckTimeoutMs,
+          ),
+          "Socket ACK Timeout (MS)",
+          defaultSocketEventAckTimeoutMs,
+          context.getNode(),
+        );
+        const binaryPropertyPrefix = normalizeBinaryPropertyPrefix(
+          context.getNodeParameter(
+            "binaryPropertyPrefix",
+            itemIndex,
+            defaultBinaryPropertyPrefix,
+          ),
+          context.getNode(),
+        );
+        const requirePayloadSignature = context.getNodeParameter(
+          "requirePayloadSignature",
+          itemIndex,
+          false,
+        ) as boolean;
+        if (requirePayloadSignature) {
+          assertPayloadSigningKeyForRequiredFrames(credentials);
+        }
+
+        const payloadFrameSigning = resolvePayloadFrameSigning(credentials);
+        const result = await sessionRunner((session) =>
+          socketEventListener({
+            session,
+            eventName,
+            listenTimeoutMs,
+            ackTimeoutMs: socketAckTimeoutMs,
+            payloadFrameSigning,
+            requirePayloadSignature,
+          }),
+        );
+
+        outputItems.push(
+          await buildWaitForSocketEventOutputItem(context, {
+            result,
+            binaryPropertyPrefix,
+            includeMetadata,
+            itemIndex,
+          }),
+        );
+        continue;
+      }
+
+      if (
+        operation !== plugToolPublishSocketEventOperation &&
+        operation !== legacyPublishSocketEventOperation
+      ) {
+        throw new PlugValidationError(`Unsupported socket event operation: ${operation}`);
+      }
+
       const publishChannel = normalizePublishChannel(
         context.getNodeParameter("publishChannel", itemIndex, "rest"),
         context.getNode(),
@@ -375,11 +564,6 @@ export const executePlugToolsSocketEventNode = async (
         defaultSocketEventAckTimeoutMs,
         context.getNode(),
       );
-      const includeMetadata = context.getNodeParameter(
-        "includePlugMetadata",
-        itemIndex,
-        true,
-      ) as boolean;
       const attachments = await readSocketEventAttachments(context, itemIndex);
       validateSocketEventPayloadAndAttachments(
         {

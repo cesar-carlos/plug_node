@@ -21,6 +21,7 @@
 
 - REST + Socket relay
 - includes `socket.io-client`, PDF, and barcode tool runtime dependencies
+- exposes advanced-only Socket Event publish and one-shot wait operations over `/consumers`
 - npm-only distribution
 
 ## Shared core

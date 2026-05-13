@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IBinaryData, IExecuteFunctions, IHttpRequestOptions } from "n8n-workflow";
 
+import { PlugDatabaseAdvanced } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node";
 import { PlugDatabaseAdvancedSocketEvent } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEvent/PlugDatabaseAdvancedSocketEvent.node";
 import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/socket/payloadFrameCodec";
 
@@ -8,6 +9,7 @@ const socketMock = vi.hoisted(() => {
   type Handler = (payload: unknown) => void;
 
   const state: {
+    listenFrame?: unknown;
     readyFrame?: unknown;
     sockets: MockSocket[];
   } = {
@@ -70,6 +72,43 @@ const socketMock = vi.hoisted(() => {
               recipients: 4,
               idempotencyKey: request.idempotencyKey,
               idempotentReplay: false,
+            },
+          });
+        });
+      }
+
+      if (event === "socket:event.subscribe") {
+        const request = payload as {
+          readonly requestId: string;
+          readonly eventName: string;
+        };
+        queueMicrotask(() => {
+          this.dispatch("socket:event.subscribed", {
+            success: true,
+            requestId: request.requestId,
+            data: {
+              eventName: request.eventName,
+              subscribed: true,
+            },
+          });
+          if (state.listenFrame !== undefined) {
+            this.dispatch(request.eventName, state.listenFrame);
+          }
+        });
+      }
+
+      if (event === "socket:event.unsubscribe") {
+        const request = payload as {
+          readonly requestId: string;
+          readonly eventName: string;
+        };
+        queueMicrotask(() => {
+          this.dispatch("socket:event.unsubscribed", {
+            success: true,
+            requestId: request.requestId,
+            data: {
+              eventName: request.eventName,
+              subscribed: false,
             },
           });
         });
@@ -191,6 +230,18 @@ const createContext = (options?: {
       ),
       getBinaryDataBuffer: vi.fn(
         async () => options?.binaryBuffer ?? Buffer.from("hello"),
+      ),
+      prepareBinaryData: vi.fn(
+        async (
+          buffer: Buffer,
+          fileName?: string,
+          mimeType?: string,
+        ): Promise<IBinaryData> => ({
+          data: buffer.toString("base64"),
+          fileName,
+          mimeType,
+          fileSize: String(buffer.length),
+        }),
       ),
     },
     __requests: requests,
@@ -442,6 +493,7 @@ describe("PlugDatabaseAdvancedSocketEvent", () => {
 
   it("publishes events through the Socket channel", async () => {
     socketMock.state.sockets = [];
+    socketMock.state.listenFrame = undefined;
     socketMock.state.readyFrame = encodePayloadFrame(
       {
         id: "socket-1",
@@ -499,6 +551,96 @@ describe("PlugDatabaseAdvancedSocketEvent", () => {
               base64: Buffer.from("hello").toString("base64"),
             }),
           ],
+        }),
+      }),
+    ]);
+    expect(socket.connected).toBe(false);
+  });
+
+  it("waits for one socket event through the advanced consolidated node", async () => {
+    socketMock.state.sockets = [];
+    socketMock.state.readyFrame = encodePayloadFrame(
+      {
+        id: "socket-1",
+        message: "ready",
+        user: { sub: "client-1" },
+      },
+      { requestId: "handshake", compression: "none" },
+    );
+    socketMock.state.listenFrame = encodePayloadFrame(
+      {
+        eventId: "event-listen-1",
+        eventName: "client:custom.status.changed",
+        emittedAt: "2026-05-11T12:00:00.000Z",
+        publisher: { principalType: "client", clientId: "client-1" },
+        payload: { status: "ready" },
+        attachments: [
+          {
+            fieldName: "files",
+            originalName: "invoice.txt",
+            mimeType: "text/plain",
+            sizeBytes: 5,
+            base64: Buffer.from("hello").toString("base64"),
+          },
+        ],
+      },
+      { requestId: "event-listen-1", compression: "none" },
+    );
+    const node = new PlugDatabaseAdvanced();
+    const context = createContext({
+      parameters: {
+        resource: "tools",
+        operation: "waitForSocketEvent",
+        eventName: "client:custom.status.changed",
+        listenTimeoutMs: 5000,
+        socketAckTimeoutMs: 2000,
+        binaryPropertyPrefix: "eventFile",
+        requirePayloadSignature: false,
+        includePlugMetadata: true,
+      },
+    });
+
+    const output = await node.execute.call(context);
+    const socket = socketMock.state.sockets[0];
+
+    expect(output[0][0].json).toMatchObject({
+      eventId: "event-listen-1",
+      eventName: "client:custom.status.changed",
+      payload: { status: "ready" },
+      __plug: {
+        channel: "socket",
+        operation: "waitForSocketEvent",
+        socketId: "socket-1",
+        payloadFrameRequestId: "event-listen-1",
+        subscriptionCount: 1,
+        attachmentCount: 1,
+      },
+    });
+    expect(output[0][0].binary?.eventFile_0).toMatchObject({
+      data: Buffer.from("hello").toString("base64"),
+      fileName: "invoice.txt",
+      mimeType: "text/plain",
+    });
+    expect(socketMock.io).toHaveBeenCalledWith(
+      "https://plug-server.example.com/consumers",
+      expect.objectContaining({
+        auth: {
+          token: "access-1",
+        },
+        transports: ["websocket"],
+      }),
+    );
+    expect(socket.emittedEvents).toEqual([
+      expect.objectContaining({
+        event: "socket:event.subscribe",
+        payload: expect.objectContaining({
+          eventName: "client:custom.status.changed",
+        }),
+      }),
+      expect.objectContaining({
+        event: "socket:event.unsubscribe",
+        payload: expect.objectContaining({
+          eventName: "client:custom.status.changed",
         }),
       }),
     ]);

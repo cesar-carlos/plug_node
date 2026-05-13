@@ -11,6 +11,7 @@ export const clientAgentProfileUpdatedEventName = "client:agent.profile.updated"
 export const customSocketEventNameMaxLength = 128;
 export const defaultSocketEventAckTimeoutMs = 10_000;
 export const defaultManualListenTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS;
+export const defaultSocketEventListenTimeoutMaxMs = 300_000;
 export const defaultBinaryPropertyPrefix = "attachment";
 export const defaultMaxInflightSocketEvents = 8;
 export const defaultMaxQueuedSocketEvents = 128;

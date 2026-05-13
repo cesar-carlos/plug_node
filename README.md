@@ -72,6 +72,7 @@ Tools:
 - Date and value tools include date parsing/formatting, business-day math, currency formatting, and number-to-words conversion.
 - Plug-specific helpers build socket event payloads and SQL request/row/access-request summaries without adding new endpoints.
 - `Publish Socket Event` publishes `client:custom.*` events over REST in both packages and over Socket in the advanced package.
+- `Wait for Socket Event` is advanced-only and waits one-shot for the first matching `client:custom.*` event on `/consumers`, with separate listen and socket ACK timeouts.
 - Use n8n's built-in `Compression`, `Convert to File`, and `Extract From File` nodes for gzip, base64, and generic file conversion.
 
 ## Example workflows
@@ -119,7 +120,7 @@ npm run scan:public
 
 ## Verification path
 
-`n8n-nodes-plug-database` is kept REST-only. Document, image, data, security, date/value, identity, Plug-specific, barcode, and REST socket-event publishing tools now live under `Resource = Tools` in both consolidated packages; `n8n-nodes-plug-database-advanced` additionally supports Socket publish and Socket relay behavior.
+`n8n-nodes-plug-database` is kept REST-only. Document, image, data, security, date/value, identity, Plug-specific, barcode, and REST socket-event publishing tools now live under `Resource = Tools` in both consolidated packages; `n8n-nodes-plug-database-advanced` additionally supports Socket publish, one-shot Socket Event waiting, and Socket relay behavior.
 
 Because the public package now ships local tool runtime dependencies, passing `scan:public` is still useful but should not be read as an n8n Cloud verification guarantee.
 

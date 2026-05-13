@@ -24,6 +24,7 @@ import {
 import { executePlugClientAccessNode } from "./plugClientAccessExecution";
 import {
   executePlugToolsResource,
+  type PlugToolsSocketEventListener,
   type PlugToolsSocketEventPublisher,
 } from "./plugToolsExecution";
 import { executePlugUserAccessNode } from "./plugUserAccessExecution";
@@ -60,6 +61,7 @@ export interface PlugClientNodeExecutionConfig {
   readonly socketExecutor?: PlugSocketExecutor;
   readonly legacySocketExecutor?: PlugSocketExecutor;
   readonly toolSocketEventPublisher?: PlugToolsSocketEventPublisher;
+  readonly socketEventListener?: PlugToolsSocketEventListener;
 }
 
 const retryableOperations = new Set([
@@ -905,6 +907,7 @@ export const executePlugClientNode = async (
         credentialName: config.credentialName,
         nodeDisplayName: config.nodeDisplayName ?? "Plug Database",
         socketEventPublisher: config.toolSocketEventPublisher,
+        socketEventListener: config.socketEventListener,
       });
     default: {
       const exhaustiveCheck: never = resource;

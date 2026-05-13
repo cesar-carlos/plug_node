@@ -7,6 +7,7 @@ import type {
 
 import { buildPlugClientNodeDescription } from "../../generated/shared/n8n/plugClientDescription";
 import { executePlugClientNode } from "../../generated/shared/n8n/plugClientExecution";
+import { waitForCustomSocketEventWithSocketIo } from "./customSocketEventListener";
 import { publishCustomSocketEventWithSocketIo } from "./customSocketEventPublisher";
 import { createSocketCommandExecutor } from "./socketCommandExecutor";
 import { executeSocketCommand as executeLegacySocketCommand } from "./socketRelayExecutor";
@@ -16,6 +17,7 @@ export class PlugDatabaseAdvanced implements INodeType {
     ...buildPlugClientNodeDescription({
       supportsSocket: true,
       supportsSocketEventSocketPublish: true,
+      supportsSocketEventSocketListen: true,
       displayName: "Plug Database Advanced",
       technicalName: "plugDatabaseAdvanced",
       credentialName: "plugDatabaseAdvancedApi",
@@ -43,6 +45,7 @@ export class PlugDatabaseAdvanced implements INodeType {
         socketExecutor: socketCommandExecutor.execute,
         legacySocketExecutor: executeLegacySocketCommand,
         toolSocketEventPublisher: publishCustomSocketEventWithSocketIo,
+        socketEventListener: waitForCustomSocketEventWithSocketIo,
       });
     } catch (error: unknown) {
       if (this.continueOnFail()) {

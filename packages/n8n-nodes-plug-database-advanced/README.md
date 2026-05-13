@@ -72,6 +72,7 @@ npm install n8n-nodes-plug-database-advanced
 - Dates and values: `Format Date`, `Parse Date`, `Add Business Days`, `Format Currency`, `Number to Words`
 - Plug-specific: `Build Socket Event Payload`, `Validate Client Token`, `Validate Agent Context`, `Build SQL Request`, `Parse SQL Rows`, `Generate Access Request Summary`
 - `Publish Socket Event` over REST or Socket
+- `Wait for Socket Event` as a one-shot `/consumers` listener for the first matching `client:custom.*` event
 
 `Plug Database Advanced Socket Event Trigger`:
 
@@ -143,6 +144,8 @@ Both access nodes also support:
 - `Execute Batch` over socket requires `agents:command`; when the server does not support it, use `REST` or upgrade the server.
 - Large socket streams are protected by local buffer guardrails so the node fails clearly instead of letting memory grow without bounds.
 - Custom Socket Events can be published over REST or Socket. REST is the compatible default; Socket uses `/consumers`, `socket:event.publish`, and `socket:event.published` ACK correlation.
+- `Wait for Socket Event` uses `/consumers`, `socket:event.subscribe`, and best-effort unsubscribe for inline workflow steps that need a single event instead of a trigger.
+- Wait operations have separate timeout phases: `Socket ACK Timeout (MS)` for connection/control ACKs and `Listen Timeout (MS)` for the first matching event after subscribe, capped at 300000 ms.
 - Custom Socket Event attachments are locally checked against the server defaults: 5 files, 512 KiB per file, 2 MiB total, and 512 KiB payload JSON.
 - The event Trigger supports queue/backpressure controls, optional per-source required PayloadFrame signatures, eventId deduplication, a configurable reconnect circuit breaker, and the internal `client:agent.profile.updated` push.
 

@@ -14,9 +14,13 @@ import {
   executePlugToolsPdfNode,
   executePlugToolsUtilityNode,
 } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/n8n/plugToolsExecution";
-import type { PlugToolsSocketEventPublishInput } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/n8n/plugToolsExecution";
+import type {
+  PlugToolsSocketEventListenInput,
+  PlugToolsSocketEventPublishInput,
+} from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/n8n/plugToolsExecution";
 import { executePlugClientNode } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugClientExecution";
 import { executePlugClientNode as executeAdvancedPlugClientNode } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/n8n/plugClientExecution";
+import { PlugError } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/errors";
 import { PlugDatabaseAdvancedBarcode } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedBarcode/PlugDatabaseAdvancedBarcode.node";
 import { PlugDatabaseAdvancedPdf } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedPdf/PlugDatabaseAdvancedPdf.node";
 import { PlugDatabaseAdvancedSocketEvent } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEvent/PlugDatabaseAdvancedSocketEvent.node";
@@ -44,6 +48,10 @@ interface ToolContextOptions {
   readonly publishStatusCode?: number;
   readonly publishBody?: unknown;
   readonly binaryBuffer?: Buffer;
+  readonly credentials?: {
+    readonly payloadSigningKey?: string;
+    readonly payloadSigningKeyId?: string;
+  };
 }
 
 const createToolContext = (
@@ -129,8 +137,8 @@ const createToolContext = (
       baseUrl: "https://plug-server.example.com/api/v1",
       agentId: "agent-1",
       clientToken: "client-token",
-      payloadSigningKey: "",
-      payloadSigningKeyId: "",
+      payloadSigningKey: options.credentials?.payloadSigningKey ?? "",
+      payloadSigningKeyId: options.credentials?.payloadSigningKeyId ?? "",
     })),
     getInputData: () => options.inputData ?? [{ json: { input: true } }],
     getNode: () => defaultNode,
@@ -575,6 +583,201 @@ describe("Plug tools execution", () => {
     });
     expect(context.requests).toHaveLength(1);
     expect(socketEventPublisher).toHaveBeenCalledOnce();
+  });
+
+  it("waits for a Socket Event through advanced Tools with an injected listener", async () => {
+    const socketEventListener = vi.fn(async (input: PlugToolsSocketEventListenInput) => {
+      expect(input).toMatchObject({
+        eventName: "client:custom.status.changed",
+        listenTimeoutMs: 5000,
+        ackTimeoutMs: 2000,
+        requirePayloadSignature: false,
+      });
+      expect(input.session.accessToken).toBe("access-1");
+      return {
+        event: {
+          eventId: "event-listen-1",
+          eventName: input.eventName,
+          emittedAt: "2026-05-11T12:00:00.000Z",
+          publisher: { principalType: "client", clientId: "client-1" },
+          payload: { status: "ready" },
+          attachments: [
+            {
+              fieldName: "files",
+              originalName: "invoice.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+              base64: Buffer.from("hello").toString("base64"),
+            },
+          ],
+        },
+        metadata: {
+          eventName: input.eventName,
+          socketId: "socket-1",
+          reconnectAttempt: 0,
+          subscriptionCount: 1,
+          payloadFrameRequestId: "event-listen-1",
+        },
+      };
+    });
+    const context = createToolContext({
+      parameters: {
+        resource: "tools",
+        operation: "waitForSocketEvent",
+        eventName: "client:custom.status.changed",
+        listenTimeoutMs: 5000,
+        socketAckTimeoutMs: 2000,
+        binaryPropertyPrefix: "eventFile",
+        requirePayloadSignature: false,
+        includePlugMetadata: true,
+      },
+    });
+
+    const output = await executeAdvancedPlugClientNode(context, {
+      supportsSocket: true,
+      credentialName: "plugDatabaseAdvancedApi",
+      nodeDisplayName: "Plug Database Advanced",
+      socketEventListener,
+    });
+
+    expect(output[0][0].json).toMatchObject({
+      eventId: "event-listen-1",
+      eventName: "client:custom.status.changed",
+      payload: { status: "ready" },
+      attachments: [
+        {
+          fieldName: "files",
+          originalName: "invoice.txt",
+          mimeType: "text/plain",
+          sizeBytes: 5,
+        },
+      ],
+      __plug: {
+        channel: "socket",
+        operation: "waitForSocketEvent",
+        socketId: "socket-1",
+        payloadFrameRequestId: "event-listen-1",
+        subscriptionCount: 1,
+        attachmentCount: 1,
+      },
+    });
+    expect(output[0][0].binary?.eventFile_0).toMatchObject({
+      data: "binary-1",
+      fileName: "invoice.txt",
+      mimeType: "text/plain",
+    });
+    expect(context.preparedBinaries[0].buffer.toString()).toBe("hello");
+    expect(context.requests).toHaveLength(1);
+    expect(socketEventListener).toHaveBeenCalledOnce();
+  });
+
+  it("serializes wait Socket Event timeout when continueOnFail is enabled", async () => {
+    const socketEventListener = vi.fn(async () => {
+      throw new PlugError("Timed out while waiting for Plug socket event.", {
+        code: "SOCKET_EVENT_LISTEN_TIMEOUT",
+        statusCode: 408,
+        retryable: true,
+        details: {
+          timeoutMs: 1,
+          eventName: "client:custom.status.changed",
+        },
+      });
+    });
+    const context = createToolContext({
+      continueOnFail: true,
+      parameters: {
+        resource: "tools",
+        operation: "waitForSocketEvent",
+        eventName: "client:custom.status.changed",
+        listenTimeoutMs: 1,
+        socketAckTimeoutMs: 2000,
+        binaryPropertyPrefix: "attachment",
+        requirePayloadSignature: false,
+        includePlugMetadata: true,
+      },
+    });
+
+    const output = await executeAdvancedPlugClientNode(context, {
+      supportsSocket: true,
+      credentialName: "plugDatabaseAdvancedApi",
+      nodeDisplayName: "Plug Database Advanced",
+      socketEventListener,
+    });
+
+    expect(output[0][0].json.error).toMatchObject({
+      code: "SOCKET_EVENT_LISTEN_TIMEOUT",
+      statusCode: 408,
+      retryable: true,
+      details: {
+        timeoutMs: 1,
+        eventName: "client:custom.status.changed",
+      },
+    });
+  });
+
+  it("rejects required socket event signatures before calling the listener when no signing key is configured", async () => {
+    const socketEventListener = vi.fn();
+    const context = createToolContext({
+      continueOnFail: true,
+      credentials: {
+        payloadSigningKey: "",
+        payloadSigningKeyId: "key-id-only",
+      },
+      parameters: {
+        resource: "tools",
+        operation: "waitForSocketEvent",
+        eventName: "client:custom.status.changed",
+        listenTimeoutMs: 5000,
+        socketAckTimeoutMs: 2000,
+        binaryPropertyPrefix: "attachment",
+        requirePayloadSignature: true,
+        includePlugMetadata: true,
+      },
+    });
+
+    const output = await executeAdvancedPlugClientNode(context, {
+      supportsSocket: true,
+      credentialName: "plugDatabaseAdvancedApi",
+      nodeDisplayName: "Plug Database Advanced",
+      socketEventListener,
+    });
+
+    expect(output[0][0].json.error).toMatchObject({
+      code: "PLUG_VALIDATION_ERROR",
+      message:
+        "Payload Signing Key is required when Require Payload Signature is enabled.",
+    });
+    expect(socketEventListener).not.toHaveBeenCalled();
+  });
+
+  it("rejects wait Socket Event listen timeouts above the operation limit", async () => {
+    const socketEventListener = vi.fn();
+    const context = createToolContext({
+      continueOnFail: true,
+      parameters: {
+        resource: "tools",
+        operation: "waitForSocketEvent",
+        eventName: "client:custom.status.changed",
+        listenTimeoutMs: 300001,
+        socketAckTimeoutMs: 2000,
+        binaryPropertyPrefix: "attachment",
+        requirePayloadSignature: false,
+        includePlugMetadata: true,
+      },
+    });
+
+    const output = await executeAdvancedPlugClientNode(context, {
+      supportsSocket: true,
+      credentialName: "plugDatabaseAdvancedApi",
+      nodeDisplayName: "Plug Database Advanced",
+      socketEventListener,
+    });
+
+    expect(output[0][0].json.error).toMatchObject({
+      message: "Listen Timeout (MS) must be at most 300000",
+      name: "NodeOperationError",
+    });
+    expect(socketEventListener).not.toHaveBeenCalled();
   });
 
   it("marks publish results with noRecipients when the event is accepted without matched listeners", async () => {

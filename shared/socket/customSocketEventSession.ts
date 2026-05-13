@@ -14,6 +14,8 @@ import {
   clientAgentProfileUpdatedEventName,
   defaultSocketEventDeduplicationMaxEntries,
   defaultSocketEventAckTimeoutMs,
+  defaultManualListenTimeoutMs,
+  defaultSocketEventListenTimeoutMaxMs,
   type AgentProfileUpdatedPayload,
   type CustomSocketEventFramePayload,
   type PublishCustomSocketEventInput,
@@ -79,6 +81,20 @@ export interface StartAgentProfileUpdatedSessionInput {
 export interface CustomSocketEventSession {
   readonly eventNames: readonly string[];
   close(options?: { readonly unsubscribe?: boolean }): Promise<void>;
+}
+
+export interface WaitForCustomSocketEventInput {
+  readonly transport: CustomSocketEventTransport;
+  readonly eventName: string;
+  readonly ackTimeoutMs?: number;
+  readonly listenTimeoutMs?: number;
+  readonly payloadFrameSigning?: PayloadFrameSigningOptions;
+  readonly requirePayloadSignature?: boolean;
+}
+
+export interface WaitForCustomSocketEventResult {
+  readonly event: CustomSocketEventFramePayload;
+  readonly metadata: SocketEventRuntimeMetadata;
 }
 
 const normalizeNonNegativeInteger = (value: unknown): number | undefined => {
@@ -260,6 +276,33 @@ const withSigningPolicy = (
     ...(signing ?? {}),
     ...(requirePayloadSignature ? { requireSignature: true } : {}),
   };
+};
+
+const assertRequiredPayloadSigningKey = (
+  signing: PayloadFrameSigningOptions | undefined,
+  requirePayloadSignature: boolean | undefined,
+): void => {
+  if (requirePayloadSignature && (!signing?.key || signing.key.trim() === "")) {
+    throw new PlugValidationError(
+      "Payload Signing Key is required when Require Payload Signature is enabled.",
+    );
+  }
+};
+
+const normalizeListenTimeoutMs = (value: number | undefined): number => {
+  const numeric = value ?? defaultManualListenTimeoutMs;
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw new PlugValidationError("Listen Timeout (MS) must be a positive number");
+  }
+
+  const normalized = Math.floor(numeric);
+  if (normalized > defaultSocketEventListenTimeoutMaxMs) {
+    throw new PlugValidationError(
+      `Listen Timeout (MS) must be at most ${defaultSocketEventListenTimeoutMaxMs}`,
+    );
+  }
+
+  return normalized;
 };
 
 const waitForConnectionReady = async (
@@ -526,6 +569,86 @@ export const publishCustomSocketEventOverSocket = async (input: {
     };
   } finally {
     input.transport.disconnect();
+  }
+};
+
+export const waitForCustomSocketEvent = async (
+  input: WaitForCustomSocketEventInput,
+): Promise<WaitForCustomSocketEventResult> => {
+  const eventName = assertCustomSocketEventName(input.eventName);
+  const listenTimeoutMs = normalizeListenTimeoutMs(input.listenTimeoutMs);
+  assertRequiredPayloadSigningKey(
+    input.payloadFrameSigning,
+    input.requirePayloadSignature,
+  );
+  let session: CustomSocketEventSession | undefined;
+  let timer: NodeJS.Timeout | undefined;
+  let settled = false;
+
+  const settleOnce = <T>(callback: (value: T) => void, value: T): void => {
+    if (settled) {
+      return;
+    }
+
+    settled = true;
+    if (timer) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    callback(value);
+  };
+
+  try {
+    return await new Promise<WaitForCustomSocketEventResult>((resolve, reject) => {
+      startCustomSocketEventSession({
+        transport: input.transport,
+        eventNames: [eventName],
+        ackTimeoutMs: input.ackTimeoutMs,
+        payloadFrameSigning: input.payloadFrameSigning,
+        requirePayloadSignature: input.requirePayloadSignature,
+        onFatalError: (error) => {
+          settleOnce(reject, error);
+        },
+        onEvent: (event, metadata) => {
+          settleOnce(resolve, { event, metadata });
+        },
+      })
+        .then((startedSession) => {
+          session = startedSession;
+          if (settled) {
+            void session.close().catch((error: unknown) => {
+              plugLogger.warn("transport.socket.custom_event.wait_close_failed", {
+                eventName,
+                code: error instanceof PlugError ? error.code : undefined,
+              });
+            });
+            return;
+          }
+
+          timer = setTimeout(() => {
+            settleOnce(
+              reject,
+              new PlugError("Timed out while waiting for Plug socket event.", {
+                code: "SOCKET_EVENT_LISTEN_TIMEOUT",
+                statusCode: 408,
+                retryable: true,
+                details: {
+                  timeoutMs: listenTimeoutMs,
+                  eventName,
+                },
+              }),
+            );
+          }, listenTimeoutMs);
+        })
+        .catch((error: unknown) => {
+          settleOnce(reject, error);
+        });
+    });
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+    await session?.close();
   }
 };
 

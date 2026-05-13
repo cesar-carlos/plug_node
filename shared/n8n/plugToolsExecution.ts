@@ -42,6 +42,7 @@ import {
   plugToolValidateClientTokenOperation,
   plugToolValidateCpfCnpjOperation,
   plugToolValidateJsonSchemaOperation,
+  plugToolWaitForSocketEventOperation,
 } from "./plugToolsDescription";
 import { executePlugToolsBarcodeNode } from "./plugToolsBarcodeExecution";
 import { executePlugToolsDocumentNode } from "./plugToolsDocumentExecution";
@@ -61,6 +62,9 @@ export type {
   PlugToolsBarcodeExecutionConfig,
   PlugToolsExecutionConfig,
   PlugToolsPdfExecutionConfig,
+  PlugToolsSocketEventListenInput,
+  PlugToolsSocketEventListenResult,
+  PlugToolsSocketEventListener,
   PlugToolsSocketEventPublishInput,
   PlugToolsSocketEventPublisher,
 } from "./plugToolsCommon";
@@ -121,6 +125,7 @@ export const executePlugToolsResource = async (
     case plugToolGenerateAccessRequestSummaryOperation:
       return executePlugToolsUtilityNode(context, config, operation);
     case plugToolPublishSocketEventOperation:
+    case plugToolWaitForSocketEventOperation:
       return executePlugToolsSocketEventNode(context, config);
     default:
       throw new PlugValidationError(`Unsupported Plug tool operation: ${operation}`);
