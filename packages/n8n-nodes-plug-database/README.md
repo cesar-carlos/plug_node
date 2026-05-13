@@ -81,6 +81,11 @@ The PDF tools use `Browser Channel = Auto` by default. Auto uses Playwright Chro
 - optional `Payload Signing Key`
 - optional `Payload Signing Key ID`
 
+Credentials saved with older internal names are still selectable after upgrade.
+This package registers `plugDatabaseApi`, `plugDatabaseAdvancedApi`,
+`plugDatabaseClientApi`, and `plugDatabaseUserApi` as compatibility aliases that
+extend `plugDatabaseAccountApi`.
+
 The SQL node can override `Agent ID` and `Client Token` per node. Resolution order is:
 
 - node field
@@ -120,6 +125,7 @@ Both access nodes also support:
 - `Execute Batch` runs over REST only
 - Socket Event publish uses REST only in this package
 - install this package instead of the advanced package when you only want the REST-only node set
+- do not install this package together with `n8n-nodes-plug-database-advanced` in the same n8n instance because both packages register the same internal Plug credential names
 
 ## Documentation
 

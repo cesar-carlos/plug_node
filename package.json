@@ -21,7 +21,8 @@
   "scripts": {
     "changeset": "changeset",
     "changeset:status": "changeset status --verbose",
-    "pack:check": "node ./scripts/check-packages.mjs && node ./scripts/smoke-install-packages.mjs",
+    "pack:check": "node ./scripts/check-packages.mjs && node ./scripts/diagnose-plug-surface.mjs --check && node ./scripts/smoke-install-packages.mjs",
+    "diagnose:surface": "node ./scripts/diagnose-plug-surface.mjs",
     "verify:surface": "node ./scripts/verify-plug-surface.mjs",
     "scan:public": "npx @n8n/scan-community-package n8n-nodes-plug-database",
     "publish:packages": "changeset publish",

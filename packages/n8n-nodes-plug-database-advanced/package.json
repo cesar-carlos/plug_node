@@ -55,6 +55,10 @@
     "strict": false,
     "credentials": [
       "dist/credentials/PlugDatabaseAccountApi.credentials.js",
+      "dist/credentials/PlugDatabaseApi.credentials.js",
+      "dist/credentials/PlugDatabaseAdvancedApi.credentials.js",
+      "dist/credentials/PlugDatabaseClientApi.credentials.js",
+      "dist/credentials/PlugDatabaseUserApi.credentials.js",
       "dist/credentials/PluraAiAutomationsApi.credentials.js"
     ],
     "nodes": [

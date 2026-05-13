@@ -96,6 +96,11 @@ npm install n8n-nodes-plug-database-advanced
 - optional `Payload Signing Key`
 - optional `Payload Signing Key ID`
 
+Credentials saved with older internal names are still selectable after upgrade.
+This package registers `plugDatabaseApi`, `plugDatabaseAdvancedApi`,
+`plugDatabaseClientApi`, and `plugDatabaseUserApi` as compatibility aliases that
+extend `plugDatabaseAccountApi`.
+
 The SQL node can override `Agent ID` and `Client Token` per node. Resolution order is:
 
 - node field
@@ -185,7 +190,7 @@ Deployment owners can enforce tighter upper bounds with:
 
 Use n8n's built-in `Compression`, `Convert to File`, and `Extract From File` nodes for gzip, base64, and generic file conversion.
 
-Do not treat simultaneous installation of `n8n-nodes-plug-database` and `n8n-nodes-plug-database-advanced` as a supported compatibility target. The advanced package carries the full authenticated Plug surface plus socket support.
+Do not treat simultaneous installation of `n8n-nodes-plug-database` and `n8n-nodes-plug-database-advanced` as a supported compatibility target. The advanced package carries the full authenticated Plug surface plus socket support, and both packages register the same internal Plug credential names, including the shared account credential and the legacy compatibility aliases.
 
 ## Documentation
 

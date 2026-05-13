@@ -1,3 +1,26 @@
+export const allowedLegacyCredentialAliases = [
+  {
+    name: "plugDatabaseApi",
+    credentialFile: "PlugDatabaseApi.credentials.js",
+  },
+  {
+    name: "plugDatabaseAdvancedApi",
+    credentialFile: "PlugDatabaseAdvancedApi.credentials.js",
+  },
+  {
+    name: "plugDatabaseClientApi",
+    credentialFile: "PlugDatabaseClientApi.credentials.js",
+  },
+  {
+    name: "plugDatabaseUserApi",
+    credentialFile: "PlugDatabaseUserApi.credentials.js",
+  },
+];
+
+export const allowedLegacyCredentialAliasPaths = allowedLegacyCredentialAliases.map(
+  (alias) => `dist/credentials/${alias.credentialFile}`,
+);
+
 export const plugPackageSurface = [
   {
     workspace: "n8n-nodes-plug-database",
@@ -5,23 +28,25 @@ export const plugPackageSurface = [
     maxPackedSizeBytes: 200_000,
     maxUnpackedSizeBytes: 1_200_000,
     manifest: {
-      credentials: ["dist/credentials/PlugDatabaseAccountApi.credentials.js"],
+      credentials: [
+        "dist/credentials/PlugDatabaseAccountApi.credentials.js",
+        ...allowedLegacyCredentialAliasPaths,
+      ],
       nodes: ["dist/nodes/PlugDatabase/PlugDatabase.node.js"],
     },
     require: [
       "dist/credentials/PlugDatabaseAccountApi.credentials.js",
+      ...allowedLegacyCredentialAliasPaths,
       "dist/nodes/PlugDatabase/PlugDatabase.node.js",
     ],
     forbid: [
       "dist/tsconfig.tsbuildinfo",
       "dist/generated/shared/socket/",
       "dist/generated/shared/contracts/payload-frame.",
-      "dist/credentials/PlugDatabaseApi.credentials.js",
-      "dist/credentials/PlugDatabaseClientApi.credentials.js",
-      "dist/credentials/PlugDatabaseUserApi.credentials.js",
       "dist/nodes/PlugDatabaseClientAccess/PlugDatabaseClientAccess.node.js",
       "dist/nodes/PlugDatabaseUserAccess/PlugDatabaseUserAccess.node.js",
     ],
+    legacyCredentialAliases: allowedLegacyCredentialAliases,
   },
   {
     workspace: "n8n-nodes-plug-database-advanced",
@@ -31,6 +56,7 @@ export const plugPackageSurface = [
     manifest: {
       credentials: [
         "dist/credentials/PlugDatabaseAccountApi.credentials.js",
+        ...allowedLegacyCredentialAliasPaths,
         "dist/credentials/PluraAiAutomationsApi.credentials.js",
       ],
       nodes: [
@@ -43,28 +69,25 @@ export const plugPackageSurface = [
     },
     require: [
       "dist/credentials/PlugDatabaseAccountApi.credentials.js",
+      ...allowedLegacyCredentialAliasPaths,
       "dist/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node.js",
       "dist/nodes/PlugDatabaseAdvancedSocketEventTrigger/PlugDatabaseAdvancedSocketEventTrigger.node.js",
     ],
     forbid: [
       "dist/tsconfig.tsbuildinfo",
-      "dist/credentials/PlugDatabaseAdvancedApi.credentials.js",
       "dist/credentials/PlugDatabaseAdvancedClientApi.credentials.js",
       "dist/credentials/PlugDatabaseAdvancedUserApi.credentials.js",
       "dist/nodes/PlugDatabaseAdvancedClientAccess/PlugDatabaseAdvancedClientAccess.node.js",
       "dist/nodes/PlugDatabaseAdvancedUserAccess/PlugDatabaseAdvancedUserAccess.node.js",
       "dist/nodes/PlugDatabaseAdvancedSocketEvent/PlugDatabaseAdvancedSocketEvent.node.js",
     ],
+    legacyCredentialAliases: allowedLegacyCredentialAliases,
   },
 ];
 
 export const removedSourcePaths = [
-  "packages/n8n-nodes-plug-database/credentials/PlugDatabaseApi.credentials.ts",
-  "packages/n8n-nodes-plug-database/credentials/PlugDatabaseClientApi.credentials.ts",
-  "packages/n8n-nodes-plug-database/credentials/PlugDatabaseUserApi.credentials.ts",
   "packages/n8n-nodes-plug-database/nodes/PlugDatabaseClientAccess/PlugDatabaseClientAccess.node.ts",
   "packages/n8n-nodes-plug-database/nodes/PlugDatabaseUserAccess/PlugDatabaseUserAccess.node.ts",
-  "packages/n8n-nodes-plug-database-advanced/credentials/PlugDatabaseAdvancedApi.credentials.ts",
   "packages/n8n-nodes-plug-database-advanced/credentials/PlugDatabaseAdvancedClientApi.credentials.ts",
   "packages/n8n-nodes-plug-database-advanced/credentials/PlugDatabaseAdvancedUserApi.credentials.ts",
   "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedClientAccess/PlugDatabaseAdvancedClientAccess.node.ts",
@@ -80,11 +103,7 @@ export const removedSourceDirectories = [
   "packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEvent",
 ];
 
-export const bannedIdentifiers = [
-  "plugDatabaseApi",
-  "plugDatabaseAdvancedApi",
-  "plugDatabaseClientApi",
-  "plugDatabaseUserApi",
+export const forbiddenLegacyIdentifiers = [
   "plugDatabaseAdvancedClientApi",
   "plugDatabaseAdvancedUserApi",
   "PlugDatabaseClientAccess",
@@ -92,6 +111,8 @@ export const bannedIdentifiers = [
   "PlugDatabaseAdvancedClientAccess",
   "PlugDatabaseAdvancedUserAccess",
 ];
+
+export const bannedIdentifiers = forbiddenLegacyIdentifiers;
 
 export const bannedPathFragments = ["PlugDatabaseAdvancedSocketEvent/"];
 

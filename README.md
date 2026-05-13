@@ -33,6 +33,12 @@ All authenticated Plug surfaces now share the same credential type:
 
 - `Plug Database Account API`
 
+Saved credentials created by older package versions remain supported through
+compatibility aliases. The legacy internal credential names
+`plugDatabaseApi`, `plugDatabaseAdvancedApi`, `plugDatabaseClientApi`, and
+`plugDatabaseUserApi` now extend `plugDatabaseAccountApi`, so n8n can still show
+previously saved credentials in nodes that use the shared account credential.
+
 The API base URL is fixed to:
 
 - `https://plug-server.se7esistemassinop.com.br/api/v1`
@@ -65,7 +71,7 @@ The `Client Access` resource manages approved agents, access requests, and per-a
 
 The `User Access` resource browses the agent catalog and manages owner-side approval and revocation flows over REST.
 
-Install either the public package or the advanced package for a given n8n instance. Concurrent package coexistence is not treated as a supported compatibility target.
+Install either the public package or the advanced package for a given n8n instance. Concurrent package coexistence is not treated as a supported compatibility target because both packages register the same internal Plug credential names, including the shared account credential and the legacy compatibility aliases.
 
 Tools:
 

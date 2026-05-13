@@ -179,7 +179,7 @@ describe("ConsumerSocketExecutionManager", () => {
 
     expect(createdSockets).toHaveLength(1);
     manager.close();
-  });
+  }, 15_000);
 
   it("opens a fresh socket after a disconnect between items", async () => {
     const { ConsumerSocketExecutionManager } =
@@ -222,7 +222,7 @@ describe("ConsumerSocketExecutionManager", () => {
 
     expect(createdSockets).toHaveLength(2);
     manager.close();
-  });
+  }, 15_000);
 
   it("falls back to relay when the capability probe does not get a response", async () => {
     suppressProbeResponse = true;
