@@ -489,12 +489,13 @@ export const publishCustomSocketEventOverSocket = async (input: {
   const eventName = assertCustomSocketEventName(request.eventName);
   const requestId = randomUUID();
 
-  await waitForConnectionReady(
-    input.transport,
-    timeoutMs,
-    withSigningPolicy(input.payloadFrameSigning, input.requirePayloadSignature),
-  );
   try {
+    const connectionReady = await waitForConnectionReady(
+      input.transport,
+      timeoutMs,
+      withSigningPolicy(input.payloadFrameSigning, input.requirePayloadSignature),
+    );
+
     const published = waitForPublishedAck({
       transport: input.transport,
       requestId,
@@ -514,7 +515,15 @@ export const publishCustomSocketEventOverSocket = async (input: {
         : {}),
     });
 
-    return await published;
+    const response = await published;
+    return {
+      ...response,
+      ...((input.transport.id ?? connectionReady.id)
+        ? {
+            publisherSocketId: input.transport.id ?? connectionReady.id,
+          }
+        : {}),
+    };
   } finally {
     input.transport.disconnect();
   }
@@ -535,11 +544,16 @@ export const startCustomSocketEventSession = async (
   const eventHandlers = new Map<string, (payload: unknown) => void>();
   let closing = false;
 
-  await waitForConnectionReady(
-    input.transport,
-    timeoutMs,
-    withSigningPolicy(input.payloadFrameSigning, input.requirePayloadSignature),
-  );
+  try {
+    await waitForConnectionReady(
+      input.transport,
+      timeoutMs,
+      withSigningPolicy(input.payloadFrameSigning, input.requirePayloadSignature),
+    );
+  } catch (error: unknown) {
+    input.transport.disconnect();
+    throw error;
+  }
 
   const notifyFatal = (error: PlugError): void => {
     if (!closing) {
@@ -584,17 +598,6 @@ export const startCustomSocketEventSession = async (
 
   try {
     for (const eventName of eventNames) {
-      await waitForControlAck({
-        transport: input.transport,
-        requestEvent: subscribeEvent,
-        responseEvent: subscribedEvent,
-        requestId: randomUUID(),
-        eventName,
-        expectedSubscribed: true,
-        timeoutMs,
-      });
-
-      subscribed.add(eventName);
       const handler = (payload: unknown): void => {
         void decodePayloadFrameAsync<unknown>(payload, {
           signing: withSigningPolicy(
@@ -640,6 +643,18 @@ export const startCustomSocketEventSession = async (
 
       input.transport.on(eventName, handler);
       eventHandlers.set(eventName, handler);
+
+      await waitForControlAck({
+        transport: input.transport,
+        requestEvent: subscribeEvent,
+        responseEvent: subscribedEvent,
+        requestId: randomUUID(),
+        eventName,
+        expectedSubscribed: true,
+        timeoutMs,
+      });
+
+      subscribed.add(eventName);
       plugLogger.info("transport.socket.custom_event.subscribed", {
         eventName,
       });
@@ -684,11 +699,16 @@ export const startAgentProfileUpdatedSession = async (
   const reconnectAttempt = Math.max(0, Math.floor(input.reconnectAttempt ?? 0));
   let closing = false;
 
-  await waitForConnectionReady(
-    input.transport,
-    timeoutMs,
-    withSigningPolicy(input.payloadFrameSigning, input.requirePayloadSignature),
-  );
+  try {
+    await waitForConnectionReady(
+      input.transport,
+      timeoutMs,
+      withSigningPolicy(input.payloadFrameSigning, input.requirePayloadSignature),
+    );
+  } catch (error: unknown) {
+    input.transport.disconnect();
+    throw error;
+  }
 
   const notifyFatal = (error: PlugError): void => {
     if (!closing) {

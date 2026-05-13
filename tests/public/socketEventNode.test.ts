@@ -211,9 +211,14 @@ describe("PlugDatabaseAdvancedSocketEvent", () => {
       success: true,
       eventId: "event-1",
       recipients: 3,
+      requestId: "req-1",
+      idempotentReplay: false,
       __plug: {
         channel: "rest",
         operation: "publishCustomSocketEvent",
+        requestId: "req-1",
+        idempotentReplay: false,
+        deliveryStatus: "delivered",
       },
     });
     expect(publishRequest).toMatchObject({
@@ -408,6 +413,33 @@ describe("PlugDatabaseAdvancedSocketEvent", () => {
     });
   });
 
+  it("flags noRecipients in publish metadata when the server accepts the event but no listener matches", async () => {
+    const node = new PlugDatabaseAdvancedSocketEvent();
+    const context = createContext({
+      publishBody: {
+        success: true,
+        eventId: "event-0",
+        eventName: "client:custom.status.changed",
+        recipients: 0,
+        idempotencyKey: "publish-0",
+        idempotentReplay: false,
+        requestId: "req-0",
+      },
+    });
+
+    const output = await node.execute.call(context);
+
+    expect(output[0][0].json).toMatchObject({
+      recipients: 0,
+      requestId: "req-0",
+      __plug: {
+        recipients: 0,
+        requestId: "req-0",
+        deliveryStatus: "noRecipients",
+      },
+    });
+  });
+
   it("publishes events through the Socket channel", async () => {
     socketMock.state.sockets = [];
     socketMock.state.readyFrame = encodePayloadFrame(
@@ -435,9 +467,16 @@ describe("PlugDatabaseAdvancedSocketEvent", () => {
       success: true,
       eventId: "event-1",
       recipients: 4,
+      requestId: expect.any(String),
+      idempotentReplay: false,
+      publisherSocketId: "socket-1",
       __plug: {
         channel: "socket",
+        requestId: expect.any(String),
+        idempotentReplay: false,
+        deliveryStatus: "delivered",
         attachmentCount: 1,
+        publisherSocketId: "socket-1",
       },
     });
     expect(socketMock.io).toHaveBeenCalledWith(

@@ -49,6 +49,7 @@ import { isRecord, parseJsonText } from "../utils/json";
 import { buildApiUrl } from "../utils/url";
 
 type PublishChannel = "rest" | "socket";
+type SocketEventDeliveryStatus = "delivered" | "noRecipients";
 
 interface BinarySocketEventAttachment {
   readonly fieldName: string;
@@ -439,7 +440,15 @@ export const executePlugToolsSocketEventNode = async (
                   eventName: result.eventName,
                   eventId: result.eventId,
                   recipients: result.recipients,
+                  requestId: result.requestId,
+                  idempotentReplay: result.idempotentReplay,
+                  deliveryStatus: (result.recipients > 0
+                    ? "delivered"
+                    : "noRecipients") as SocketEventDeliveryStatus,
                   attachmentCount: attachments.length,
+                  ...(result.publisherSocketId
+                    ? { publisherSocketId: result.publisherSocketId }
+                    : {}),
                 },
               }
             : {}),

@@ -74,8 +74,9 @@ export interface PublishCustomSocketEventResponse extends JsonObject {
   readonly eventName: string;
   readonly recipients: number;
   readonly idempotencyKey?: string;
-  readonly idempotentReplay?: boolean;
-  readonly requestId?: string;
+  readonly idempotentReplay: boolean;
+  readonly requestId: string;
+  readonly publisherSocketId?: string;
 }
 
 export type SocketEventOverflowPolicy = "fail" | "dropNewest" | "dropOldest";
@@ -237,6 +238,27 @@ export const assertPublishCustomSocketEventResponse = (
   if (typeof value.recipients !== "number" || !Number.isFinite(value.recipients)) {
     throw new PlugValidationError(
       "Plug socket event publish response is missing recipients",
+    );
+  }
+
+  if (typeof value.idempotentReplay !== "boolean") {
+    throw new PlugValidationError(
+      "Plug socket event publish response is missing idempotentReplay",
+    );
+  }
+
+  if (typeof value.requestId !== "string" || value.requestId.trim() === "") {
+    throw new PlugValidationError(
+      "Plug socket event publish response is missing requestId",
+    );
+  }
+
+  if (
+    value.publisherSocketId !== undefined &&
+    (typeof value.publisherSocketId !== "string" || value.publisherSocketId.trim() === "")
+  ) {
+    throw new PlugValidationError(
+      "Plug socket event publish response publisherSocketId must be a non-empty string",
     );
   }
 

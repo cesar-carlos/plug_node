@@ -1,5 +1,14 @@
 # n8n-nodes-plug-database-advanced
 
+## 1.4.2
+
+### Patch Changes
+
+- Improve custom socket event publish metadata and harden socket event session ordering.
+
+  Published socket events now expose `requestId`, `idempotentReplay`, and delivery status metadata in node output.
+  The socket session flow also avoids dropping events that arrive immediately after subscription acknowledgement and disconnects transports cleanly on readiness timeouts.
+
 ## 1.4.1
 
 ### Patch Changes

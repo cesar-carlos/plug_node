@@ -406,9 +406,14 @@ describe("Plug tools execution", () => {
     expect(output[0][0].json).toMatchObject({
       success: true,
       eventId: "event-1",
+      requestId: "request-1",
+      idempotentReplay: false,
       __plug: {
         channel: "rest",
         operation: "publishCustomSocketEvent",
+        requestId: "request-1",
+        idempotentReplay: false,
+        deliveryStatus: "delivered",
       },
     });
     expect(context.requests[1]).toMatchObject({
@@ -442,9 +447,14 @@ describe("Plug tools execution", () => {
     expect(output[0][0].json).toMatchObject({
       success: true,
       eventId: "event-1",
+      requestId: "request-1",
+      idempotentReplay: false,
       __plug: {
         channel: "rest",
         operation: "publishCustomSocketEvent",
+        requestId: "request-1",
+        idempotentReplay: false,
+        deliveryStatus: "delivered",
         attachmentCount: 0,
       },
     });
@@ -552,14 +562,61 @@ describe("Plug tools execution", () => {
       success: true,
       eventId: "event-socket-1",
       recipients: 4,
+      requestId: "request-socket-1",
+      idempotentReplay: false,
       __plug: {
         channel: "socket",
         operation: "publishCustomSocketEvent",
+        requestId: "request-socket-1",
+        idempotentReplay: false,
+        deliveryStatus: "delivered",
         attachmentCount: 1,
       },
     });
     expect(context.requests).toHaveLength(1);
     expect(socketEventPublisher).toHaveBeenCalledOnce();
+  });
+
+  it("marks publish results with noRecipients when the event is accepted without matched listeners", async () => {
+    const context = createToolContext({
+      publishBody: {
+        success: true,
+        eventId: "event-0",
+        eventName: "client:custom.status.changed",
+        recipients: 0,
+        idempotencyKey: "publish-0",
+        idempotentReplay: false,
+        requestId: "request-0",
+      },
+      parameters: {
+        resource: "tools",
+        operation: "publishSocketEvent",
+        publishChannel: "rest",
+        eventName: "client:custom.status.changed",
+        payloadJson: '{"status":"ready"}',
+        payloadFrameCompression: "default",
+        idempotencyKey: "publish-0",
+        timeoutMs: 15000,
+        includePlugMetadata: true,
+        attachments: {},
+      },
+    });
+
+    const output = await executePlugClientNode(context, {
+      supportsSocket: false,
+      credentialName: "plugDatabaseApi",
+      nodeDisplayName: "Plug Database",
+    });
+
+    expect(output[0][0].json).toMatchObject({
+      recipients: 0,
+      requestId: "request-0",
+      __plug: {
+        recipients: 0,
+        requestId: "request-0",
+        deliveryStatus: "noRecipients",
+      },
+    });
   });
 
   it("renders HTML to PDF with an injected renderer and returns binary output", async () => {

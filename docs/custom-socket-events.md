@@ -33,7 +33,9 @@ Attachment behavior:
 - The node mirrors the server defaults locally: max `5` attachments, `524288` bytes per file, `2097152` bytes total, and `524288` UTF-8 bytes for `Payload JSON`.
 - Socket attachments are convenient for small payloads but remain subject to the server JSON envelope limit. Prefer REST multipart for larger files.
 
-The output keeps the server response fields and adds `__plug.channel = "rest" | "socket"` when metadata is enabled.
+The output keeps the server response fields, including `requestId` and `idempotentReplay`, and adds `__plug.channel = "rest" | "socket"` when metadata is enabled.
+For socket publishing, `__plug.publisherSocketId` is included when the local socket id is available.
+`__plug.deliveryStatus = "delivered" | "noRecipients"` distinguishes between accepted publishes that matched at least one subscriber and accepted publishes that matched none.
 
 ## Trigger Node
 

@@ -347,15 +347,18 @@ const createBackpressureQueue = (input: {
 
 export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
   description: INodeTypeDescription = {
-    displayName: "Plug Database Advanced Socket Event Trigger",
+    displayName: "Plug Database Advanced Trigger",
     name: "plugDatabaseAdvancedSocketEventTrigger",
-    icon: "file:plugDatabaseAdvancedSocketEventTrigger.svg",
+    icon: {
+      light: "file:plugDatabaseAdvancedV2.svg",
+      dark: "file:plugDatabaseAdvancedV2.dark.svg",
+    },
     group: ["trigger"],
     version: 1,
     subtitle: '={{$parameter["eventNames"]?.values?.[0]?.eventName}}',
     description: "Listen for custom Plug Socket events.",
     defaults: {
-      name: "Plug Socket Event Trigger",
+      name: "Plug Database Advanced Trigger",
     },
     usableAsTool: true,
     inputs: [],

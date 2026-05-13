@@ -205,6 +205,42 @@ class PartialSubscribeFailureTransport extends MockCustomEventTransport {
   }
 }
 
+class ImmediateEventAfterSubscribeAckTransport extends MockCustomEventTransport {
+  override emit(event: string, payload?: unknown): void {
+    this.emittedEvents.push({ event, payload });
+    if (event === "socket:event.subscribe") {
+      const request = payload as {
+        readonly requestId: string;
+        readonly eventName: string;
+      };
+      queueMicrotask(() => {
+        this.dispatch("socket:event.subscribed", {
+          success: true,
+          requestId: request.requestId,
+          data: { eventName: request.eventName, subscribed: true },
+        });
+        this.dispatch(
+          request.eventName,
+          encodePayloadFrame(
+            {
+              eventId: "event-immediate",
+              eventName: request.eventName,
+              emittedAt: "2026-05-11T12:00:00.000Z",
+              publisher: { principalType: "client", clientId: "client-1" },
+              payload: { status: "ready" },
+              attachments: [],
+            },
+            { requestId: "event-immediate", compression: "none" },
+          ),
+        );
+      });
+      return;
+    }
+
+    super.emit(event, payload);
+  }
+}
+
 class RateLimitedPublishTransport extends MockCustomEventTransport {
   override emit(event: string, payload?: unknown): void {
     this.emittedEvents.push({ event, payload });
@@ -231,6 +267,194 @@ class RateLimitedPublishTransport extends MockCustomEventTransport {
     }
 
     super.emit(event, payload);
+  }
+}
+
+class NeverReadyTransport extends MockCustomEventTransport {
+  override connect(): void {
+    this.connected = true;
+  }
+}
+
+class BrokeredSocketEnvironment {
+  private readonly subscriptions = new Map<string, Set<BrokeredCustomEventTransport>>();
+
+  connect(transport: BrokeredCustomEventTransport): void {
+    queueMicrotask(() => {
+      transport.dispatch(
+        "connection:ready",
+        encodePayloadFrame(
+          {
+            id: transport.id,
+            message: "ready",
+            user: { sub: "client-1" },
+          },
+          { requestId: `handshake-${transport.id}`, compression: "none" },
+        ),
+      );
+    });
+  }
+
+  disconnect(transport: BrokeredCustomEventTransport): void {
+    for (const subscribers of this.subscriptions.values()) {
+      subscribers.delete(transport);
+    }
+  }
+
+  subscribe(
+    transport: BrokeredCustomEventTransport,
+    payload: { readonly requestId: string; readonly eventName: string },
+  ): void {
+    const subscribers =
+      this.subscriptions.get(payload.eventName) ??
+      new Set<BrokeredCustomEventTransport>();
+    subscribers.add(transport);
+    this.subscriptions.set(payload.eventName, subscribers);
+    queueMicrotask(() => {
+      transport.dispatch("socket:event.subscribed", {
+        success: true,
+        requestId: payload.requestId,
+        data: {
+          eventName: payload.eventName,
+          subscribed: true,
+        },
+      });
+    });
+  }
+
+  unsubscribe(
+    transport: BrokeredCustomEventTransport,
+    payload: { readonly requestId: string; readonly eventName: string },
+  ): void {
+    this.subscriptions.get(payload.eventName)?.delete(transport);
+    queueMicrotask(() => {
+      transport.dispatch("socket:event.unsubscribed", {
+        success: true,
+        requestId: payload.requestId,
+        data: {
+          eventName: payload.eventName,
+          subscribed: false,
+        },
+      });
+    });
+  }
+
+  publish(
+    transport: BrokeredCustomEventTransport,
+    payload: {
+      readonly requestId: string;
+      readonly eventName: string;
+      readonly payload: unknown;
+      readonly idempotencyKey?: string;
+      readonly attachments?: readonly unknown[];
+    },
+  ): void {
+    const recipients = [
+      ...(this.subscriptions.get(payload.eventName) ?? new Set()),
+    ].filter((subscriber) => subscriber.connected);
+
+    queueMicrotask(() => {
+      transport.dispatch("socket:event.published", {
+        success: true,
+        requestId: payload.requestId,
+        data: {
+          eventId: `event-${payload.requestId}`,
+          eventName: payload.eventName,
+          recipients: recipients.length,
+          ...(payload.idempotencyKey ? { idempotencyKey: payload.idempotencyKey } : {}),
+          idempotentReplay: false,
+        },
+      });
+    });
+
+    for (const recipient of recipients) {
+      queueMicrotask(() => {
+        recipient.dispatch(
+          payload.eventName,
+          encodePayloadFrame(
+            {
+              eventId: `event-${payload.requestId}`,
+              eventName: payload.eventName,
+              emittedAt: "2026-05-11T12:00:00.000Z",
+              publisher: { principalType: "client", clientId: "client-1" },
+              payload: payload.payload,
+              attachments: payload.attachments ?? [],
+            },
+            { requestId: payload.requestId, compression: "none" },
+          ),
+        );
+      });
+    }
+  }
+}
+
+class BrokeredCustomEventTransport implements CustomSocketEventTransport {
+  connected = false;
+  readonly emittedEvents: Array<{ readonly event: string; readonly payload?: unknown }> =
+    [];
+  private readonly handlers = new Map<string, Set<(payload: unknown) => void>>();
+
+  constructor(
+    private readonly environment: BrokeredSocketEnvironment,
+    readonly id: string,
+  ) {}
+
+  connect(): void {
+    this.connected = true;
+    this.environment.connect(this);
+  }
+
+  disconnect(): void {
+    this.connected = false;
+    this.environment.disconnect(this);
+  }
+
+  on(event: string, handler: (payload: unknown) => void): void {
+    const handlers = this.handlers.get(event) ?? new Set<(payload: unknown) => void>();
+    handlers.add(handler);
+    this.handlers.set(event, handlers);
+  }
+
+  off(event: string, handler: (payload: unknown) => void): void {
+    this.handlers.get(event)?.delete(handler);
+  }
+
+  emit(event: string, payload?: unknown): void {
+    this.emittedEvents.push({ event, payload });
+    if (event === "socket:event.subscribe" && payload) {
+      this.environment.subscribe(
+        this,
+        payload as { readonly requestId: string; readonly eventName: string },
+      );
+      return;
+    }
+
+    if (event === "socket:event.unsubscribe" && payload) {
+      this.environment.unsubscribe(
+        this,
+        payload as { readonly requestId: string; readonly eventName: string },
+      );
+      return;
+    }
+
+    if (event === "socket:event.publish" && payload) {
+      this.environment.publish(
+        this,
+        payload as {
+          readonly requestId: string;
+          readonly eventName: string;
+          readonly payload: unknown;
+          readonly idempotencyKey?: string;
+          readonly attachments?: readonly unknown[];
+        },
+      );
+    }
+  }
+
+  dispatch(event: string, payload: unknown): void {
+    for (const handler of this.handlers.get(event) ?? []) {
+      handler(payload);
+    }
   }
 }
 
@@ -330,6 +554,25 @@ describe("custom socket events", () => {
     ).rejects.toThrow("Plug socket event publish response is missing eventId");
   });
 
+  it("requires REST publish responses to include requestId and idempotentReplay", async () => {
+    await expect(
+      publishCustomSocketEvent(
+        async () => ({
+          statusCode: 202,
+          headers: {},
+          body: {
+            success: true,
+            eventId: "event-1",
+            eventName: "client:custom.status.changed",
+            recipients: 1,
+          },
+        }),
+        session,
+        { eventName: "client:custom.status.changed", payload: {} },
+      ),
+    ).rejects.toThrow("Plug socket event publish response is missing idempotentReplay");
+  });
+
   it("validates publish input payload, idempotency key, and attachments", () => {
     expect(() =>
       assertPublishCustomSocketEventInput({
@@ -409,6 +652,75 @@ describe("custom socket events", () => {
           remaining: 0,
         },
       },
+    });
+  });
+
+  it("disconnects the transport when Socket publish times out before connection:ready", async () => {
+    const transport = new NeverReadyTransport();
+
+    await expect(
+      publishCustomSocketEventOverSocket({
+        transport,
+        request: {
+          eventName: "client:custom.status.changed",
+          payload: null,
+        },
+        ackTimeoutMs: 10,
+      }),
+    ).rejects.toMatchObject({
+      code: "PLUG_TIMEOUT",
+    });
+
+    expect(transport.connected).toBe(false);
+  });
+
+  it("delivers an event when the publisher connects after the listener has already subscribed", async () => {
+    const environment = new BrokeredSocketEnvironment();
+    const listenerTransport = new BrokeredCustomEventTransport(
+      environment,
+      "socket-listener",
+    );
+    const publisherTransport = new BrokeredCustomEventTransport(
+      environment,
+      "socket-publisher",
+    );
+    const received: unknown[] = [];
+
+    const sessionHandle = await startCustomSocketEventSession({
+      transport: listenerTransport,
+      eventNames: ["client:custom.status.changed"],
+      ackTimeoutMs: 1000,
+      onFatalError: (error) => {
+        throw error;
+      },
+      onEvent: (event) => {
+        received.push(event);
+      },
+    });
+
+    const response = await publishCustomSocketEventOverSocket({
+      transport: publisherTransport,
+      request: {
+        eventName: "client:custom.status.changed",
+        payload: { status: "ready" },
+        idempotencyKey: "publish-ordered",
+      },
+      ackTimeoutMs: 1000,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await sessionHandle.close();
+
+    expect(response).toMatchObject({
+      recipients: 1,
+      requestId: expect.any(String),
+      idempotentReplay: false,
+      publisherSocketId: "socket-publisher",
+    });
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({
+      eventName: "client:custom.status.changed",
+      payload: { status: "ready" },
     });
   });
 
@@ -512,6 +824,31 @@ describe("custom socket events", () => {
     expect(received).toHaveLength(1);
   });
 
+  it("does not drop an event emitted immediately after subscribe ack", async () => {
+    const transport = new ImmediateEventAfterSubscribeAckTransport();
+    const received: unknown[] = [];
+    const sessionHandle = await startCustomSocketEventSession({
+      transport,
+      eventNames: ["client:custom.status.changed"],
+      ackTimeoutMs: 1000,
+      onFatalError: (error) => {
+        throw error;
+      },
+      onEvent: (event) => {
+        received.push(event);
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await sessionHandle.close();
+
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({
+      eventId: "event-immediate",
+      eventName: "client:custom.status.changed",
+    });
+  });
+
   it("propagates subscription rate-limit metadata", async () => {
     await expect(
       startCustomSocketEventSession({
@@ -534,6 +871,26 @@ describe("custom socket events", () => {
         },
       },
     });
+  });
+
+  it("disconnects the transport when custom event activation times out before connection:ready", async () => {
+    const transport = new NeverReadyTransport();
+
+    await expect(
+      startCustomSocketEventSession({
+        transport,
+        eventNames: ["client:custom.status.changed"],
+        ackTimeoutMs: 10,
+        onFatalError: (error) => {
+          throw error;
+        },
+        onEvent: () => undefined,
+      }),
+    ).rejects.toMatchObject({
+      code: "PLUG_TIMEOUT",
+    });
+
+    expect(transport.connected).toBe(false);
   });
 
   it("requires PayloadFrame signatures when configured", async () => {
