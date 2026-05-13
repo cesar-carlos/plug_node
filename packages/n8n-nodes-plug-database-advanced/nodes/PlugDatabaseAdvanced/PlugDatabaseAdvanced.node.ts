@@ -18,6 +18,7 @@ export class PlugDatabaseAdvanced implements INodeType {
       supportsSocket: true,
       supportsSocketEventSocketPublish: true,
       supportsSocketEventSocketListen: true,
+      toolExposure: "consolidatedTool",
       displayName: "Plug Database Advanced",
       technicalName: "plugDatabaseAdvanced",
       credentialName: "plugDatabaseAccountApi",
@@ -27,7 +28,6 @@ export class PlugDatabaseAdvanced implements INodeType {
       defaultVersion: 2,
     }),
     subtitle: '={{$parameter["operation"]}}',
-    usableAsTool: true,
     icon: {
       light: "file:plugDatabaseAdvancedV2.svg",
       dark: "file:plugDatabaseAdvancedV2.dark.svg",

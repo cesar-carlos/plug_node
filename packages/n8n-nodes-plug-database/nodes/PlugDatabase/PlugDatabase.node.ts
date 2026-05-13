@@ -12,6 +12,7 @@ export class PlugDatabase implements INodeType {
   description: INodeTypeDescription = {
     ...buildPlugClientNodeDescription({
       supportsSocket: false,
+      toolExposure: "consolidatedTool",
       displayName: "Plug Database",
       technicalName: "plugDatabase",
       credentialName: "plugDatabaseAccountApi",
@@ -19,7 +20,6 @@ export class PlugDatabase implements INodeType {
       description: "Run Plug Database commands over REST.",
     }),
     subtitle: '={{$parameter["operation"]}}',
-    usableAsTool: true,
     icon: {
       light: "file:plugDatabaseV2.svg",
       dark: "file:plugDatabaseV2.dark.svg",

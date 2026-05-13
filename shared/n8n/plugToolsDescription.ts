@@ -11,12 +11,18 @@ import {
   defaultSocketEventAckTimeoutMs,
   defaultSocketEventListenTimeoutMaxMs,
 } from "../contracts/custom-socket-events";
+import {
+  applyToolExposure,
+  plugToolExposureConsolidated,
+  type PlugToolExposure,
+} from "./toolExposure";
 
 export interface PlugToolNodeDescriptionOptions {
   readonly displayName: string;
   readonly technicalName: string;
   readonly iconBaseName: string;
   readonly description: string;
+  readonly toolExposure?: PlugToolExposure;
 }
 
 export interface PlugToolsPropertiesOptions {
@@ -191,7 +197,8 @@ const plugToolCategoryOptions: readonly {
   {
     name: "Socket",
     value: plugToolCategorySocket,
-    description: "Publish or wait for Plug custom socket events.",
+    description:
+      "Publish Plug custom socket events or wait for them from the consolidated advanced tool menu.",
   },
 ];
 
@@ -226,22 +233,25 @@ const addToolCategoryDisplayOption = (
 const buildCommonDescription = (
   options: PlugToolNodeDescriptionOptions,
   properties: INodeProperties[],
-): INodeTypeDescription => ({
-  displayName: options.displayName,
-  name: options.technicalName,
-  icon: `file:${options.iconBaseName}.svg`,
-  group: ["transform"],
-  version: 1,
-  subtitle: '={{$parameter["operation"]}}',
-  description: options.description,
-  defaults: {
-    name: options.displayName,
-  },
-  usableAsTool: true,
-  inputs: [NodeConnectionTypes.Main],
-  outputs: [NodeConnectionTypes.Main],
-  properties,
-});
+): INodeTypeDescription =>
+  applyToolExposure(
+    {
+      displayName: options.displayName,
+      name: options.technicalName,
+      icon: `file:${options.iconBaseName}.svg`,
+      group: ["transform"],
+      version: 1,
+      subtitle: '={{$parameter["operation"]}}',
+      description: options.description,
+      defaults: {
+        name: options.displayName,
+      },
+      inputs: [NodeConnectionTypes.Main],
+      outputs: [NodeConnectionTypes.Main],
+      properties,
+    },
+    options.toolExposure ?? plugToolExposureConsolidated,
+  );
 
 const pdfOptions: INodeProperties = {
   displayName: "PDF Options",
@@ -801,7 +811,8 @@ export const buildPlugToolsOperationProperty = (): INodeProperties => ({
     {
       name: "Wait for Socket Event",
       value: plugToolWaitForSocketEventOperation,
-      description: "Wait for the next matching client:custom.* event.",
+      description:
+        "Official tool-session path for listening to the next matching client:custom.* event.",
       action: "Wait for a socket event",
     },
   ],

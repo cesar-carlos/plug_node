@@ -27,6 +27,15 @@ The API base URL is fixed in code.
 - includes Tools operations with REST or Socket publish where applicable
 - npm-only distribution
 
+## Tool catalog exposure
+
+- only consolidated Plug nodes should appear in the n8n tool session
+- `Plug Database` is the public consolidated tool entry
+- `Plug Database Advanced` is the advanced consolidated tool entry
+- triggers and webhook-driven nodes stay workflow-only, even when they belong to the advanced package
+- hidden compatibility wrappers stay workflow-only and must not create duplicate top-level tool entries
+- advanced event listening in tool sessions should go through `Plug Database Advanced > Tools > waitForSocketEvent`
+
 ## Output behavior
 
 - `Execute SQL`

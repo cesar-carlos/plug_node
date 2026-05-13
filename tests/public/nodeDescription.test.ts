@@ -14,6 +14,17 @@ describe("consolidated Plug node descriptions", () => {
         property.name === "operation" &&
         property.displayOptions?.show?.resource?.[0] === "tools",
     );
+  const getToolExposedNodeNames = (
+    nodes: Array<{
+      readonly description: {
+        readonly name: string;
+        readonly usableAsTool?: unknown;
+      };
+    }>,
+  ) =>
+    nodes
+      .filter((node) => node.description.usableAsTool === true)
+      .map((node) => node.description.name);
 
   it("shows resource selection on the public consolidated node", () => {
     const node = new PlugDatabase();
@@ -37,6 +48,19 @@ describe("consolidated Plug node descriptions", () => {
       ]),
     );
     expect(operationProperties).toHaveLength(11);
+  });
+
+  it("exposes only consolidated Plug nodes as tools across both packages", () => {
+    expect(getToolExposedNodeNames([new PlugDatabase()])).toEqual(["plugDatabase"]);
+    expect(
+      getToolExposedNodeNames([
+        new PlugDatabaseAdvanced(),
+        new PlugDatabaseAdvancedPdf(),
+        new PlugDatabaseAdvancedBarcode(),
+        new PlugDatabaseAdvancedSocketEventTrigger(),
+        new PluraAiAutomationsTrigger(),
+      ]),
+    ).toEqual(["plugDatabaseAdvanced"]);
   });
 
   it("keeps the consolidated Tools operation contract stable", () => {
@@ -101,7 +125,7 @@ describe("consolidated Plug node descriptions", () => {
     ).toEqual(advancedExpectedOperations);
   });
 
-  it("keeps the advanced PDF and barcode compatibility nodes hidden", () => {
+  it("keeps the advanced PDF and barcode compatibility nodes hidden and out of tools", () => {
     expect(
       [new PlugDatabaseAdvancedPdf(), new PlugDatabaseAdvancedBarcode()].map((node) => ({
         name: node.description.name,
@@ -112,12 +136,12 @@ describe("consolidated Plug node descriptions", () => {
       {
         name: "plugDatabaseAdvancedPdf",
         hidden: true,
-        usableAsTool: true,
+        usableAsTool: undefined,
       },
       {
         name: "plugDatabaseAdvancedBarcode",
         hidden: true,
-        usableAsTool: true,
+        usableAsTool: undefined,
       },
     ]);
   });
@@ -266,6 +290,7 @@ describe("consolidated Plug node descriptions", () => {
     const trigger = new PlugDatabaseAdvancedSocketEventTrigger();
 
     expect(trigger.description.inputs).toEqual([]);
+    expect(trigger.description.usableAsTool).toBeUndefined();
     expect(trigger.description.properties).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "eventSource" }),
@@ -287,6 +312,19 @@ describe("consolidated Plug node descriptions", () => {
     );
   });
 
+  it("keeps advanced socket event listening inside the consolidated advanced tool menu", () => {
+    const advancedNode = new PlugDatabaseAdvanced();
+    const trigger = new PlugDatabaseAdvancedSocketEventTrigger();
+    const waitForSocketEventOperation = getToolsOperationProperties(advancedNode)
+      .flatMap((property) => property.options ?? [])
+      .find((option) => option.value === "waitForSocketEvent");
+
+    expect(waitForSocketEventOperation).toMatchObject({
+      value: "waitForSocketEvent",
+    });
+    expect(trigger.description.usableAsTool).toBeUndefined();
+  });
+
   it("exposes the Plura.ai automations trigger in the advanced package", () => {
     const trigger = new PluraAiAutomationsTrigger();
 
@@ -296,6 +334,7 @@ describe("consolidated Plug node descriptions", () => {
       group: ["trigger"],
       inputs: [],
     });
+    expect(trigger.description.usableAsTool).toBeUndefined();
     expect(trigger.description.outputs).toEqual(["main"]);
     expect(trigger.description.credentials).toEqual([
       expect.objectContaining({ name: "pluraAiAutomationsApi", required: true }),
@@ -306,7 +345,7 @@ describe("consolidated Plug node descriptions", () => {
     const nodes = [new PlugDatabaseAdvancedPdf(), new PlugDatabaseAdvancedBarcode()];
 
     for (const node of nodes) {
-      expect(node.description.usableAsTool).toBe(true);
+      expect(node.description.usableAsTool).toBeUndefined();
       expect(node.description.credentials).toBeUndefined();
       expect(node.description.properties).toEqual(
         expect.arrayContaining([
