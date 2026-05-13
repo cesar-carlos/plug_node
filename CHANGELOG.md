@@ -12,6 +12,7 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 - Shared auth, transport, socket, output, and n8n integration layers.
 - Repository automation with CI, contribution templates, CODEOWNERS, and security guidance.
 - Changesets-based version control, release workflow, and versioning documentation.
+- Compatibility aliases for legacy Plug credential names: `plugDatabaseApi`, `plugDatabaseAdvancedApi`, `plugDatabaseClientApi`, and `plugDatabaseUserApi` now extend `plugDatabaseAccountApi`.
 
 ### Changed
 

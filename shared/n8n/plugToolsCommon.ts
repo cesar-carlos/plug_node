@@ -1,7 +1,8 @@
 import type { IDataObject, IExecuteFunctions, INodeExecutionData } from "n8n-workflow";
 import { NodeOperationError } from "n8n-workflow";
 
-import { PlugError, PlugValidationError } from "../contracts/errors";
+import { PlugValidationError } from "../contracts/errors";
+export { serializeErrorForContinueOnFail } from "../output/errorOutput";
 import type {
   PayloadFrameCompression,
   PlugCredentialDefaults,
@@ -158,33 +159,6 @@ export const parseAdvancedOptions = (value: unknown): unknown => {
 };
 
 export const now = (): number => Date.now();
-
-export const serializeErrorForContinueOnFail = (error: unknown): IDataObject => {
-  if (error instanceof PlugError) {
-    return {
-      message: error.message,
-      description: error.description,
-      code: error.code,
-      statusCode: error.statusCode,
-      correlationId: error.correlationId,
-      retryable: error.retryable,
-      retryAfterSeconds: error.retryAfterSeconds,
-      technicalMessage: error.technicalMessage,
-      details: error.details,
-    };
-  }
-
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      name: error.name,
-    };
-  }
-
-  return {
-    message: "Unknown error",
-  };
-};
 
 export const toNodeOperationError = (
   context: IExecuteFunctions,

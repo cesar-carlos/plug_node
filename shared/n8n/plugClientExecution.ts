@@ -29,6 +29,7 @@ import {
 } from "./plugToolsExecution";
 import { executePlugUserAccessNode } from "./plugUserAccessExecution";
 import { buildN8nHttpRequester } from "./httpRequester";
+import { serializeErrorForContinueOnFail } from "../output/errorOutput";
 import { buildNodeOutputItems } from "../output/nodeOutput";
 import { executeRestCommand } from "../rest/client";
 import { isRecord, parseOptionalJsonArray, parseOptionalJsonObject } from "../utils/json";
@@ -758,33 +759,6 @@ const shouldRetryBuiltRequest = (
 
 const toNodeItems = (jsonItems: JsonObject[]): INodeExecutionData[] =>
   jsonItems.map((json) => ({ json: json as IDataObject }));
-
-const serializeErrorForContinueOnFail = (error: unknown): IDataObject => {
-  if (error instanceof PlugError) {
-    return {
-      message: error.message,
-      description: error.description,
-      code: error.code,
-      statusCode: error.statusCode,
-      correlationId: error.correlationId,
-      retryable: error.retryable,
-      retryAfterSeconds: error.retryAfterSeconds,
-      technicalMessage: error.technicalMessage,
-      details: error.details,
-    };
-  }
-
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      name: error.name,
-    };
-  }
-
-  return {
-    message: "Unknown error",
-  };
-};
 
 const executePlugSqlNode = async (
   context: IExecuteFunctions,

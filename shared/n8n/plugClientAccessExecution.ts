@@ -14,9 +14,10 @@ import type {
   ClientAgentStatus,
 } from "../contracts/client-access";
 import { DEFAULT_BASE_URL } from "../contracts/api";
-import { PlugError, PlugValidationError } from "../contracts/errors";
+import { PlugValidationError } from "../contracts/errors";
 import { createExecutionSessionRunner } from "../auth/session";
 import { buildClientAccessOutputItems } from "../output/clientAccessOutput";
+import { serializeErrorForContinueOnFail } from "../output/errorOutput";
 import { collectAllPages } from "../rest/resourceClient";
 import {
   getClientAgent,
@@ -127,33 +128,6 @@ const readCredentials = async (
 
 const getIncludeMetadata = (context: IExecuteFunctions, itemIndex: number): boolean =>
   context.getNodeParameter("includePlugMetadata", itemIndex, true) as boolean;
-
-const serializeErrorForContinueOnFail = (error: unknown): IDataObject => {
-  if (error instanceof PlugError) {
-    return {
-      message: error.message,
-      description: error.description,
-      code: error.code,
-      statusCode: error.statusCode,
-      correlationId: error.correlationId,
-      retryable: error.retryable,
-      retryAfterSeconds: error.retryAfterSeconds,
-      technicalMessage: error.technicalMessage,
-      details: error.details,
-    };
-  }
-
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      name: error.name,
-    };
-  }
-
-  return {
-    message: "Unknown error",
-  };
-};
 
 const toNodeItems = (jsonItems: IDataObject[]): INodeExecutionData[] =>
   jsonItems.map((json) => ({ json }));
