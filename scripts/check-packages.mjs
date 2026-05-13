@@ -1,25 +1,8 @@
 import { spawnSync } from "node:child_process";
 
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+import { plugPackageSurface } from "./package-surface.config.mjs";
 
-const packages = [
-  {
-    workspace: "n8n-nodes-plug-database",
-    maxPackedSizeBytes: 200_000,
-    maxUnpackedSizeBytes: 1_200_000,
-    forbid: [
-      "dist/tsconfig.tsbuildinfo",
-      "dist/generated/shared/socket/",
-      "dist/generated/shared/contracts/payload-frame.",
-    ],
-  },
-  {
-    workspace: "n8n-nodes-plug-database-advanced",
-    maxPackedSizeBytes: 250_000,
-    maxUnpackedSizeBytes: 1_600_000,
-    forbid: ["dist/tsconfig.tsbuildinfo"],
-  },
-];
+const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
 const runPackDryRun = (workspace) => {
   const result = spawnSync(
@@ -51,7 +34,7 @@ const runPackDryRun = (workspace) => {
   return parsed[0];
 };
 
-for (const pkg of packages) {
+for (const pkg of plugPackageSurface) {
   const packResult = runPackDryRun(pkg.workspace);
   const files = Array.isArray(packResult.files)
     ? packResult.files.map((file) => String(file.path))
@@ -59,6 +42,14 @@ for (const pkg of packages) {
 
   if (!files.some((file) => file === "README.md")) {
     throw new Error(`README.md is missing from ${pkg.workspace} tarball`);
+  }
+
+  for (const requiredFile of pkg.require ?? []) {
+    if (!files.includes(requiredFile)) {
+      throw new Error(
+        `Tarball for ${pkg.workspace} is missing required artifact: ${requiredFile}`,
+      );
+    }
   }
 
   for (const forbiddenFragment of pkg.forbid) {

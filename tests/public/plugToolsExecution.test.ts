@@ -23,7 +23,6 @@ import { executePlugClientNode as executeAdvancedPlugClientNode } from "../../pa
 import { PlugError } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/contracts/errors";
 import { PlugDatabaseAdvancedBarcode } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedBarcode/PlugDatabaseAdvancedBarcode.node";
 import { PlugDatabaseAdvancedPdf } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedPdf/PlugDatabaseAdvancedPdf.node";
-import { PlugDatabaseAdvancedSocketEvent } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEvent/PlugDatabaseAdvancedSocketEvent.node";
 import type { HtmlToPdfRenderer } from "../../packages/n8n-nodes-plug-database-advanced/generated/shared/tools/pdf";
 
 const defaultNode: INode = {
@@ -192,7 +191,7 @@ describe("Plug tools execution", () => {
 
     const output = await executePlugClientNode(context, {
       supportsSocket: false,
-      credentialName: "plugDatabaseApi",
+      credentialName: "plugDatabaseAccountApi",
       nodeDisplayName: "Plug Database",
     });
 
@@ -393,43 +392,6 @@ describe("Plug tools execution", () => {
     });
   });
 
-  it("keeps the legacy advanced Socket Event node executable over REST", async () => {
-    const node = new PlugDatabaseAdvancedSocketEvent();
-    const context = createToolContext({
-      parameters: {
-        operation: "publishEvent",
-        publishChannel: "rest",
-        eventName: "client:custom.status.changed",
-        payloadJson: '{"status":"ready"}',
-        payloadFrameCompression: "default",
-        idempotencyKey: "publish-1",
-        timeoutMs: 15000,
-        includePlugMetadata: true,
-        attachments: {},
-      },
-    });
-
-    const output = await node.execute.call(context);
-
-    expect(output[0][0].json).toMatchObject({
-      success: true,
-      eventId: "event-1",
-      requestId: "request-1",
-      idempotentReplay: false,
-      __plug: {
-        channel: "rest",
-        operation: "publishCustomSocketEvent",
-        requestId: "request-1",
-        idempotentReplay: false,
-        deliveryStatus: "delivered",
-      },
-    });
-    expect(context.requests[1]).toMatchObject({
-      method: "POST",
-      url: "https://plug-server.example.com/api/v1/client/me/socket-events",
-    });
-  });
-
   it("publishes Socket Event through public Tools over REST only", async () => {
     const context = createToolContext({
       parameters: {
@@ -448,7 +410,7 @@ describe("Plug tools execution", () => {
 
     const output = await executePlugClientNode(context, {
       supportsSocket: false,
-      credentialName: "plugDatabaseApi",
+      credentialName: "plugDatabaseAccountApi",
       nodeDisplayName: "Plug Database",
     });
 
@@ -499,7 +461,7 @@ describe("Plug tools execution", () => {
 
     const output = await executePlugClientNode(context, {
       supportsSocket: false,
-      credentialName: "plugDatabaseApi",
+      credentialName: "plugDatabaseAccountApi",
       nodeDisplayName: "Plug Database",
     });
 
@@ -561,7 +523,7 @@ describe("Plug tools execution", () => {
 
     const output = await executeAdvancedPlugClientNode(context, {
       supportsSocket: true,
-      credentialName: "plugDatabaseAdvancedApi",
+      credentialName: "plugDatabaseAccountApi",
       nodeDisplayName: "Plug Database Advanced",
       toolSocketEventPublisher: socketEventPublisher,
     });
@@ -635,7 +597,7 @@ describe("Plug tools execution", () => {
 
     const output = await executeAdvancedPlugClientNode(context, {
       supportsSocket: true,
-      credentialName: "plugDatabaseAdvancedApi",
+      credentialName: "plugDatabaseAccountApi",
       nodeDisplayName: "Plug Database Advanced",
       socketEventListener,
     });
@@ -699,7 +661,7 @@ describe("Plug tools execution", () => {
 
     const output = await executeAdvancedPlugClientNode(context, {
       supportsSocket: true,
-      credentialName: "plugDatabaseAdvancedApi",
+      credentialName: "plugDatabaseAccountApi",
       nodeDisplayName: "Plug Database Advanced",
       socketEventListener,
     });
@@ -737,7 +699,7 @@ describe("Plug tools execution", () => {
 
     const output = await executeAdvancedPlugClientNode(context, {
       supportsSocket: true,
-      credentialName: "plugDatabaseAdvancedApi",
+      credentialName: "plugDatabaseAccountApi",
       nodeDisplayName: "Plug Database Advanced",
       socketEventListener,
     });
@@ -768,7 +730,7 @@ describe("Plug tools execution", () => {
 
     const output = await executeAdvancedPlugClientNode(context, {
       supportsSocket: true,
-      credentialName: "plugDatabaseAdvancedApi",
+      credentialName: "plugDatabaseAccountApi",
       nodeDisplayName: "Plug Database Advanced",
       socketEventListener,
     });
@@ -807,7 +769,7 @@ describe("Plug tools execution", () => {
 
     const output = await executePlugClientNode(context, {
       supportsSocket: false,
-      credentialName: "plugDatabaseApi",
+      credentialName: "plugDatabaseAccountApi",
       nodeDisplayName: "Plug Database",
     });
 

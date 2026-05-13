@@ -43,7 +43,7 @@ import {
 } from "../../generated/shared/socket/customSocketEventSession";
 import { deriveSocketNamespaceUrl } from "../../generated/shared/utils/url";
 
-const credentialName = "plugDatabaseAdvancedApi";
+const credentialName = "plugDatabaseAccountApi";
 const defaultReconnectInitialDelayMs = 1000;
 const defaultReconnectMaxDelayMs = 30_000;
 const defaultReconnectFailureWindowMs = 300_000;
@@ -55,6 +55,11 @@ interface BackpressureSnapshot {
   readonly inflightCount: number;
   readonly droppedNewestCount: number;
   readonly droppedOldestCount: number;
+}
+
+interface SubscriptionRefreshSnapshot {
+  readonly refreshCount: number;
+  readonly lastRefreshedAt?: string;
 }
 
 class SocketIoCustomEventTransport implements CustomSocketEventTransport {
@@ -170,6 +175,7 @@ const buildTriggerItem = async (
   includeMetadata: boolean,
   metadata: SocketEventRuntimeMetadata,
   backpressure: BackpressureSnapshot,
+  subscriptionRefresh: SubscriptionRefreshSnapshot,
 ): Promise<INodeExecutionData> => {
   const binary: IBinaryKeyData = {};
 
@@ -202,6 +208,8 @@ const buildTriggerItem = async (
             reconnectAttempt: metadata.reconnectAttempt,
             subscriptionCount: metadata.subscriptionCount,
             payloadFrameRequestId: metadata.payloadFrameRequestId,
+            subscriptionRefreshCount: subscriptionRefresh.refreshCount,
+            lastSubscriptionRefreshAt: subscriptionRefresh.lastRefreshedAt,
             backpressure,
           },
         }
@@ -735,10 +743,15 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
     ].includes(requirePayloadSignatureForParameter)
       ? requirePayloadSignatureForParameter
       : "all";
-    const requirePayloadSignatureForSource =
+    const payloadFrameSigning = resolvePayloadFrameSigning(credentials);
+    const requirePayloadSignatureForCustomEvents =
       requirePayloadSignature &&
       (requirePayloadSignatureFor === "all" ||
-        requirePayloadSignatureFor === eventSource);
+        requirePayloadSignatureFor === "customEvents");
+    const requirePayloadSignatureForAgentProfileUpdated =
+      requirePayloadSignature &&
+      (requirePayloadSignatureFor === "all" ||
+        requirePayloadSignatureFor === "agentProfileUpdated");
     const deduplicateEvents = this.getNodeParameter(
       "deduplicateEvents",
       false,
@@ -748,7 +761,6 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
       defaultSocketEventDeduplicationTtlMs,
       0,
     );
-
     let customEventSession: CustomSocketEventSession | undefined;
     let manualTimer: NodeJS.Timeout | undefined;
     let reconnectTimer: NodeJS.Timeout | undefined;
@@ -756,6 +768,8 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
     let reconnecting = false;
     let reconnectAttempts = 0;
     let reconnectFailureTimes: number[] = [];
+    const subscriptionRefreshCount = 0;
+    const lastSubscriptionRefreshAt: string | undefined = undefined;
 
     const toPlugError = (error: unknown): PlugError =>
       error instanceof PlugError
@@ -838,9 +852,12 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
         const commonInput = {
           transport,
           ackTimeoutMs,
-          payloadFrameSigning: resolvePayloadFrameSigning(credentials),
+          payloadFrameSigning,
           reconnectAttempt: reconnectAttempts,
-          requirePayloadSignature: requirePayloadSignatureForSource,
+          requirePayloadSignature:
+            eventSource === "customEvents"
+              ? requirePayloadSignatureForCustomEvents
+              : requirePayloadSignatureForAgentProfileUpdated,
           onFatalError: (error: PlugError) => {
             void handleRuntimeError(error);
           },
@@ -890,6 +907,10 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
                       includeMetadata,
                       metadata,
                       eventQueue.getStats(),
+                      {
+                        refreshCount: subscriptionRefreshCount,
+                        lastRefreshedAt: lastSubscriptionRefreshAt,
+                      },
                     );
                     if (closed) {
                       return;

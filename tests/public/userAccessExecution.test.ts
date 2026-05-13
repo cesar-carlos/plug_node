@@ -60,7 +60,7 @@ describe("executePlugUserAccessNode", () => {
     });
 
     const result = await executePlugUserAccessNode(context, {
-      credentialName: "plugDatabaseUserApi",
+      credentialName: "plugDatabaseAccountApi",
     });
 
     expect(result[0][0].json).toMatchObject({
@@ -139,7 +139,7 @@ describe("executePlugUserAccessNode", () => {
     });
 
     const result = await executePlugUserAccessNode(context, {
-      credentialName: "plugDatabaseUserApi",
+      credentialName: "plugDatabaseAccountApi",
     });
 
     expect(result[0]).toHaveLength(2);
@@ -210,10 +210,10 @@ describe("executePlugUserAccessNode", () => {
     });
 
     const approveResult = await executePlugUserAccessNode(approveContext, {
-      credentialName: "plugDatabaseUserApi",
+      credentialName: "plugDatabaseAccountApi",
     });
     const revokeResult = await executePlugUserAccessNode(revokeContext, {
-      credentialName: "plugDatabaseUserApi",
+      credentialName: "plugDatabaseAccountApi",
     });
 
     expect(approveResult[0][0].json).toMatchObject({
@@ -285,7 +285,7 @@ describe("executePlugUserAccessNode", () => {
     });
 
     const result = await executePlugUserAccessNode(context, {
-      credentialName: "plugDatabaseUserApi",
+      credentialName: "plugDatabaseAccountApi",
     });
 
     expect(result[0][0].json.error).toMatchObject({

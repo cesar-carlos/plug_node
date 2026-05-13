@@ -20,7 +20,7 @@ export class PlugDatabaseAdvanced implements INodeType {
       supportsSocketEventSocketListen: true,
       displayName: "Plug Database Advanced",
       technicalName: "plugDatabaseAdvanced",
-      credentialName: "plugDatabaseAdvancedApi",
+      credentialName: "plugDatabaseAccountApi",
       iconBaseName: "plugDatabaseAdvancedV2",
       description: "Run Plug Database commands over REST or Socket.",
       version: [1, 2],
@@ -40,7 +40,7 @@ export class PlugDatabaseAdvanced implements INodeType {
     try {
       return await executePlugClientNode(this, {
         supportsSocket: true,
-        credentialName: "plugDatabaseAdvancedApi",
+        credentialName: "plugDatabaseAccountApi",
         nodeDisplayName: "Plug Database Advanced",
         socketExecutor: socketCommandExecutor.execute,
         legacySocketExecutor: executeLegacySocketCommand,

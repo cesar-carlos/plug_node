@@ -96,7 +96,7 @@ const readCredentials = async (
   config: PlugUserAccessNodeExecutionConfig,
 ): Promise<PlugUserAuthCredentials> => {
   const rawCredentials = await context.getCredentials(
-    config.credentialName ?? "plugDatabaseUserApi",
+    config.credentialName ?? "plugDatabaseAccountApi",
   );
 
   return {

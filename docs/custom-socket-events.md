@@ -6,6 +6,8 @@ The advanced package exposes the Plug Server custom event surface through the co
 - `Plug Database Advanced` with `Resource = Tools` and `Operation = Wait for Socket Event` opens a one-shot `/consumers` listener for one `client:custom.*` event.
 - `Plug Database Advanced Socket Event Trigger` listens for custom events or the internal `client:agent.profile.updated` push.
 
+All three authenticated entry points use the shared `Plug Database Account API` credential.
+
 The normative server contract lives in the Plug Server docs under `plug_server/docs`. This document records how the n8n package maps that contract into node fields and shared code.
 
 ## Publisher Node

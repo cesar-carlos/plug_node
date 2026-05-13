@@ -72,12 +72,14 @@ The PDF tools use `Browser Channel = Auto` by default. Auto uses Playwright Chro
 
 ## Credentials
 
-The credential asks for:
+`Plug Database Account API` asks for:
 
 - `User (email)`
 - `Password`
 - optional `Default Agent ID`
 - optional `Default Client Token`
+- optional `Payload Signing Key`
+- optional `Payload Signing Key ID`
 
 The SQL node can override `Agent ID` and `Client Token` per node. Resolution order is:
 
@@ -111,14 +113,13 @@ Both access nodes also support:
 - Use `Plug Database` with `Resource = User Access` to review pending access requests, then approve or reject each request by `Request ID`.
 - Use `Plug Database` with `Resource = User Access` to list clients approved for one agent and revoke a single `Client ID` when necessary.
 
-Legacy access-only nodes remain published for compatibility with existing workflows, but are hidden from the node creator for new users.
-
 ## Limitations
 
 - no Socket relay support
 - no realtime trigger in v1
 - `Execute Batch` runs over REST only
 - Socket Event publish uses REST only in this package
+- install this package instead of the advanced package when you only want the REST-only node set
 
 ## Documentation
 

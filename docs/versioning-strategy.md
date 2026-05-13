@@ -35,3 +35,11 @@ Docs-only and repository-only changes can skip a changeset when package behavior
   - breaking credential changes
   - breaking parameter changes
   - incompatible output changes
+  - removing previously published nodes or credentials
+  - changing package coexistence expectations
+
+## Plug-specific guidance
+
+For this workspace, a change that renames, replaces, or removes a published Plug credential or Plug node must ship as the next major release in both packages.
+
+If the change also makes simultaneous installation of `n8n-nodes-plug-database` and `n8n-nodes-plug-database-advanced` unsupported or behaviorally undefined, document that explicitly in the changeset and package READMEs.

@@ -22,6 +22,7 @@ Before merging the version PR:
 1. Confirm the latest `main` `CI` and `Publish` workflow runs are successful.
 2. Run `npm run verify` and `npm run pack:check` locally, or manually run the `CI` workflow against the `changeset-release/main` branch from GitHub Actions.
 3. Confirm the version bump and changelog match `npm run changeset:status`.
+4. For any credential or published-node hard break, confirm the version PR is cutting the next major release for both Plug packages.
 
 ## Packages
 
@@ -38,3 +39,5 @@ Before merging the version PR:
 - the final verification check should run on Node `22.22.0`
 - the scanner target is `n8n-nodes-plug-database`
 - package publication is delegated to `changeset publish`, not raw `npm publish`, so repeated pushes do not try to overwrite an existing npm version
+- `npm run pack:check` now includes a real tarball installation smoke test, so run it only after a successful build/verify path
+- simultaneous installation of `n8n-nodes-plug-database` and `n8n-nodes-plug-database-advanced` is not a supported compatibility target

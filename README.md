@@ -26,6 +26,12 @@ The consolidated nodes are designed to keep setup simple. End users provide:
 - `Password`
 - optional `Default Agent ID`
 - optional `Default Client Token`
+- optional `Payload Signing Key`
+- optional `Payload Signing Key ID`
+
+All authenticated Plug surfaces now share the same credential type:
+
+- `Plug Database Account API`
 
 The API base URL is fixed to:
 
@@ -59,7 +65,7 @@ The `Client Access` resource manages approved agents, access requests, and per-a
 
 The `User Access` resource browses the agent catalog and manages owner-side approval and revocation flows over REST.
 
-Legacy access-only nodes remain registered for workflow compatibility, but they are hidden from the node creator for new users.
+Install either the public package or the advanced package for a given n8n instance. Concurrent package coexistence is not treated as a supported compatibility target.
 
 Tools:
 

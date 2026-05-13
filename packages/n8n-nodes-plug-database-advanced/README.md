@@ -24,8 +24,8 @@ npm install n8n-nodes-plug-database-advanced
 
 - `Plug Database Advanced`
   - consolidated node with `Resource = SQL | Client Access | User Access | Tools`
-- `Plug Database Advanced PDF`, `Plug Database Advanced Barcode`, and `Plug Database Advanced Socket Event`
-  - hidden compatibility nodes for existing workflows
+- `Plug Database Advanced PDF` and `Plug Database Advanced Barcode`
+  - hidden compatibility tool nodes
 - `Plug Database Advanced Socket Event Trigger`
   - listens for `client:custom.*` events or `client:agent.profile.updated`
 - `Plura.ai Automations Trigger`
@@ -87,12 +87,14 @@ npm install n8n-nodes-plug-database-advanced
 
 ## Credentials
 
-`Plug Database Advanced API` asks for:
+`Plug Database Account API` asks for:
 
 - `User (email)`
 - `Password`
 - optional `Default Agent ID`
 - optional `Default Client Token`
+- optional `Payload Signing Key`
+- optional `Payload Signing Key ID`
 
 The SQL node can override `Agent ID` and `Client Token` per node. Resolution order is:
 
@@ -149,8 +151,6 @@ Both access nodes also support:
 - Custom Socket Event attachments are locally checked against the server defaults: 5 files, 512 KiB per file, 2 MiB total, and 512 KiB payload JSON.
 - The event Trigger supports queue/backpressure controls, optional per-source required PayloadFrame signatures, eventId deduplication, a configurable reconnect circuit breaker, and the internal `client:agent.profile.updated` push.
 
-Legacy access-only nodes remain published for compatibility with existing workflows, but are hidden from the node creator for new users.
-
 ## Tool nodes
 
 `Plug Database Advanced PDF` uses `Browser Channel = Auto` by default. Auto uses the Chromium browser downloaded by `@playwright/browser-chromium` during package installation, so Google Chrome is not required for the default PDF flow. If the Playwright-managed browser is unavailable, Auto also checks common installed Chrome/Chromium paths.
@@ -184,6 +184,8 @@ Deployment owners can enforce tighter upper bounds with:
 `Plug Database Advanced Barcode` uses `@bwip-js/node` and supports QR Code, Code 128, EAN, UPC, Data Matrix, PDF417, and Aztec output. EAN and UPC inputs are validated before rendering. PNG and SVG binary output include optional metadata with size and duration, and QR/barcode output can also be emitted as JSON base64 when needed. Use `Metadata Property` and `Base64 Output Property` when the default JSON fields would collide with upstream item fields.
 
 Use n8n's built-in `Compression`, `Convert to File`, and `Extract From File` nodes for gzip, base64, and generic file conversion.
+
+Do not treat simultaneous installation of `n8n-nodes-plug-database` and `n8n-nodes-plug-database-advanced` as a supported compatibility target. The advanced package carries the full authenticated Plug surface plus socket support.
 
 ## Documentation
 

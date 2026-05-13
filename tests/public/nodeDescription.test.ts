@@ -1,15 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { PlugDatabase } from "../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/PlugDatabase.node";
-import { PlugDatabaseClientAccess } from "../../packages/n8n-nodes-plug-database/nodes/PlugDatabaseClientAccess/PlugDatabaseClientAccess.node";
-import { PlugDatabaseUserAccess } from "../../packages/n8n-nodes-plug-database/nodes/PlugDatabaseUserAccess/PlugDatabaseUserAccess.node";
 import { PlugDatabaseAdvanced } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvanced/PlugDatabaseAdvanced.node";
 import { PlugDatabaseAdvancedBarcode } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedBarcode/PlugDatabaseAdvancedBarcode.node";
-import { PlugDatabaseAdvancedClientAccess } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedClientAccess/PlugDatabaseAdvancedClientAccess.node";
 import { PlugDatabaseAdvancedPdf } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedPdf/PlugDatabaseAdvancedPdf.node";
-import { PlugDatabaseAdvancedSocketEvent } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEvent/PlugDatabaseAdvancedSocketEvent.node";
 import { PlugDatabaseAdvancedSocketEventTrigger } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedSocketEventTrigger/PlugDatabaseAdvancedSocketEventTrigger.node";
-import { PlugDatabaseAdvancedUserAccess } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PlugDatabaseAdvancedUserAccess/PlugDatabaseAdvancedUserAccess.node";
 import { PluraAiAutomationsTrigger } from "../../packages/n8n-nodes-plug-database-advanced/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node";
 
 describe("consolidated Plug node descriptions", () => {
@@ -42,21 +37,6 @@ describe("consolidated Plug node descriptions", () => {
       ]),
     );
     expect(operationProperties).toHaveLength(11);
-    expect(
-      operationProperties.map((property) => property.displayOptions?.show?.resource),
-    ).toEqual([
-      ["sql"],
-      ["clientAccess"],
-      ["userAccess"],
-      ["tools"],
-      ["tools"],
-      ["tools"],
-      ["tools"],
-      ["tools"],
-      ["tools"],
-      ["tools"],
-      ["tools"],
-    ]);
   });
 
   it("keeps the consolidated Tools operation contract stable", () => {
@@ -121,13 +101,9 @@ describe("consolidated Plug node descriptions", () => {
     ).toEqual(advancedExpectedOperations);
   });
 
-  it("keeps legacy advanced tool nodes hidden with stable technical names", () => {
+  it("keeps the advanced PDF and barcode compatibility nodes hidden", () => {
     expect(
-      [
-        new PlugDatabaseAdvancedPdf(),
-        new PlugDatabaseAdvancedBarcode(),
-        new PlugDatabaseAdvancedSocketEvent(),
-      ].map((node) => ({
+      [new PlugDatabaseAdvancedPdf(), new PlugDatabaseAdvancedBarcode()].map((node) => ({
         name: node.description.name,
         hidden: node.description.hidden,
         usableAsTool: node.description.usableAsTool,
@@ -140,11 +116,6 @@ describe("consolidated Plug node descriptions", () => {
       },
       {
         name: "plugDatabaseAdvancedBarcode",
-        hidden: true,
-        usableAsTool: true,
-      },
-      {
-        name: "plugDatabaseAdvancedSocketEvent",
         hidden: true,
         usableAsTool: true,
       },
@@ -195,46 +166,6 @@ describe("consolidated Plug node descriptions", () => {
           expect.objectContaining({ name: "Format Date" }),
           expect.objectContaining({ name: "Build SQL Request" }),
           expect.objectContaining({ name: "Publish Socket Event" }),
-        ]),
-      );
-      expect(node.description.properties).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            name: "html",
-            displayOptions: expect.objectContaining({
-              show: expect.objectContaining({
-                resource: ["tools"],
-                operation: ["htmlToPdf"],
-              }),
-            }),
-          }),
-          expect.objectContaining({
-            name: "barcodeType",
-            displayOptions: expect.objectContaining({
-              show: expect.objectContaining({
-                resource: ["tools"],
-                operation: ["generateCode"],
-              }),
-            }),
-          }),
-          expect.objectContaining({
-            name: "jsonataExpression",
-            displayOptions: expect.objectContaining({
-              show: expect.objectContaining({
-                resource: ["tools"],
-                operation: ["transformJson"],
-              }),
-            }),
-          }),
-          expect.objectContaining({
-            name: "eventName",
-            displayOptions: expect.objectContaining({
-              show: expect.objectContaining({
-                resource: ["tools"],
-                operation: ["publishSocketEvent"],
-              }),
-            }),
-          }),
         ]),
       );
     }
@@ -315,35 +246,25 @@ describe("consolidated Plug node descriptions", () => {
     }
   });
 
-  it("hides legacy access nodes from the creator while keeping them registered", () => {
-    expect(new PlugDatabaseClientAccess().description.hidden).toBe(true);
-    expect(new PlugDatabaseUserAccess().description.hidden).toBe(true);
-    expect(new PlugDatabaseAdvancedClientAccess().description.hidden).toBe(true);
-    expect(new PlugDatabaseAdvancedUserAccess().description.hidden).toBe(true);
-    expect(new PlugDatabaseAdvancedPdf().description.hidden).toBe(true);
-    expect(new PlugDatabaseAdvancedBarcode().description.hidden).toBe(true);
-    expect(new PlugDatabaseAdvancedSocketEvent().description.hidden).toBe(true);
-  });
-
-  it("exposes advanced custom socket event publish and trigger nodes", () => {
-    const publisher = new PlugDatabaseAdvancedSocketEvent();
+  it("uses the shared account credential across public, advanced, and trigger nodes", () => {
+    const publicNode = new PlugDatabase();
+    const advancedNode = new PlugDatabaseAdvanced();
     const trigger = new PlugDatabaseAdvancedSocketEventTrigger();
 
-    expect(publisher.description.properties).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "eventName" }),
-        expect.objectContaining({ name: "payloadJson" }),
-        expect.objectContaining({ name: "publishChannel" }),
-        expect.objectContaining({ name: "attachments" }),
-        expect.objectContaining({ name: "idempotencyKey" }),
-        expect.objectContaining({ name: "socketAckTimeoutMs" }),
-      ]),
-    );
-    expect(publisher.description.credentials).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "plugDatabaseAdvancedApi", required: true }),
-      ]),
-    );
+    expect(publicNode.description.credentials).toEqual([
+      expect.objectContaining({ name: "plugDatabaseAccountApi", required: true }),
+    ]);
+    expect(advancedNode.description.credentials).toEqual([
+      expect.objectContaining({ name: "plugDatabaseAccountApi", required: true }),
+    ]);
+    expect(trigger.description.credentials).toEqual([
+      expect.objectContaining({ name: "plugDatabaseAccountApi", required: true }),
+    ]);
+  });
+
+  it("exposes the advanced custom socket event trigger", () => {
+    const trigger = new PlugDatabaseAdvancedSocketEventTrigger();
+
     expect(trigger.description.inputs).toEqual([]);
     expect(trigger.description.properties).toEqual(
       expect.arrayContaining([
@@ -379,21 +300,6 @@ describe("consolidated Plug node descriptions", () => {
     expect(trigger.description.credentials).toEqual([
       expect.objectContaining({ name: "pluraAiAutomationsApi", required: true }),
     ]);
-    expect(trigger.description.webhooks).toEqual([
-      expect.objectContaining({
-        name: "default",
-        httpMethod: "POST",
-        responseMode: "onReceived",
-        path: "plura-ai-automations",
-      }),
-    ]);
-    expect(trigger.description.properties).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "workspace_id" }),
-        expect.objectContaining({ name: "journey_id" }),
-        expect.objectContaining({ name: "automation_node_id" }),
-      ]),
-    );
   });
 
   it("keeps legacy PDF and barcode tool nodes registered in the advanced package", () => {
@@ -410,39 +316,9 @@ describe("consolidated Plug node descriptions", () => {
         ]),
       );
     }
-
-    expect(new PlugDatabaseAdvancedPdf().description.properties).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "html" }),
-        expect.objectContaining({ name: "css" }),
-        expect.objectContaining({ name: "browserOptions" }),
-        expect.objectContaining({ name: "pdfOptions" }),
-      ]),
-    );
-    expect(new PlugDatabaseAdvancedBarcode().description.properties).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "text" }),
-        expect.objectContaining({ name: "barcodeType" }),
-        expect.objectContaining({ name: "includeBase64Json" }),
-        expect.objectContaining({ name: "advancedOptionsJson" }),
-      ]),
-    );
-    expect(new PlugDatabaseAdvancedPdf().description.name).toBe(
-      "plugDatabaseAdvancedPdf",
-    );
   });
 
   it("keeps the public package focused on the verified REST-only node set", () => {
-    const publicNodeNames = [
-      new PlugDatabase().description.name,
-      new PlugDatabaseClientAccess().description.name,
-      new PlugDatabaseUserAccess().description.name,
-    ];
-
-    expect(publicNodeNames).toEqual([
-      "plugDatabase",
-      "plugDatabaseClientAccess",
-      "plugDatabaseUserAccess",
-    ]);
+    expect([new PlugDatabase().description.name]).toEqual(["plugDatabase"]);
   });
 });

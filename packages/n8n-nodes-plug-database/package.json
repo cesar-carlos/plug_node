@@ -52,14 +52,10 @@
     "n8nNodesApiVersion": 1,
     "strict": false,
     "credentials": [
-      "dist/credentials/PlugDatabaseApi.credentials.js",
-      "dist/credentials/PlugDatabaseClientApi.credentials.js",
-      "dist/credentials/PlugDatabaseUserApi.credentials.js"
+      "dist/credentials/PlugDatabaseAccountApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/PlugDatabase/PlugDatabase.node.js",
-      "dist/nodes/PlugDatabaseClientAccess/PlugDatabaseClientAccess.node.js",
-      "dist/nodes/PlugDatabaseUserAccess/PlugDatabaseUserAccess.node.js"
+      "dist/nodes/PlugDatabase/PlugDatabase.node.js"
     ]
   },
   "devDependencies": {

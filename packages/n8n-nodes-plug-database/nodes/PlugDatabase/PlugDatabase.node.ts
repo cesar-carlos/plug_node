@@ -14,7 +14,7 @@ export class PlugDatabase implements INodeType {
       supportsSocket: false,
       displayName: "Plug Database",
       technicalName: "plugDatabase",
-      credentialName: "plugDatabaseApi",
+      credentialName: "plugDatabaseAccountApi",
       iconBaseName: "plugDatabaseV2",
       description: "Run Plug Database commands over REST.",
     }),
@@ -30,7 +30,7 @@ export class PlugDatabase implements INodeType {
     try {
       return await executePlugClientNode(this, {
         supportsSocket: false,
-        credentialName: "plugDatabaseApi",
+        credentialName: "plugDatabaseAccountApi",
         nodeDisplayName: "Plug Database",
       });
     } catch (error: unknown) {

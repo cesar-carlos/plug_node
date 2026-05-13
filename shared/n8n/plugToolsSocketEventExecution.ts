@@ -433,7 +433,7 @@ export const executePlugToolsSocketEventNode = async (
   const items = sourceItems.length > 0 ? sourceItems : [emptyInputItem];
   const credentials = await readCredentials(
     context,
-    config.credentialName ?? "plugClientApi",
+    config.credentialName ?? "plugDatabaseAccountApi",
   );
   const requester = buildN8nHttpRequester(context);
   const sessionRunner = createExecutionSessionRunner(requester, credentials);

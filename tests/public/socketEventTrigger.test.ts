@@ -10,9 +10,11 @@ const socketMock = vi.hoisted(() => {
   const state: {
     connectErrorsBeforeReady: number;
     readyFrame?: unknown;
+    subscribeFailureSocketIndices: Set<number>;
     sockets: MockSocket[];
   } = {
     connectErrorsBeforeReady: 0,
+    subscribeFailureSocketIndices: new Set<number>(),
     sockets: [],
   };
 
@@ -27,6 +29,7 @@ const socketMock = vi.hoisted(() => {
     constructor(
       readonly url: string,
       readonly options: Record<string, unknown>,
+      private readonly socketIndex: number,
     ) {}
 
     connect(): void {
@@ -66,6 +69,18 @@ const socketMock = vi.hoisted(() => {
           readonly eventName: string;
         };
         queueMicrotask(() => {
+          if (state.subscribeFailureSocketIndices.has(this.socketIndex)) {
+            this.dispatch("socket:event.subscribed", {
+              success: false,
+              requestId: request.requestId,
+              error: {
+                code: "SUBSCRIPTION_LIMIT_EXCEEDED",
+                message: "refresh subscribe failed",
+              },
+            });
+            return;
+          }
+
           this.dispatch("socket:event.subscribed", {
             success: true,
             requestId: request.requestId,
@@ -103,7 +118,7 @@ const socketMock = vi.hoisted(() => {
   }
 
   const io = vi.fn((url: string, options: Record<string, unknown>) => {
-    const socket = new MockSocket(url, options);
+    const socket = new MockSocket(url, options, state.sockets.length);
     state.sockets.push(socket);
     return socket;
   });
@@ -212,9 +227,16 @@ const createContext = (
   } as unknown as ITriggerFunctions;
 };
 
+const flushAsync = async (iterations = 4): Promise<void> => {
+  for (let index = 0; index < iterations; index += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+};
+
 describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
   it("connects to /consumers, subscribes to multiple events, emits items, and cleans up", async () => {
     socketMock.state.sockets = [];
+    socketMock.state.subscribeFailureSocketIndices = new Set<number>();
     socketMock.state.connectErrorsBeforeReady = 0;
     socketMock.state.readyFrame = encodePayloadFrame(
       {
@@ -265,7 +287,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
         { requestId: "event-1", compression: "none" },
       ),
     );
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushAsync();
 
     const emit = (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit;
     expect(emit).toHaveBeenCalledWith([
@@ -313,6 +335,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
     vi.useFakeTimers();
     try {
       socketMock.state.sockets = [];
+      socketMock.state.subscribeFailureSocketIndices = new Set<number>();
       socketMock.state.connectErrorsBeforeReady = 0;
       socketMock.state.readyFrame = encodePayloadFrame(
         {
@@ -349,6 +372,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
     vi.useFakeTimers();
     try {
       socketMock.state.sockets = [];
+      socketMock.state.subscribeFailureSocketIndices = new Set<number>();
       socketMock.state.connectErrorsBeforeReady = 1;
       socketMock.state.readyFrame = encodePayloadFrame(
         {
@@ -384,6 +408,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
     vi.useFakeTimers();
     try {
       socketMock.state.sockets = [];
+      socketMock.state.subscribeFailureSocketIndices = new Set<number>();
       socketMock.state.connectErrorsBeforeReady = 2;
       socketMock.state.readyFrame = encodePayloadFrame(
         {
@@ -413,6 +438,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
 
   it("listens for agent profile updates without custom subscriptions", async () => {
     socketMock.state.sockets = [];
+    socketMock.state.subscribeFailureSocketIndices = new Set<number>();
     socketMock.state.connectErrorsBeforeReady = 0;
     socketMock.state.readyFrame = encodePayloadFrame(
       {
@@ -446,7 +472,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
         { requestId: "profile-1", compression: "none" },
       ),
     );
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushAsync();
 
     const emit = (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit;
     expect(emit).toHaveBeenCalledWith([
@@ -473,6 +499,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
 
   it("can require signatures only for custom events while accepting unsigned profile pushes", async () => {
     socketMock.state.sockets = [];
+    socketMock.state.subscribeFailureSocketIndices = new Set<number>();
     socketMock.state.connectErrorsBeforeReady = 0;
     socketMock.state.readyFrame = encodePayloadFrame(
       {
@@ -503,7 +530,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
         { requestId: "profile-1", compression: "none" },
       ),
     );
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushAsync();
 
     expect(
       (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit,
@@ -514,6 +541,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
 
   it("does not emit an event after the trigger is closed while binary data is being prepared", async () => {
     socketMock.state.sockets = [];
+    socketMock.state.subscribeFailureSocketIndices = new Set<number>();
     socketMock.state.connectErrorsBeforeReady = 0;
     socketMock.state.readyFrame = encodePayloadFrame(
       {
@@ -576,7 +604,7 @@ describe("PlugDatabaseAdvancedSocketEventTrigger", () => {
     await prepareStarted;
     await response.closeFunction?.();
     releasePrepare?.();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushAsync();
 
     expect(
       (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit,
