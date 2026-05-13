@@ -19,6 +19,7 @@ describe("PluraAiAutomationsTrigger", () => {
     readonly journeyId?: string;
     readonly automationNodeId?: string;
     readonly httpResponse?: unknown;
+    readonly apiKey?: string;
   }) => {
     const staticData = input?.staticData ?? {};
     const httpRequest = vi.fn(async () => input?.httpResponse ?? { hook_id: "hook-1" });
@@ -38,6 +39,11 @@ describe("PluraAiAutomationsTrigger", () => {
 
           return "";
         }),
+        getCredentials: vi.fn(async () => ({
+          email: "user@example.com",
+          password: "secret-password",
+          apiKey: input?.apiKey ?? "",
+        })),
         getNodeWebhookUrl: vi.fn(() => input?.webhookUrl ?? "https://n8n.test/webhook"),
         getWorkflowStaticData: vi.fn(() => staticData),
         helpers: {
@@ -58,6 +64,8 @@ describe("PluraAiAutomationsTrigger", () => {
       helpers: {
         returnJsonArray: vi.fn((items) => items.map((json: unknown) => ({ json }))),
       },
+      getCredentials: vi.fn(async () => ({})),
+      getHeaderData: vi.fn(() => ({})),
     };
 
     const result = await node.webhook.call(context as never);
@@ -85,6 +93,8 @@ describe("PluraAiAutomationsTrigger", () => {
       helpers: {
         returnJsonArray: vi.fn((items) => items.map((json: unknown) => ({ json }))),
       },
+      getCredentials: vi.fn(async () => ({})),
+      getHeaderData: vi.fn(() => ({})),
     };
 
     const result = await node.webhook.call(context as never);
@@ -128,6 +138,25 @@ describe("PluraAiAutomationsTrigger", () => {
       pluraJourneyId: "journey-123",
       pluraAutomationNodeId: "node-456",
     });
+  });
+
+  it("sends the optional Plura API key when subscribing", async () => {
+    const node = new PluraAiAutomationsTrigger();
+    const { context, httpRequest } = createHookContext({
+      webhookUrl: "https://n8n.test/webhook/plura",
+      apiKey: "plura-api-key",
+    });
+
+    await node.webhookMethods.default.create.call(context as never);
+
+    expect(httpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer plura-api-key",
+        },
+      }),
+    );
   });
 
   it("detects an existing Plura automation webhook only when static metadata matches", async () => {
@@ -177,18 +206,22 @@ describe("PluraAiAutomationsTrigger", () => {
     ).resolves.toBe(false);
   });
 
-  it("unsubscribes the stored Plura automation webhook URL", async () => {
+  it("unsubscribes the stored Plura automation webhook URL and clears static metadata", async () => {
     const node = new PluraAiAutomationsTrigger();
-    const { context, httpRequest } = createHookContext({
-      staticData: {
-        pluraWebhookUrl: "https://n8n.test/webhook/plura",
-      },
+    const staticData = {
+      pluraWebhookUrl: "https://n8n.test/webhook/plura",
+      pluraHookId: "hook-1",
+      pluraJourneyId: "journey-1",
+      pluraAutomationNodeId: "automation-node-1",
+    };
+    const hook = createHookContext({
+      staticData,
     });
 
-    const result = await node.webhookMethods.default.delete.call(context as never);
+    const result = await node.webhookMethods.default.delete.call(hook.context as never);
 
     expect(result).toBe(true);
-    expect(httpRequest).toHaveBeenCalledWith(
+    expect(hook.httpRequest).toHaveBeenCalledWith(
       expect.objectContaining({
         method: "DELETE",
         url: "https://integrations.plura.ai/api/make-com/automation/unsubscribe",
@@ -198,6 +231,7 @@ describe("PluraAiAutomationsTrigger", () => {
         json: true,
       }),
     );
+    expect(hook.staticData).toEqual({});
   });
 
   it("skips unsubscribe when no webhook URL is available", async () => {
@@ -218,7 +252,7 @@ describe("PluraAiAutomationsTrigger", () => {
       helpers: {
         httpRequest: vi.fn(async () => {
           throw new Error(
-            "Request failed for user@example.com with password secret-password",
+            "Request failed for user@example.com with password secret-password and token plura-api-key",
           );
         }),
       },
@@ -233,6 +267,9 @@ describe("PluraAiAutomationsTrigger", () => {
           user: "user@example.com",
           password: "secret-password",
         },
+        headers: {
+          Authorization: "Bearer plura-api-key",
+        },
       });
     } catch (error: unknown) {
       thrownError = error;
@@ -243,5 +280,29 @@ describe("PluraAiAutomationsTrigger", () => {
     expect(message).toContain("[redacted]");
     expect(message).not.toContain("user@example.com");
     expect(message).not.toContain("secret-password");
+    expect(message).not.toContain("plura-api-key");
+  });
+
+  it("rejects webhook calls with a mismatched API key when one is configured", async () => {
+    const node = new PluraAiAutomationsTrigger();
+    const response = {
+      status: vi.fn(),
+    };
+    const context = {
+      getCredentials: vi.fn(async () => ({ apiKey: "expected-key" })),
+      getHeaderData: vi.fn(() => ({ authorization: "Bearer wrong-key" })),
+      getResponseObject: vi.fn(() => response),
+      getBodyData: vi.fn(() => ({ account_id: "acct-1" })),
+      helpers: {
+        returnJsonArray: vi.fn((items) => items.map((json: unknown) => ({ json }))),
+      },
+    };
+
+    const result = await node.webhook.call(context as never);
+
+    expect(response.status).toHaveBeenCalledWith(401);
+    expect(result).toEqual({
+      noWebhookResponse: true,
+    });
   });
 });

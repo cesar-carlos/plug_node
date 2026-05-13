@@ -1154,11 +1154,9 @@ describe("executePlugClientNode", () => {
       description: "Reconnect the Plug agent and run the node again.",
       code: "RPC_-32000",
       correlationId: "corr-1",
-      technicalMessage: "agent_offline",
-      details: {
-        reason: "agent_disconnected_at_dispatch",
-      },
     });
+    expect(result[0][0].json.error).not.toHaveProperty("technicalMessage");
+    expect(result[0][0].json.error).not.toHaveProperty("details");
   });
 
   it("preserves successful items alongside continueOnFail errors in the same execution", async () => {
@@ -1233,11 +1231,8 @@ describe("executePlugClientNode", () => {
       message: "Access denied to empresa.",
       code: "RPC_-32002",
       correlationId: "corr-2",
-      details: {
-        denied_resources: ["empresa"],
-        reason: "unauthorized",
-      },
     });
+    expect(result[0][1].json.error).not.toHaveProperty("details");
     expect(context.httpRequestMock).toHaveBeenCalledTimes(3);
   });
 });

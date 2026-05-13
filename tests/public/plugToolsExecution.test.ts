@@ -670,11 +670,8 @@ describe("Plug tools execution", () => {
       code: "SOCKET_EVENT_LISTEN_TIMEOUT",
       statusCode: 408,
       retryable: true,
-      details: {
-        timeoutMs: 1,
-        eventName: "client:custom.status.changed",
-      },
     });
+    expect(output[0][0].json.error).not.toHaveProperty("details");
   });
 
   it("rejects required socket event signatures before calling the listener when no signing key is configured", async () => {

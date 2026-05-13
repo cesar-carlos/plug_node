@@ -11,6 +11,7 @@ import type {
 import { NodeConnectionTypes, NodeOperationError } from "n8n-workflow";
 
 import {
+  buildPluraHeaders,
   getIntegrationsBaseUrl,
   getPluraCredentials,
   requestPluraJson,
@@ -28,6 +29,18 @@ const toNodeOptions = (
     name: item.label,
     value: item.value,
   }));
+
+const readAuthorizationHeader = (value: unknown): string | undefined => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value) && typeof value[0] === "string") {
+    return value[0];
+  }
+
+  return undefined;
+};
 
 export class PluraAiAutomationsTrigger implements INodeType {
   description: INodeTypeDescription = {
@@ -108,9 +121,9 @@ export class PluraAiAutomationsTrigger implements INodeType {
         const response = await requestPluraJson<PluraOptionsResponse>(this, {
           method: "POST",
           url: `${getIntegrationsBaseUrl()}/make-com/automation/options/workspaces`,
-          headers: {
+          headers: buildPluraHeaders(credentials, {
             "Content-Type": "application/json",
-          },
+          }),
           body: {
             user: credentials.email,
             password: credentials.password,
@@ -126,9 +139,9 @@ export class PluraAiAutomationsTrigger implements INodeType {
         const response = await requestPluraJson<PluraOptionsResponse>(this, {
           method: "POST",
           url: `${getIntegrationsBaseUrl()}/make-com/automation/options/journeys`,
-          headers: {
+          headers: buildPluraHeaders(credentials, {
             "Content-Type": "application/json",
-          },
+          }),
           body: {
             user: credentials.email,
             password: credentials.password,
@@ -147,9 +160,9 @@ export class PluraAiAutomationsTrigger implements INodeType {
         const response = await requestPluraJson<PluraOptionsResponse>(this, {
           method: "POST",
           url: `${getIntegrationsBaseUrl()}/make-com/automation/options/nodes`,
-          headers: {
+          headers: buildPluraHeaders(credentials, {
             "Content-Type": "application/json",
-          },
+          }),
           body: {
             user: credentials.email,
             password: credentials.password,
@@ -191,6 +204,7 @@ export class PluraAiAutomationsTrigger implements INodeType {
         const journeyId = this.getNodeParameter("journey_id") as string;
         const automationNodeId = this.getNodeParameter("automation_node_id") as string;
         const webhookUrl = this.getNodeWebhookUrl(webhookName);
+        const credentials = await getPluraCredentials(this);
 
         if (!webhookUrl) {
           throw new NodeOperationError(this.getNode(), "Failed to determine webhook URL");
@@ -199,9 +213,9 @@ export class PluraAiAutomationsTrigger implements INodeType {
         const response = await requestPluraJson<{ readonly hook_id?: string }>(this, {
           method: "POST",
           url: `${getIntegrationsBaseUrl()}/make-com/automation/subscribe`,
-          headers: {
+          headers: buildPluraHeaders(credentials, {
             "Content-Type": "application/json",
-          },
+          }),
           body: {
             journey_id: journeyId,
             automation_node_id: automationNodeId,
@@ -231,16 +245,22 @@ export class PluraAiAutomationsTrigger implements INodeType {
           return true;
         }
 
+        const credentials = await getPluraCredentials(this);
         await requestPluraJson(this, {
           method: "DELETE",
           url: `${getIntegrationsBaseUrl()}/make-com/automation/unsubscribe`,
-          headers: {
+          headers: buildPluraHeaders(credentials, {
             "Content-Type": "application/json",
-          },
+          }),
           body: {
             webhook_url: webhookUrl,
           },
         });
+
+        delete staticData.pluraWebhookUrl;
+        delete staticData.pluraHookId;
+        delete staticData.pluraJourneyId;
+        delete staticData.pluraAutomationNodeId;
 
         return true;
       },
@@ -248,6 +268,17 @@ export class PluraAiAutomationsTrigger implements INodeType {
   };
 
   async webhook(this: IWebhookFunctions): Promise<IWebhookResponseData> {
+    const credentials = await getPluraCredentials(this);
+    if (credentials.apiKey) {
+      const authorization = readAuthorizationHeader(this.getHeaderData().authorization);
+      if (authorization !== `Bearer ${credentials.apiKey}`) {
+        this.getResponseObject().status(401);
+        return {
+          noWebhookResponse: true,
+        };
+      }
+    }
+
     const body = this.getBodyData() as Record<
       string,
       string | number | boolean | null | undefined

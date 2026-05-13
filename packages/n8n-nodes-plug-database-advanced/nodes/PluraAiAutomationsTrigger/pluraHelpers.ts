@@ -9,16 +9,17 @@ const credentialName = "pluraAiAutomationsApi";
 const integrationsBaseUrl = "https://integrations.plura.ai/api";
 const redactedValue = "[redacted]";
 const sensitiveFieldNames = new Set([
-  "apiKey",
+  "apikey",
   "authorization",
   "email",
   "password",
   "user",
 ]);
 
-interface PluraCredentials {
+export interface PluraCredentials {
   readonly email?: string;
   readonly password?: string;
+  readonly apiKey?: string;
 }
 
 interface PluraRequestOptions {
@@ -64,6 +65,12 @@ const collectSensitiveValues = (
       item.trim() !== ""
     ) {
       sensitiveValues.push(item);
+      if (key.toLowerCase() === "authorization") {
+        const bearerToken = item.match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
+        if (bearerToken) {
+          sensitiveValues.push(bearerToken);
+        }
+      }
     }
 
     collectSensitiveValues(item, sensitiveValues);
@@ -98,8 +105,17 @@ export const getPluraCredentials = async (
   return {
     email: String(credentials.email ?? "").trim() || undefined,
     password: String(credentials.password ?? "").trim() || undefined,
+    apiKey: String(credentials.apiKey ?? "").trim() || undefined,
   };
 };
+
+export const buildPluraHeaders = (
+  credentials: PluraCredentials,
+  headers?: IDataObject,
+): IDataObject => ({
+  ...(headers ?? {}),
+  ...(credentials.apiKey ? { Authorization: `Bearer ${credentials.apiKey}` } : {}),
+});
 
 export const requestPluraJson = async <T>(
   context: IAllExecuteFunctions,
