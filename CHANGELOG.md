@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 ## [Unreleased]
 
+### Documentation
+
+- Reorganized `docs/socket`: slimmer `examples.md` (canonical JSON under `docs/socket/examples/`), cross-links between guides, optional glossary, post-import checklist, and automated relative link verification (`npm run verify:doc-links`).
+
 ### Added
 
 - Workspace scaffolding for the public REST-only package and the advanced REST + Socket package.

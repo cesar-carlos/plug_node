@@ -1,5 +1,15 @@
 # n8n-nodes-plug-database
 
+## 2.1.0
+
+### Minor Changes
+
+- **Workflow migration:** remap legacy workflow credential keys (`plugDatabaseAdvancedApi`, `plugDatabaseApi`, `plugDatabaseClientApi`, `plugDatabaseUserApi`) to `plugDatabaseAccountApi` when running `migrate:workflows`. Add `--backup` and `--output-dir` for safer in-place or side-by-side JSON writes; document `--check` for CI.
+
+- **Tooling and CI:** add `verify:doc-links` for relative Markdown link checks and include it in `npm run verify`. Tighten `verify:surface` Markdown scanning with explicit README allowlists. Run the Publish workflow after a successful `push` CI on `main`/`master`; keep full `verify` and `pack:check` on `workflow_dispatch`.
+
+- **Documentation:** reorganize `docs/socket` (glossary, importable example workflows, cross-links, post-import checklist). Add `.node-version` (22.22.0) alongside `.nvmrc` and `engines`.
+
 ## 2.0.0
 
 ### Major Changes

@@ -91,29 +91,7 @@ Se passar desses limites, a execução falha antes de enviar ao Plug.
 
 ## Saída da Publicação
 
-Exemplo:
-
-```json
-{
-  "success": true,
-  "eventId": "evt_123",
-  "eventName": "client:custom.status.changed",
-  "recipients": 1,
-  "requestId": "req_123",
-  "idempotentReplay": false,
-  "__plug": {
-    "channel": "socket",
-    "operation": "publishCustomSocketEvent",
-    "deliveryStatus": "delivered",
-    "publisherSocketId": "socket-1"
-  }
-}
-```
-
-`deliveryStatus` pode ser:
-
-- `delivered`: pelo menos um destinatário recebeu.
-- `noRecipients`: o evento foi aceito, mas nenhum socket inscrito estava disponível.
+Campos habituais incluem `success`, `eventId`, `eventName`, `recipients`, `requestId`, `idempotentReplay`. Com `Include Plug Metadata`, `json.__plug` inclui `channel`, `operation` (por exemplo `publishCustomSocketEvent`), `deliveryStatus` (`delivered` se houve pelo menos um destinatário; `noRecipients` se o evento foi aceite mas sem subscritores) e, em publicação por Socket, `publisherSocketId` quando disponível. Exemplo completo: [`examples/publish-socket-event-workflow.json`](./examples/publish-socket-event-workflow.json).
 
 ## Aguardar Um Evento
 
@@ -141,30 +119,8 @@ Campos:
 - `Require Payload Signature`: exige assinatura HMAC em frames recebidos.
 - `Include Plug Metadata`: adiciona `json.__plug`.
 
-## Saída do Listener One-Shot
+## Saída do listener one-shot
 
-```json
-{
-  "eventId": "evt_123",
-  "eventName": "client:custom.status.changed",
-  "emittedAt": "2026-05-13T12:00:00.000Z",
-  "publisher": {
-    "principalType": "client",
-    "clientId": "client-1"
-  },
-  "payload": {
-    "status": "ready"
-  },
-  "attachments": [],
-  "__plug": {
-    "channel": "socket",
-    "operation": "waitForSocketEvent",
-    "socketId": "socket-listener",
-    "receivedAt": "2026-05-13T12:00:01.000Z",
-    "subscriptionCount": 1,
-    "attachmentCount": 0
-  }
-}
-```
+O item segue o mesmo formato base que o trigger em eventos customizados (`eventId`, `eventName`, `emittedAt`, `publisher`, `payload`, `attachments`); com metadata, `__plug.operation` é `waitForSocketEvent` e inclui `socketId`, `receivedAt`, `subscriptionCount`, `attachmentCount`, entre outros. Ver [Socket Event Trigger — formato do item](./socket-event-trigger.md#custom-event-output) e o exemplo [`wait-for-socket-event-workflow.json`](./examples/wait-for-socket-event-workflow.json).
 
-Anexos inline são convertidos para propriedades binárias do n8n, como `binary.attachment_0`.
+Anexos inline viram propriedades binárias do n8n (por exemplo `binary.attachment_0`).

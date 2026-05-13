@@ -1,0 +1,32 @@
+{
+  "name": "Plug example — Wait for Socket Event",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "tools",
+        "operation": "waitForSocketEvent",
+        "eventName": "client:custom.order.finished",
+        "listenTimeoutMs": 60000,
+        "socketAckTimeoutMs": 10000,
+        "binaryPropertyPrefix": "attachment",
+        "requirePayloadSignature": false,
+        "includePlugMetadata": true
+      },
+      "id": "plug-example-wait-socket",
+      "name": "Wait for Socket Event",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "__CONFIGURE_IN_N8N__",
+          "name": "Plug Database Account"
+        }
+      }
+    }
+  ],
+  "connections": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

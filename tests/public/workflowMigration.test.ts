@@ -87,4 +87,53 @@ describe("advanced workflow migration", () => {
       },
     });
   });
+
+  it("renames legacy credential keys on nodes to plugDatabaseAccountApi", () => {
+    const workflow = {
+      nodes: [
+        {
+          name: "SQL",
+          type: "n8n-nodes-plug-database.plugDatabase",
+          credentials: {
+            plugDatabaseAdvancedApi: { id: "1", name: "Plug" },
+          },
+          parameters: {},
+        },
+      ],
+    };
+
+    const { document, changes } = migrateWorkflowDocument(workflow);
+
+    expect(document.nodes[0].credentials).toEqual({
+      plugDatabaseAccountApi: { id: "1", name: "Plug" },
+    });
+    expect(
+      changes.some(
+        (c) => c.kind === "credentialKey" && c.oldKey === "plugDatabaseAdvancedApi",
+      ),
+    ).toBe(true);
+  });
+
+  it("drops extra legacy credential entries when plugDatabaseAccountApi is already set", () => {
+    const workflow = {
+      nodes: [
+        {
+          name: "SQL",
+          type: "n8n-nodes-plug-database.plugDatabase",
+          credentials: {
+            plugDatabaseAccountApi: { id: "acc", name: "Account" },
+            plugDatabaseApi: { id: "legacy", name: "Legacy" },
+          },
+          parameters: {},
+        },
+      ],
+    };
+
+    const { document, changes } = migrateWorkflowDocument(workflow);
+
+    expect(document.nodes[0].credentials).toEqual({
+      plugDatabaseAccountApi: { id: "acc", name: "Account" },
+    });
+    expect(changes.some((c) => c.kind === "credentialKeyDropped")).toBe(true);
+  });
 });

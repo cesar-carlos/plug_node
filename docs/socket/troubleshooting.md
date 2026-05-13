@@ -45,6 +45,8 @@
 | `SOCKET_EVENT_LISTEN_TIMEOUT`               | Listener one-shot assinou, mas não recebeu evento.  | Publique depois do listener iniciar ou aumente `Listen Timeout (MS)`. |
 | `SOCKET_EVENT_BACKPRESSURE_LIMIT`           | Fila do trigger cheia com `Overflow Policy = Fail`. | Aumente fila/inflight, reduza volume ou escolha uma política de drop. |
 
+<a id="socket-troubleshoot-hmac"></a>
+
 ## Assinatura HMAC
 
 | Sintoma                                      | Significado                                              | Ação                                                                        |
@@ -53,6 +55,8 @@
 | `PayloadFrame signature is required`         | O frame chegou sem assinatura.                           | Configure assinatura no servidor ou ajuste `Require Payload Signature For`. |
 | `PayloadFrame signature verification failed` | Assinatura não confere.                                  | Verifique a chave compartilhada e se o payload foi alterado.                |
 | `PayloadFrame signature key_id mismatch`     | `key_id` diferente do configurado.                       | Alinhe `Payload Signing Key ID`.                                            |
+
+<a id="socket-diagnostico-saida"></a>
 
 ## Diagnóstico de Saída
 

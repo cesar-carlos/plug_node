@@ -1,0 +1,30 @@
+{
+  "name": "Plug example — Socket Event Trigger (Agent Profile)",
+  "nodes": [
+    {
+      "parameters": {
+        "eventSource": "agentProfileUpdated",
+        "ackTimeoutMs": 10000,
+        "reconnectOnDisconnect": true,
+        "requirePayloadSignature": true,
+        "requirePayloadSignatureFor": "agentProfileUpdated",
+        "includePlugMetadata": true
+      },
+      "id": "plug-example-socket-trigger-profile",
+      "name": "Plug Database Socket Event Trigger",
+      "type": "n8n-nodes-plug-database.plugDatabaseSocketEventTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "__CONFIGURE_IN_N8N__",
+          "name": "Plug Database Account"
+        }
+      }
+    }
+  ],
+  "connections": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

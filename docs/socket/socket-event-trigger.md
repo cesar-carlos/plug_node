@@ -1,8 +1,6 @@
 # Socket Event Trigger
 
-`Plug Database Socket Event Trigger` inicia um workflow quando eventos chegam pelo Socket.
-
-Use o trigger quando o workflow precisa ficar ativo escutando eventos. Para aguardar apenas um evento dentro de uma execução normal, use `Plug Database > Resource = Tools > Operation = Wait for Socket Event`.
+`Plug Database Socket Event Trigger` inicia um workflow quando eventos chegam pelo Socket. Para **um único** evento dentro de uma execução já em curso, prefira `Plug Database > Tools > Wait for Socket Event` ([Eventos customizados](./custom-events.md)).
 
 ## Fontes de Evento
 
@@ -95,7 +93,9 @@ Opções de escopo:
 
 Quando habilitado, frames recebidos precisam trazer assinatura HMAC SHA-256 válida. A chave vem da credencial `Payload Signing Key`. Se `Payload Signing Key ID` estiver definido, o `key_id` do frame precisa bater.
 
-## Saída Para Eventos Customizados
+<a id="custom-event-output"></a>
+
+## Saída para eventos customizados
 
 ```json
 {
@@ -124,7 +124,9 @@ Quando habilitado, frames recebidos precisam trazer assinatura HMAC SHA-256 vál
 }
 ```
 
-## Saída Para Agent Profile Updated
+<a id="agent-profile-output"></a>
+
+## Saída para Agent Profile Updated
 
 ```json
 {

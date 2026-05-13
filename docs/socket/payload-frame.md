@@ -1,5 +1,7 @@
 # PayloadFrame
 
+Relacionado: [SQL via Socket](./sql-socket.md) (`connection:ready` e comandos), [Eventos customizados](./custom-events.md) (eventos recebidos) e [Troubleshooting](./troubleshooting.md) (erros de assinatura e tamanho).
+
 `PayloadFrame` é o envelope JSON usado por partes da superfície Socket para transportar payloads JSON com compressão opcional e assinatura opcional.
 
 Ele aparece em:
@@ -66,6 +68,8 @@ Limites locais:
 - razão máxima de inflação: 20x
 
 Esses limites reduzem risco de payloads inflarem demais no processo n8n.
+
+<a id="assinatura-hmac"></a>
 
 ## Assinatura HMAC
 

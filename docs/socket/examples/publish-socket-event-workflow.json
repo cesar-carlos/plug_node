@@ -1,0 +1,33 @@
+{
+  "name": "Plug example — Publish Socket Event (REST)",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "tools",
+        "operation": "publishSocketEvent",
+        "publishChannel": "rest",
+        "eventName": "client:custom.status.changed",
+        "payloadJson": "{\"status\":\"ready\",\"source\":\"n8n\"}",
+        "payloadFrameCompression": "default",
+        "idempotencyKey": "status-ready-example",
+        "timeoutMs": 30000,
+        "includePlugMetadata": true
+      },
+      "id": "plug-example-publish-rest",
+      "name": "Publish Socket Event",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "__CONFIGURE_IN_N8N__",
+          "name": "Plug Database Account"
+        }
+      }
+    }
+  ],
+  "connections": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

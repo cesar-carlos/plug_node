@@ -20,7 +20,7 @@ Expected result: one n8n item per returned row.
 
 ## Query rows over Socket
 
-See [Socket examples](./socket/examples.md) for full Socket publish/listen/trigger examples and exported node JSON snippets.
+See [Socket examples](./socket/examples.md), the [glossary](./socket/glossary.md), and the importable workflows under [`docs/socket/examples/`](./socket/examples/) for SQL Socket, publish, wait, and trigger patterns.
 
 Use `Plug Database` with:
 

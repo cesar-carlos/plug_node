@@ -24,6 +24,7 @@
     "pack:check": "node ./scripts/check-packages.mjs && node ./scripts/diagnose-plug-surface.mjs --check && node ./scripts/smoke-install-packages.mjs",
     "diagnose:surface": "node ./scripts/diagnose-plug-surface.mjs",
     "verify:surface": "node ./scripts/verify-plug-surface.mjs",
+    "verify:doc-links": "node ./scripts/verify-doc-links.mjs",
     "scan:public": "npx @n8n/scan-community-package n8n-nodes-plug-database",
     "publish:packages": "changeset publish",
     "sync-shared": "node ./scripts/sync-shared.mjs",
@@ -35,6 +36,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "lint:fix": "npm run lint:fix --workspaces --if-present",
     "migrate:workflows": "node ./scripts/migrate-advanced-workflows.mjs",
+    "migrate:workflows:check-examples": "node ./scripts/migrate-advanced-workflows.mjs --check docs/socket/examples",
     "test": "npm run test:root && npm run test:packages",
     "test:packages": "npm run test --workspaces --if-present",
     "test:root": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config vitest.config.mts",
@@ -44,7 +46,7 @@
     "test:e2e:socket": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/socket.e2e.test.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
-    "verify": "npm run format:check && npm run verify:surface && npm run lint && npm run typecheck && npm test && npm run build"
+    "verify": "npm run format:check && npm run verify:surface && npm run verify:doc-links && npm run migrate:workflows:check-examples && npm run lint && npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",

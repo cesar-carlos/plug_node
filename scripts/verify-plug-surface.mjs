@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   bannedIdentifiers,
   bannedPathFragments,
+  markdownSurfaceScanSkipRelPaths,
   plugPackageSurface,
   removedSourceDirectories,
   removedSourcePaths,
@@ -70,7 +71,9 @@ const scanFile = (absolutePath) => {
     return;
   }
   if (path.extname(absolutePath).toLowerCase() === ".md") {
-    return;
+    if (markdownSurfaceScanSkipRelPaths.has(relativePath)) {
+      return;
+    }
   }
 
   const contents = readFileSync(absolutePath, "utf8");

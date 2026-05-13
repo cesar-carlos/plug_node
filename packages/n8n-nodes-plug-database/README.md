@@ -134,6 +134,8 @@ npm run migrate:workflows -- ./workflow.json
 npm run migrate:workflows -- --write ./workflow.json
 ```
 
+The migrator also rewrites legacy credential keys on nodes to `plugDatabaseAccountApi`. Use `--check` in CI to fail when an export still needs migration. With `--write`, `--backup` keeps a `.bak` copy of each overwritten file, and `--output-dir <dir>` writes migrated JSON without touching the originals.
+
 After upgrading, uninstall `n8n-nodes-plug-database-advanced` from the n8n instance and restart n8n. If old `Plug Database Advanced` menu entries still appear, reload the community node cache or reinstall `n8n-nodes-plug-database` so n8n indexes the canonical package only.
 
 ## Tool Runtime Notes

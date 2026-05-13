@@ -49,6 +49,14 @@ npm run migrate:workflows -- ./workflow.json
 npm run migrate:workflows -- --write ./workflow.json
 ```
 
+The migrator updates legacy node `type` values, maps legacy credential keys (`plugDatabaseAdvancedApi`, `plugDatabaseApi`, `plugDatabaseClientApi`, `plugDatabaseUserApi`) to `plugDatabaseAccountApi` on each node, and can normalize hidden PDF/barcode nodes into `Plug Database` tools.
+
+- `--check` exits with code `1` when any migration would apply (use in CI to ensure exports are already migrated).
+- `--backup` with `--write` writes `<file>.bak` before overwriting each in-place export.
+- `--write --output-dir <dir>` writes migrated JSON under `<dir>` while preserving paths relative to the current working directory; originals are left unchanged.
+
+Credential remapping keeps the same n8n credential `id`; ensure the instance still has a compatible saved credential for `Plug Database Account API`.
+
 The API base URL is fixed to:
 
 - `https://plug-server.se7esistemassinop.com.br/api/v1`

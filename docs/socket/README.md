@@ -10,24 +10,28 @@ O pacote expõe Socket de três formas:
 
 Todos os fluxos autenticados usam a credencial `Plug Database Account API`. Os campos `User`, `Password`, `Default Agent ID`, `Default Client Token`, `Payload Signing Key` e `Payload Signing Key ID` vêm da mesma credencial global.
 
+A documentação desta pasta está em **português**, exceto [implementation notes](./implementation-notes.md) (**inglês**), onde estão caminhos `shared/`, contratos TypeScript e notas para quem altera o código do monorepo.
+
 ## Arquivos
 
+- [Glossário](./glossary.md): termos Socket reutilizados nos guias.
 - [SQL Via Socket](./sql-socket.md): execução de SQL, batch, fallback e modos de resposta.
 - [Eventos Customizados](./custom-events.md): publicar eventos, aguardar um evento e limites de payload/anexos.
 - [Socket Event Trigger](./socket-event-trigger.md): trigger contínuo, reconnect, backpressure, deduplicação e segurança.
 - [PayloadFrame](./payload-frame.md): envelope usado no Socket, gzip e assinatura HMAC.
-- [Exemplos](./examples.md): exemplos práticos de envio, escuta inline, trigger e SQL via Socket.
+- [Exemplos](./examples.md): exemplos práticos de envio, escuta inline, trigger e SQL via Socket (inclui [workflows JSON](./examples/) verificados pelo migrador).
 - [Troubleshooting](./troubleshooting.md): sintomas, códigos de erro e ações recomendadas.
+- [Implementation notes](./implementation-notes.md) (EN): contratos partilhados, helpers de sessão e limites operacionais do repositório.
 
-## Quando Usar Cada Opção
+## Quando usar cada opção
 
-Use `Channel = REST` quando quiser a opção mais compatível para comandos normais. Use `Channel = Socket` quando precisar de streaming, menor latência de ida e volta ou quando o servidor/agent já estiver otimizado para `agents:command`.
-
-Use `Publish Socket Event` quando um workflow precisa avisar outro consumidor Plug sobre uma mudança. O canal REST é o padrão compatível; o canal Socket evita uma chamada HTTP extra quando o workflow já deve publicar pelo `/consumers`.
-
-Use `Wait for Socket Event` quando a espera por um único evento faz parte de uma execução normal do workflow. Essa operação abre o socket, assina um evento exato, espera o primeiro match e fecha.
-
-Use `Plug Database Socket Event Trigger` quando o workflow deve ficar ativo aguardando eventos indefinidamente. O trigger gerencia reconnect, fila local, deduplicação opcional e fechamento limpo.
+| Objetivo                                       | Onde configurar                                                               |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| SQL com menor latência ou stream               | `Plug Database > SQL`, `Channel = Socket` ([SQL via Socket](./sql-socket.md)) |
+| SQL mais compatível / servidores antigos       | `Channel = REST` (mesmo doc)                                                  |
+| Avisar outros consumidores (`client:custom.*`) | `Tools > Publish Socket Event` ([Eventos customizados](./custom-events.md))   |
+| Esperar um único evento na mesma execução      | `Tools > Wait for Socket Event` ([Eventos customizados](./custom-events.md))  |
+| Escuta contínua com fila e reconnect           | [Socket Event Trigger](./socket-event-trigger.md)                             |
 
 ## Namespace e Eventos
 
@@ -70,8 +74,8 @@ flowchart LR
   H --> K["client:custom.* ou profile.updated"]
 ```
 
-## Segurança e Dados Sensíveis
+## Segurança e dados sensíveis
 
-Não registre em log payloads completos, SQL, tokens, senhas, `clientToken`, `Payload Signing Key`, anexos em base64 ou headers de autenticação. A implementação só expõe metadados seguros em `json.__plug`, como canal, operação, socket id, `requestId`, contadores e status de entrega.
+Não registe SQL, payloads completos, tokens, senhas, chaves de assinatura nem anexos em base64 em logs externos. Em saída, use `Include Plug Metadata` para `json.__plug` seguro (ver [Troubleshooting](./troubleshooting.md#socket-diagnostico-saida)).
 
-Para validar integridade de eventos recebidos, configure `Payload Signing Key` na credencial e habilite `Require Payload Signature` no listener ou trigger. Quando `Payload Signing Key ID` estiver preenchido, frames assinados precisam usar o mesmo `key_id`.
+Integridade dos frames: [PayloadFrame — assinatura HMAC](./payload-frame.md#assinatura-hmac) e tabela em [Troubleshooting](./troubleshooting.md#socket-troubleshoot-hmac).

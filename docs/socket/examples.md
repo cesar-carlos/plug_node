@@ -1,156 +1,43 @@
 # Exemplos de Socket
 
-Os exemplos abaixo usam nomes de parâmetros internos do n8n para facilitar revisão de workflows exportados.
+Os ficheiros JSON em [`examples/`](./examples/) são workflows mínimos importáveis no n8n.
 
-## Executar SQL Via Socket
+### Checklist pós-importação
 
-Node:
+1. Associe o nó à credencial **`Plug Database Account API`** (ou crie uma e selecione-a).
+2. Substitua `__CONFIGURE_IN_N8N__` no `id` da credencial no JSON pelo id real da credencial na sua instância (após importar, o n8n costuma pedir remapeamento).
+3. Preencha **`Agent ID`** e **`Client Token`** no nó ou deixe os defaults válidos na credencial, conforme a operação.
+4. Confirme que a **URL base** do Plug na credencial corresponde ao ambiente (produção vs teste).
 
-```json
-{
-  "type": "n8n-nodes-plug-database.plugDatabase",
-  "typeVersion": 2,
-  "parameters": {
-    "resource": "sql",
-    "operation": "executeSql",
-    "channel": "socket",
-    "inputMode": "guided",
-    "responseMode": "chunkItems",
-    "agentId": "agent-1",
-    "clientToken": "client-token",
-    "sql": "select * from customers limit 100",
-    "includePlugMetadata": true
-  }
-}
-```
+| Cenário                                  | Ficheiro                                                                                                          |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| SQL via Socket                           | [`sql-socket-workflow.json`](./examples/sql-socket-workflow.json)                                                 |
+| Publicar evento (REST)                   | [`publish-socket-event-workflow.json`](./examples/publish-socket-event-workflow.json)                             |
+| Aguardar um evento (one-shot)            | [`wait-for-socket-event-workflow.json`](./examples/wait-for-socket-event-workflow.json)                           |
+| Trigger (eventos customizados)           | [`socket-event-trigger-workflow.json`](./examples/socket-event-trigger-workflow.json)                             |
+| Trigger (`client:agent.profile.updated`) | [`socket-event-trigger-agent-profile-workflow.json`](./examples/socket-event-trigger-agent-profile-workflow.json) |
 
-Use `responseMode = "chunkItems"` quando espera stream ou muitas linhas. Para respostas pequenas, `aggregatedJson` é mais simples.
+Validação no repositório: `npm run migrate:workflows:check-examples` (deve terminar sem migrações pendentes).
 
-## Publicar Evento Por REST
+## Notas rápidas
 
-```json
-{
-  "type": "n8n-nodes-plug-database.plugDatabase",
-  "typeVersion": 2,
-  "parameters": {
-    "resource": "tools",
-    "operation": "publishSocketEvent",
-    "publishChannel": "rest",
-    "eventName": "client:custom.status.changed",
-    "payloadJson": "{\"status\":\"ready\",\"source\":\"n8n\"}",
-    "payloadFrameCompression": "default",
-    "idempotencyKey": "status-ready-{{$json.id}}",
-    "timeoutMs": 30000,
-    "includePlugMetadata": true
-  }
-}
-```
+- **SQL:** com `responseMode = chunkItems` use streams ou muitas linhas; para respostas pequenas, `aggregatedJson` costuma bastar (ver parâmetros no JSON de exemplo).
+- **Publish:** REST é o caminho mais compatível para anexos grandes; Socket evita HTTP extra quando o fluxo já está em `/consumers` (detalhes em [Eventos customizados](./custom-events.md)).
+- **Trigger perfil do agent:** use o JSON dedicado ou [Socket Event Trigger](./socket-event-trigger.md).
 
-## Publicar Evento Por Socket
+## Padrões de workflow
 
-```json
-{
-  "type": "n8n-nodes-plug-database.plugDatabase",
-  "typeVersion": 2,
-  "parameters": {
-    "resource": "tools",
-    "operation": "publishSocketEvent",
-    "publishChannel": "socket",
-    "eventName": "client:custom.order.created",
-    "payloadJson": "{\"orderId\":\"{{$json.orderId}}\"}",
-    "payloadFrameCompression": "default",
-    "socketAckTimeoutMs": 10000,
-    "includePlugMetadata": true
-  }
-}
-```
+### Um workflow publica, outro escuta
 
-## Aguardar Um Evento Inline
+**Workflow A:** `Plug Database > Tools > Publish Socket Event` — `Event Name = client:custom.invoice.ready`, `Payload JSON` com o identificador (por exemplo `invoiceId`).
 
-```json
-{
-  "type": "n8n-nodes-plug-database.plugDatabase",
-  "typeVersion": 2,
-  "parameters": {
-    "resource": "tools",
-    "operation": "waitForSocketEvent",
-    "eventName": "client:custom.order.finished",
-    "listenTimeoutMs": 60000,
-    "socketAckTimeoutMs": 10000,
-    "binaryPropertyPrefix": "attachment",
-    "requirePayloadSignature": false,
-    "includePlugMetadata": true
-  }
-}
-```
+**Workflow B:** `Plug Database Socket Event Trigger` — `Event Source = Custom Events`, mesmos nomes de evento; nos nós seguintes use expressões como `{{$json.payload.invoiceId}}`.
 
-Esse padrão é bom quando o workflow publica uma solicitação e precisa aguardar uma resposta específica antes de continuar.
+### Resposta one-shot na mesma execução
 
-## Trigger Para Eventos Customizados
+1. Dispare a ação assíncrona que deve gerar o evento de retorno.
+2. Use `Wait for Socket Event` com o `Event Name` de retorno esperado.
+3. Ajuste `Listen Timeout (MS)` acima do tempo máximo de processamento.
+4. Continue o fluxo com `{{$json.payload}}`.
 
-```json
-{
-  "type": "n8n-nodes-plug-database.plugDatabaseSocketEventTrigger",
-  "typeVersion": 1,
-  "parameters": {
-    "eventSource": "customEvents",
-    "eventNames": {
-      "values": [
-        { "eventName": "client:custom.status.changed" },
-        { "eventName": "client:custom.order.created" }
-      ]
-    },
-    "ackTimeoutMs": 10000,
-    "reconnectOnDisconnect": true,
-    "maxReconnectAttempts": 0,
-    "maxInflightEvents": 8,
-    "maxQueueSize": 128,
-    "overflowPolicy": "fail",
-    "deduplicateEvents": true,
-    "deduplicationTtlMs": 300000,
-    "includePlugMetadata": true
-  }
-}
-```
-
-## Trigger Para Atualização de Perfil do Agent
-
-```json
-{
-  "type": "n8n-nodes-plug-database.plugDatabaseSocketEventTrigger",
-  "typeVersion": 1,
-  "parameters": {
-    "eventSource": "agentProfileUpdated",
-    "ackTimeoutMs": 10000,
-    "reconnectOnDisconnect": true,
-    "requirePayloadSignature": true,
-    "requirePayloadSignatureFor": "agentProfileUpdated",
-    "includePlugMetadata": true
-  }
-}
-```
-
-## Workflow Publica e Outro Workflow Escuta
-
-Workflow A:
-
-1. `Plug Database > Tools > Publish Socket Event`
-2. `Event Name = client:custom.invoice.ready`
-3. `Payload JSON = {"invoiceId":"{{$json.id}}"}`
-
-Workflow B:
-
-1. `Plug Database Socket Event Trigger`
-2. `Event Source = Custom Events`
-3. `Event Names = client:custom.invoice.ready`
-4. próximos nodes usam `{{$json.payload.invoiceId}}`
-
-## Workflow Espera Resposta One-Shot
-
-1. Execute uma ação que inicia processamento assíncrono.
-2. Use `Wait for Socket Event`.
-3. Configure `Event Name` com o evento de retorno esperado.
-4. Use `Listen Timeout (MS)` maior que o tempo máximo esperado de processamento.
-5. Continue o workflow com dados de `{{$json.payload}}`.
-
-Esse padrão evita manter um trigger separado quando a espera pertence a uma execução específica.
+Evita manter um trigger ativo quando a espera pertence só a uma execução.

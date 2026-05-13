@@ -116,3 +116,13 @@ export const rootsToScan = [
   "tests",
   ".github",
 ];
+
+/**
+ * Markdown paths (repo-relative, forward slashes) that may document legacy
+ * names for migration and therefore skip `bannedIdentifiers` / `bannedPathFragments` scans.
+ * Operational docs under `docs/` are still scanned.
+ */
+export const markdownSurfaceScanSkipRelPaths = new Set([
+  "README.md",
+  "packages/n8n-nodes-plug-database/README.md",
+]);

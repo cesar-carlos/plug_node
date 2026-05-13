@@ -1,12 +1,19 @@
 name: Publish
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
     branches:
       - main
+      - master
   workflow_dispatch:
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency:
+  group: publish-${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -15,11 +22,17 @@ permissions:
 
 jobs:
   publish:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'master'))
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -44,9 +57,11 @@ jobs:
         run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
 
       - name: Verify workspace
+        if: github.event_name == 'workflow_dispatch'
         run: npm run verify
 
       - name: Validate npm tarballs
+        if: github.event_name == 'workflow_dispatch'
         run: npm run pack:check
 
       - name: Upgrade npm for trusted publishing

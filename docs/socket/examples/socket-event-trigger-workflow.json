@@ -1,0 +1,40 @@
+{
+  "name": "Plug example — Socket Event Trigger",
+  "nodes": [
+    {
+      "parameters": {
+        "eventSource": "customEvents",
+        "eventNames": {
+          "values": [
+            { "eventName": "client:custom.status.changed" },
+            { "eventName": "client:custom.order.created" }
+          ]
+        },
+        "ackTimeoutMs": 10000,
+        "reconnectOnDisconnect": true,
+        "maxReconnectAttempts": 0,
+        "maxInflightEvents": 8,
+        "maxQueueSize": 128,
+        "overflowPolicy": "fail",
+        "deduplicateEvents": true,
+        "deduplicationTtlMs": 300000,
+        "includePlugMetadata": true
+      },
+      "id": "plug-example-socket-trigger",
+      "name": "Plug Database Socket Event Trigger",
+      "type": "n8n-nodes-plug-database.plugDatabaseSocketEventTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "__CONFIGURE_IN_N8N__",
+          "name": "Plug Database Account"
+        }
+      }
+    }
+  ],
+  "connections": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

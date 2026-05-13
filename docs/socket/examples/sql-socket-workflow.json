@@ -1,0 +1,33 @@
+{
+  "name": "Plug example — SQL via Socket",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "sql",
+        "operation": "executeSql",
+        "channel": "socket",
+        "inputMode": "guided",
+        "responseMode": "chunkItems",
+        "agentId": "agent-1",
+        "clientToken": "client-token",
+        "sql": "select * from customers limit 100",
+        "includePlugMetadata": true
+      },
+      "id": "plug-example-sql-socket",
+      "name": "Plug Database",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "__CONFIGURE_IN_N8N__",
+          "name": "Plug Database Account"
+        }
+      }
+    }
+  ],
+  "connections": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

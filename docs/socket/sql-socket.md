@@ -21,6 +21,12 @@ Na versão 1 do node, Socket está disponível para:
 
 Na versão 2, `Execute Batch` também pode usar Socket quando o servidor suporta `agents:command`.
 
+## Recursos fora deste guia
+
+`Channel = Socket` aplica-se apenas a **`Resource = SQL`**. Operações em **Client Access**, **User Access** e **Tools** usam REST (ou fluxos Socket próprios, como _Publish_ / _Wait_ / trigger), não o canal SQL descrito aqui.
+
+Lista canónica de operações do pacote: [README do pacote `n8n-nodes-plug-database`](../../packages/n8n-nodes-plug-database/README.md#supported-operations).
+
 ## Fluxo
 
 ```mermaid
@@ -45,13 +51,7 @@ sequenceDiagram
 
 ## PayloadFrame
 
-`connection:ready` usa `PayloadFrame`. A implementação decodifica o envelope, valida o formato, aplica gzip quando necessário e verifica HMAC se uma assinatura estiver presente e a credencial tiver chave configurada.
-
-O comando enviado também pode usar preferência de compressão de `PayloadFrame`:
-
-- `default`: comprime quando vale a pena.
-- `none`: não comprime.
-- `always`: comprime sempre que houver payload.
+`connection:ready` e o tráfego que usa o codec partilhado passam por `PayloadFrame` (descompactação, limites e HMAC quando aplicável). O comando enviado também respeita preferências de compressão do frame (`default`, `none`, `always`). Detalhe do envelope, limites locais e erros típicos: [PayloadFrame](./payload-frame.md).
 
 ## Response Mode
 
