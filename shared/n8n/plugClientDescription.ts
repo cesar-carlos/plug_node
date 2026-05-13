@@ -687,8 +687,7 @@ export const buildPlugClientNodeDescription = (
             {
               name: "Tools",
               value: "tools",
-              description:
-                "Generate PDFs, barcodes, and publish Plug socket events.",
+              description: "Generate PDFs, barcodes, and publish Plug socket events.",
             },
           ],
         },

@@ -1,5 +1,11 @@
 # n8n-nodes-plug-database
 
+## 2.0.0
+
+### Major Changes
+
+- 200779f: Unify every authenticated Plug node around the shared `Plug Database Account API` credential, remove the legacy access-only and socket publisher compatibility nodes, and treat simultaneous installation of the public and advanced packages as unsupported.
+
 ## 1.4.2
 
 ### Patch Changes

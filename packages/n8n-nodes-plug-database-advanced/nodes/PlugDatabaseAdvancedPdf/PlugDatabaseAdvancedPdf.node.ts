@@ -19,6 +19,7 @@ export class PlugDatabaseAdvancedPdf implements INodeType {
     }),
     hidden: true,
     subtitle: '={{$parameter["operation"]}}',
+    usableAsTool: false as unknown as true,
     icon: {
       light: "file:plugToolsPdf.svg",
       dark: "file:plugToolsPdf.dark.svg",

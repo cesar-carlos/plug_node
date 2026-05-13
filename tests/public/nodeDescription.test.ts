@@ -136,12 +136,12 @@ describe("consolidated Plug node descriptions", () => {
       {
         name: "plugDatabaseAdvancedPdf",
         hidden: true,
-        usableAsTool: undefined,
+        usableAsTool: false,
       },
       {
         name: "plugDatabaseAdvancedBarcode",
         hidden: true,
-        usableAsTool: undefined,
+        usableAsTool: false,
       },
     ]);
   });
@@ -290,7 +290,7 @@ describe("consolidated Plug node descriptions", () => {
     const trigger = new PlugDatabaseAdvancedSocketEventTrigger();
 
     expect(trigger.description.inputs).toEqual([]);
-    expect(trigger.description.usableAsTool).toBeUndefined();
+    expect(trigger.description.usableAsTool).toBe(false);
     expect(trigger.description.properties).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "eventSource" }),
@@ -322,7 +322,7 @@ describe("consolidated Plug node descriptions", () => {
     expect(waitForSocketEventOperation).toMatchObject({
       value: "waitForSocketEvent",
     });
-    expect(trigger.description.usableAsTool).toBeUndefined();
+    expect(trigger.description.usableAsTool).toBe(false);
   });
 
   it("exposes the Plura.ai automations trigger in the advanced package", () => {
@@ -334,7 +334,7 @@ describe("consolidated Plug node descriptions", () => {
       group: ["trigger"],
       inputs: [],
     });
-    expect(trigger.description.usableAsTool).toBeUndefined();
+    expect(trigger.description.usableAsTool).toBe(false);
     expect(trigger.description.outputs).toEqual(["main"]);
     expect(trigger.description.credentials).toEqual([
       expect.objectContaining({ name: "pluraAiAutomationsApi", required: true }),
@@ -345,7 +345,7 @@ describe("consolidated Plug node descriptions", () => {
     const nodes = [new PlugDatabaseAdvancedPdf(), new PlugDatabaseAdvancedBarcode()];
 
     for (const node of nodes) {
-      expect(node.description.usableAsTool).toBeUndefined();
+      expect(node.description.usableAsTool).toBe(false);
       expect(node.description.credentials).toBeUndefined();
       expect(node.description.properties).toEqual(
         expect.arrayContaining([

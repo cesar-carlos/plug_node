@@ -10,7 +10,6 @@ import type {
 } from "n8n-workflow";
 import { NodeConnectionTypes, NodeOperationError } from "n8n-workflow";
 
-import { asWorkflowOnlyNodeDescription } from "../../generated/shared/n8n/toolExposure";
 import {
   getIntegrationsBaseUrl,
   getPluraCredentials,
@@ -31,7 +30,7 @@ const toNodeOptions = (
   }));
 
 export class PluraAiAutomationsTrigger implements INodeType {
-  description: INodeTypeDescription = asWorkflowOnlyNodeDescription({
+  description: INodeTypeDescription = {
     displayName: "Plura.ai Automations Trigger",
     name: "pluraAiAutomationsTrigger",
     icon: "file:plura.svg",
@@ -43,6 +42,7 @@ export class PluraAiAutomationsTrigger implements INodeType {
     defaults: {
       name: "Plura.ai Automations Trigger",
     },
+    usableAsTool: false as unknown as true,
     inputs: [],
     outputs: [NodeConnectionTypes.Main],
     credentials: [
@@ -99,7 +99,7 @@ export class PluraAiAutomationsTrigger implements INodeType {
           'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
       },
     ],
-  });
+  };
 
   methods = {
     loadOptions: {

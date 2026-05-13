@@ -20,6 +20,7 @@ export class PlugDatabaseAdvancedBarcode implements INodeType {
     }),
     hidden: true,
     subtitle: '={{$parameter["operation"]}}',
+    usableAsTool: false as unknown as true,
     icon: {
       light: "file:plugToolsBarcode.svg",
       dark: "file:plugToolsBarcode.dark.svg",

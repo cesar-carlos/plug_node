@@ -12,16 +12,13 @@ export const applyToolExposure = (
   exposure: PlugToolExposure = plugToolExposureConsolidated,
 ): INodeTypeDescription => ({
   ...description,
-  usableAsTool:
-    exposure === plugToolExposureConsolidated ? true : undefined,
+  usableAsTool: exposure === plugToolExposureConsolidated ? true : undefined,
 });
 
 export const asConsolidatedToolNodeDescription = (
   description: INodeTypeDescription,
-): INodeTypeDescription =>
-  applyToolExposure(description, plugToolExposureConsolidated);
+): INodeTypeDescription => applyToolExposure(description, plugToolExposureConsolidated);
 
 export const asWorkflowOnlyNodeDescription = (
   description: INodeTypeDescription,
-): INodeTypeDescription =>
-  applyToolExposure(description, plugToolExposureWorkflowOnly);
+): INodeTypeDescription => applyToolExposure(description, plugToolExposureWorkflowOnly);

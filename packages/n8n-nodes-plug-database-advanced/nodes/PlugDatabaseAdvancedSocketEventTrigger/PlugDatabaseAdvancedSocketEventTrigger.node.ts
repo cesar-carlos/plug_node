@@ -35,7 +35,6 @@ import {
 } from "../../generated/shared/contracts/custom-socket-events";
 import { plugLogger } from "../../generated/shared/logging/plugLogger";
 import { buildN8nHttpRequester } from "../../generated/shared/n8n/httpRequester";
-import { asWorkflowOnlyNodeDescription } from "../../generated/shared/n8n/toolExposure";
 import {
   startAgentProfileUpdatedSession,
   startCustomSocketEventSession,
@@ -355,7 +354,7 @@ const createBackpressureQueue = (input: {
 };
 
 export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
-  description: INodeTypeDescription = asWorkflowOnlyNodeDescription({
+  description: INodeTypeDescription = {
     displayName: "Plug Database Advanced Trigger",
     name: "plugDatabaseAdvancedSocketEventTrigger",
     icon: {
@@ -369,6 +368,7 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
     defaults: {
       name: "Plug Database Advanced Trigger",
     },
+    usableAsTool: false as unknown as true,
     inputs: [],
     outputs: [NodeConnectionTypes.Main],
     credentials: [
@@ -647,7 +647,7 @@ export class PlugDatabaseAdvancedSocketEventTrigger implements INodeType {
           "Whether to include the __plug object with socket and event metadata in output items",
       },
     ],
-  });
+  };
 
   async trigger(this: ITriggerFunctions): Promise<ITriggerResponse> {
     const credentials = await readCredentials(this);
