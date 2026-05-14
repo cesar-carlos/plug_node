@@ -1,5 +1,11 @@
 # n8n-nodes-plug-database
 
+## 2.1.1
+
+### Patch Changes
+
+- 4b3c3ba: Harden socket command correlation, PayloadFrame decoding, auth reconnect, trigger backpressure handling, protocol versioning, socket runtime metrics, and guided SQL UX validation.
+
 ## 2.1.0
 
 ### Minor Changes
