@@ -2,18 +2,23 @@ name: Scan Public Package
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows:
-      - Publish
+    inputs:
+      version:
+        description: Optional package version to document in the workflow run.
+        required: false
+        type: string
+  repository_dispatch:
     types:
-      - completed
+      - package-published
+  push:
+    tags:
+      - "n8n-nodes-plug-database@*"
 
 permissions:
   contents: read
 
 jobs:
   scan:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -28,6 +33,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Print scan target
+        run: |
+          echo "event=${GITHUB_EVENT_NAME}"
+          echo "ref=${GITHUB_REF}"
+          echo "payload_package=${{ github.event.client_payload.package }}"
+          echo "payload_version=${{ github.event.client_payload.version }}"
+          echo "input_version=${{ inputs.version }}"
+          npm view n8n-nodes-plug-database version
 
       - name: Scan public package
         run: npm run scan:public

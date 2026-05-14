@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - master
+      - changeset-release/main
   pull_request:
 
 jobs:

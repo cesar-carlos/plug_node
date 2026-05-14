@@ -1,4 +1,4 @@
-name: Publish
+name: Release
 
 on:
   workflow_run:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: publish-${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 permissions:
@@ -56,6 +56,37 @@ jobs:
       - name: Repair optional native bindings on Linux
         run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
 
+      - name: Detect release mode
+        id: release_mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          changeset_files=()
+          for file in .changeset/*.md; do
+            if [ "$(basename "$file")" != "README.md" ]; then
+              changeset_files+=("$file")
+            fi
+          done
+
+          local_version="$(node -p "require('./packages/n8n-nodes-plug-database/package.json').version")"
+          npm_version_before="$(npm view n8n-nodes-plug-database version 2>/dev/null || true)"
+          echo "local_version=${local_version}" >> "$GITHUB_OUTPUT"
+          echo "npm_version_before=${npm_version_before}" >> "$GITHUB_OUTPUT"
+
+          if [ "${#changeset_files[@]}" -gt 0 ]; then
+            echo "mode=version-pr" >> "$GITHUB_OUTPUT"
+            echo "Release mode: version-pr"
+            printf 'Pending changesets:\n'
+            printf ' - %s\n' "${changeset_files[@]}"
+          else
+            echo "mode=publish" >> "$GITHUB_OUTPUT"
+            echo "Release mode: publish"
+            echo "Local package version: ${local_version}"
+            echo "Published npm version before release: ${npm_version_before:-not found}"
+          fi
+
       - name: Verify workspace
         if: github.event_name == 'workflow_dispatch'
         run: npm run verify
@@ -67,7 +98,7 @@ jobs:
       - name: Upgrade npm for trusted publishing
         run: npm install --global npm@^11.10.0
 
-      - name: Create version PR or publish packages
+      - name: Run Changesets release action
         uses: changesets/action@v1
         with:
           version: npm run version-packages
@@ -76,3 +107,38 @@ jobs:
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify npm published version
+        if: steps.release_mode.outputs.mode == 'publish'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected_version="${{ steps.release_mode.outputs.local_version }}"
+          actual_version=""
+
+          for attempt in {1..12}; do
+            actual_version="$(npm view n8n-nodes-plug-database version 2>/dev/null || true)"
+            if [ "${actual_version}" = "${expected_version}" ]; then
+              echo "Verified n8n-nodes-plug-database@${actual_version} on npm."
+              exit 0
+            fi
+
+            echo "Attempt ${attempt}: npm has '${actual_version:-not found}', expected '${expected_version}'. Waiting..."
+            sleep 10
+          done
+
+          echo "::error::Expected n8n-nodes-plug-database@${expected_version} on npm, but latest is '${actual_version:-not found}'."
+          exit 1
+
+      - name: Trigger public package scan
+        if: steps.release_mode.outputs.mode == 'publish' && steps.release_mode.outputs.npm_version_before != steps.release_mode.outputs.local_version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_VERSION: ${{ steps.release_mode.outputs.local_version }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/dispatches" \
+            --method POST \
+            -f event_type=package-published \
+            -f "client_payload[package]=n8n-nodes-plug-database" \
+            -f "client_payload[version]=${PACKAGE_VERSION}"

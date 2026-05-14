@@ -1,7 +1,7 @@
 # Plug Database n8n Workspace
 
 [![CI](https://github.com/cesar-carlos/plug_node/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cesar-carlos/plug_node/actions/workflows/ci.yml)
-[![Publish](https://github.com/cesar-carlos/plug_node/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/cesar-carlos/plug_node/actions/workflows/publish.yml)
+[![Release](https://github.com/cesar-carlos/plug_node/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/cesar-carlos/plug_node/actions/workflows/publish.yml)
 
 ![Plug Database logo](https://raw.githubusercontent.com/cesar-carlos/plug_node/main/assets/app_icons/plug_connect-blockchain-512px.png)
 
@@ -125,7 +125,7 @@ npm run scan:public
 
 `n8n-nodes-plug-database` now ships the full Plug surface, including Socket and local tool runtime dependencies. `scan:public` is still useful, but do not read it as an n8n Cloud verification guarantee.
 
-After a GitHub Actions publish succeeds, run the dedicated `Scan Public Package` workflow or execute:
+After GitHub Actions verifies a newly published npm version, the dedicated `Scan Public Package` workflow runs automatically. You can also run it manually or execute:
 
 ```bash
 npm run scan:public
