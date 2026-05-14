@@ -13,10 +13,150 @@ Use `Validate Context` as a quick end-to-end check for:
 Use `Plug Database` with:
 
 - operation: `Execute SQL`
-- SQL: `SELECT * FROM Cliente`
+- SQL:
+
+```sql
+SELECT *
+FROM Cliente
+WHERE id = :id
+LIMIT 10;
+```
+
+- Named Params JSON:
+
+```json
+{
+  "id": "{{$json.id}}"
+}
+```
+
 - response mode: `Aggregated JSON`
 
 Expected result: one n8n item per returned row.
+
+## Query rows with page-based pagination
+
+Use `Plug Database` with:
+
+- operation: `Execute SQL`
+- SQL:
+
+```sql
+SELECT *
+FROM Cliente
+WHERE cidade = :cidade
+ORDER BY id;
+```
+
+- Named Params JSON:
+
+```json
+{
+  "cidade": "{{$json.cidade}}"
+}
+```
+
+- Additional Options:
+  - Page: `1`
+  - Page Size: `100`
+
+Expected result: the first page of rows matching the current n8n item.
+
+## Insert a row with parameters
+
+Use `Plug Database` with:
+
+- operation: `Execute SQL`
+- SQL:
+
+```sql
+INSERT INTO Cliente (nome, email)
+VALUES (:nome, :email);
+```
+
+- Named Params JSON:
+
+```json
+{
+  "nome": "{{$json.nome}}",
+  "email": "{{$json.email}}"
+}
+```
+
+Expected result: the agent response for the insert command.
+
+## Update a row safely
+
+Use `Plug Database` with:
+
+- operation: `Execute SQL`
+- SQL:
+
+```sql
+UPDATE Cliente
+SET email = :email
+WHERE id = :id;
+```
+
+- Named Params JSON:
+
+```json
+{
+  "id": "{{$json.id}}",
+  "email": "{{$json.email}}"
+}
+```
+
+`Require WHERE for UPDATE/DELETE` is enabled by default and blocks updates without a `WHERE` clause.
+
+## Delete a row safely
+
+Use `Plug Database` with:
+
+- operation: `Execute SQL`
+- SQL:
+
+```sql
+DELETE FROM Cliente
+WHERE id = :id;
+```
+
+- Named Params JSON:
+
+```json
+{
+  "id": "{{$json.id}}"
+}
+```
+
+Leave `Require WHERE for UPDATE/DELETE` enabled unless the workflow intentionally performs a global mutation.
+
+## Execute a basic batch
+
+Use `Plug Database` with:
+
+- operation: `Execute Batch`
+- Batch Commands JSON:
+
+```json
+[
+  {
+    "sql": "UPDATE Cliente SET email = :email WHERE id = :id",
+    "params": {
+      "id": "{{$json.id}}",
+      "email": "{{$json.email}}"
+    }
+  },
+  {
+    "sql": "SELECT * FROM Cliente WHERE id = :id",
+    "params": {
+      "id": "{{$json.id}}"
+    }
+  }
+]
+```
+
+Expected result: the normalized batch response. Each batch command is checked for unreplaced template markers, missing named parameters, and unsafe `UPDATE` or `DELETE` statements.
 
 ## Query rows over Socket
 

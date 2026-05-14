@@ -73,12 +73,14 @@ const buildResponseModeProperty = (supportsSocket: boolean): INodeProperties => 
   name: "responseMode",
   type: "options",
   default: "aggregatedJson",
-  description: "Choose how the Plug response should be returned to n8n.",
+  description:
+    "Choose the shape of the node output. Use Aggregated JSON for most workflows and Chunk Items for large socket streams.",
   options: [
     {
       name: "Aggregated JSON",
       value: "aggregatedJson",
-      description: "Returns rows as items when possible, otherwise a single JSON item.",
+      description:
+        "Returns SQL rows as n8n items when possible, otherwise one JSON item.",
     },
     ...(supportsSocket
       ? [
@@ -86,7 +88,7 @@ const buildResponseModeProperty = (supportsSocket: boolean): INodeProperties => 
             name: "Chunk Items",
             value: "chunkItems",
             description:
-              "Useful for socket SQL streams. Other operation and channel combinations fall back to aggregated output.",
+              "Returns socket stream chunks as items for large result sets. Other combinations fall back to aggregated output.",
           },
         ]
       : []),
@@ -161,7 +163,8 @@ const sqlAdvancedOptions: INodeProperties = {
       name: "maxRows",
       type: "number",
       default: 0,
-      description: "Optional max_rows value for sql.execute.",
+      description:
+        "Maximum rows to ask the agent to return. Use 0 to leave the agent default unchanged.",
     },
     {
       displayName: "Execution Mode",
@@ -186,14 +189,14 @@ const sqlAdvancedOptions: INodeProperties = {
       name: "page",
       type: "number",
       default: 0,
-      description: "Optional page number. Use together with Page Size.",
+      description: "Page number for page-based pagination. Use together with Page Size.",
     },
     {
       displayName: "Page Size",
       name: "pageSize",
       type: "number",
       default: 0,
-      description: "Optional page size. Use together with Page.",
+      description: "Rows per page for page-based pagination. Use together with Page.",
     },
     {
       displayName: "Cursor",
@@ -215,6 +218,14 @@ const sqlAdvancedOptions: INodeProperties = {
       type: "string",
       default: "",
       description: "Optional idempotency key forwarded to the agent.",
+    },
+    {
+      displayName: "Require WHERE for UPDATE/DELETE",
+      name: "requireWhereForUpdateDelete",
+      type: "boolean",
+      default: true,
+      description:
+        "Whether to block UPDATE and DELETE statements that do not include a WHERE clause before sending them to Plug.",
     },
   ],
 };
@@ -238,7 +249,8 @@ const batchAdvancedOptions: INodeProperties = {
       name: "maxRows",
       type: "number",
       default: 0,
-      description: "Optional max_rows value for sql.executeBatch.",
+      description:
+        "Maximum rows to ask the agent to return from batch commands. Use 0 to leave the agent default unchanged.",
     },
     {
       displayName: "Transaction",
@@ -260,6 +272,14 @@ const batchAdvancedOptions: INodeProperties = {
       type: "string",
       default: "",
       description: "Optional idempotency key forwarded to the agent.",
+    },
+    {
+      displayName: "Require WHERE for UPDATE/DELETE",
+      name: "requireWhereForUpdateDelete",
+      type: "boolean",
+      default: true,
+      description:
+        "Whether to block UPDATE and DELETE statements in the batch that do not include a WHERE clause before sending them to Plug.",
     },
   ],
 };
@@ -415,7 +435,7 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
         type: "options",
         default: "rest",
         description:
-          "Choose whether the command should run over REST or the Plug consumer socket.",
+          "Choose REST for standard requests or Socket for lower-latency commands and stream-friendly SQL output.",
         options: [
           { name: "REST", value: "rest" },
           { name: "Socket", value: "socket" },
@@ -433,7 +453,7 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
         type: "options",
         default: "rest",
         description:
-          "Choose whether the command should run over REST or the Plug consumer socket.",
+          "Choose REST for standard requests or Socket for lower-latency commands and stream-friendly SQL output.",
         options: [
           { name: "REST", value: "rest" },
           { name: "Socket", value: "socket" },
@@ -500,8 +520,9 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
       typeOptions: {
         rows: 8,
       },
-      placeholder: "SELECT * FROM example_table WHERE id = :id",
-      description: "The SQL statement to send with sql.execute.",
+      placeholder: "SELECT *\nFROM {{substitua_pela_tabela}}\nWHERE id = :id\nLIMIT 10;",
+      description:
+        "SQL to execute. Replace template markers before running and use :name placeholders with Named Params JSON for dynamic values.",
       displayOptions: {
         show: {
           operation: ["executeSql"],
@@ -517,9 +538,9 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
       typeOptions: {
         rows: 4,
       },
-      placeholder: '{"id": 1}',
+      placeholder: '{\n  "id": "{{$json.id}}"\n}',
       description:
-        "Optional JSON object with named SQL parameters. Leave empty when not needed.",
+        "Optional JSON object for :name SQL parameters. Values can use n8n expressions such as {{$json.id}}.",
       displayOptions: {
         show: {
           operation: ["executeSql"],
@@ -531,13 +552,14 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
       displayName: "Batch Commands JSON",
       name: "batchCommandsJson",
       type: "string",
-      default: '[\n  {\n    "sql": "SELECT 1"\n  }\n]',
+      default:
+        '[\n  {\n    "sql": "SELECT * FROM {{substitua_pela_tabela}} WHERE id = :id",\n    "params": {\n      "id": "{{$json.id}}"\n    }\n  }\n]',
       required: true,
       typeOptions: {
         rows: 10,
       },
       description:
-        "JSON array of sql.executeBatch command items. Each item can include sql, params, and execution_order.",
+        "JSON array of batch SQL items. Replace template markers; each item can include sql, params, and execution_order.",
       displayOptions: {
         show: {
           operation: ["executeBatch"],

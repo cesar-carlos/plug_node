@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { PlugDatabase } from "../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/PlugDatabase.node";
 import { getPlugE2EConfig } from "./helpers/e2eEnv";
@@ -7,6 +7,7 @@ import { executeOrSkipInfrastructure } from "./helpers/executeOrSkip";
 import { createLiveExecuteContext } from "./helpers/liveExecuteContext";
 
 const e2eConfig = getPlugE2EConfig();
+const socketCredentials = e2eConfig.socketCredentials;
 
 const compactQueryLabel = (query: string): string => query.replace(/\s+/g, " ").trim();
 
@@ -118,7 +119,7 @@ describe.sequential("Plug Database Socket E2E", () => {
   }) => {
     const node = new PlugDatabase();
     const context = createLiveExecuteContext({
-      credentials: e2eConfig.credentials,
+      credentials: socketCredentials,
       parameters: {
         operation: "validateContext",
         channel: "socket",
@@ -135,7 +136,7 @@ describe.sequential("Plug Database Socket E2E", () => {
     expect(result[0][0].json).toMatchObject({
       __plug: {
         channel: "socket",
-        agentId: e2eConfig.credentials.agentId,
+        agentId: socketCredentials.agentId,
       },
     });
     expect(result[0][0].json).toHaveProperty("result");
@@ -148,7 +149,7 @@ describe.sequential("Plug Database Socket E2E", () => {
     }) => {
       const node = new PlugDatabase();
       const context = createLiveExecuteContext({
-        credentials: e2eConfig.credentials,
+        credentials: socketCredentials,
         parameters: {
           operation: "executeSql",
           channel: "socket",
@@ -179,7 +180,7 @@ describe.sequential("Plug Database Socket E2E", () => {
       expect(output).toMatchObject({
         __plug: {
           channel: "socket",
-          agentId: e2eConfig.credentials.agentId,
+          agentId: socketCredentials.agentId,
         },
       });
       expect(output).toHaveProperty("__plug.conversationId");
@@ -193,7 +194,7 @@ describe.sequential("Plug Database Socket E2E", () => {
   )}`, async ({ skip }) => {
     const node = new PlugDatabase();
     const context = createLiveExecuteContext({
-      credentials: e2eConfig.credentials,
+      credentials: socketCredentials,
       parameters: {
         operation: "executeSql",
         channel: "socket",
@@ -226,7 +227,7 @@ describe.sequential("Plug Database Socket E2E", () => {
     expect(output).toMatchObject({
       __plug: {
         channel: "socket",
-        agentId: e2eConfig.credentials.agentId,
+        agentId: socketCredentials.agentId,
       },
     });
     expect(output).toHaveProperty("__plug.conversationId");
@@ -260,7 +261,7 @@ describe.sequential("Plug Database Socket E2E", () => {
   )}`, async ({ skip }) => {
     const node = new PlugDatabase();
     const context = createLiveExecuteContext({
-      credentials: e2eConfig.credentials,
+      credentials: socketCredentials,
       parameters: {
         operation: "executeSql",
         channel: "socket",
@@ -292,7 +293,7 @@ describe.sequential("Plug Database Socket E2E", () => {
     expect(output).toMatchObject({
       __plug: {
         channel: "socket",
-        agentId: e2eConfig.credentials.agentId,
+        agentId: socketCredentials.agentId,
       },
     });
     expect(output).toHaveProperty("__plug.conversationId");
@@ -316,7 +317,7 @@ describe.sequential("Plug Database Socket E2E", () => {
   )}`, async ({ skip }) => {
     const node = new PlugDatabase();
     const context = createLiveExecuteContext({
-      credentials: e2eConfig.credentials,
+      credentials: socketCredentials,
       parameters: {
         operation: "executeSql",
         channel: "socket",
@@ -342,7 +343,7 @@ describe.sequential("Plug Database Socket E2E", () => {
     expect(output).toMatchObject({
       __plug: {
         channel: "socket",
-        agentId: e2eConfig.credentials.agentId,
+        agentId: socketCredentials.agentId,
       },
     });
     expect(output).toHaveProperty("__plug.conversationId");
@@ -364,7 +365,7 @@ describe.sequential("Plug Database Socket E2E", () => {
   )}`, async ({ skip }) => {
     const node = new PlugDatabase();
     const context = createLiveExecuteContext({
-      credentials: e2eConfig.credentials,
+      credentials: socketCredentials,
       parameters: {
         operation: "executeSql",
         channel: "socket",
@@ -390,7 +391,7 @@ describe.sequential("Plug Database Socket E2E", () => {
     expect(output).toMatchObject({
       __plug: {
         channel: "socket",
-        agentId: e2eConfig.credentials.agentId,
+        agentId: socketCredentials.agentId,
       },
     });
     expect(output).toHaveProperty("__plug.conversationId");

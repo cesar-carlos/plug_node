@@ -9,6 +9,58 @@ on:
   pull_request:
 
 jobs:
+  socket-protocol:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        script:
+          - test:socket:core
+          - test:socket:trigger
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Repair optional native bindings on Linux
+        run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
+
+      - name: Run focused socket protocol tests
+        run: npm run ${{ matrix.script }}
+
+  payload-frame-benchmark:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Repair optional native bindings on Linux
+        run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
+
+      - name: Run PayloadFrame benchmark
+        run: PLUG_BENCH_ITERATIONS=25 npm run bench:payload-frame
+
   verify:
     runs-on: ubuntu-latest
 

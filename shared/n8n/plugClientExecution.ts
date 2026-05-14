@@ -138,6 +138,16 @@ const operationsRequiringClientToken = new Set([
   "getClientTokenPolicy",
 ]);
 
+const sqlTemplateMarkers = [
+  "{{substitua_pela_tabela}}",
+  "example_table",
+  "sua_tabela",
+  "TODO",
+  "CHANGE_ME",
+] as const;
+
+const sqlNamedParameterPattern = /(?<!:):([A-Za-z_][A-Za-z0-9_]*)/g;
+
 const resolveSocketImplementation = (
   context: IExecuteFunctions,
 ): PlugSocketImplementation =>
@@ -247,6 +257,99 @@ const resolveExecutionContext = (
   };
 };
 
+const stripSqlCommentsAndStrings = (sql: string): string =>
+  sql
+    .replace(/'([^']|'')*'/g, "''")
+    .replace(/"([^"]|"")*"/g, '""')
+    .replace(/--.*$/gm, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+
+const findTemplateMarker = (sql: string): string | undefined => {
+  const normalizedSql = sql.toLowerCase();
+
+  return sqlTemplateMarkers.find((marker) =>
+    normalizedSql.includes(marker.toLowerCase()),
+  );
+};
+
+const findNamedSqlParameters = (sql: string): string[] => {
+  const cleanSql = stripSqlCommentsAndStrings(sql);
+  const parameters = new Set<string>();
+
+  for (const match of cleanSql.matchAll(sqlNamedParameterPattern)) {
+    parameters.add(match[1]);
+  }
+
+  return [...parameters];
+};
+
+const validateNamedSqlParameters = (
+  sql: string,
+  params: JsonObject | undefined,
+  fieldLabel: string,
+): void => {
+  const parameterNames = findNamedSqlParameters(sql);
+  if (parameterNames.length === 0) {
+    return;
+  }
+
+  const missingParameter = parameterNames.find(
+    (parameterName) => !params || !(parameterName in params),
+  );
+  if (!missingParameter) {
+    return;
+  }
+
+  throw new PlugValidationError(
+    `${fieldLabel} uses :${missingParameter}, but Named Params JSON does not contain the key "${missingParameter}".`,
+  );
+};
+
+const validateSafeMutationSql = (sql: string, fieldLabel: string): void => {
+  const cleanStatements = stripSqlCommentsAndStrings(sql)
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter((statement) => statement !== "");
+
+  const unsafeStatement = cleanStatements.find((statement) => {
+    const normalizedStatement = statement.replace(/\s+/g, " ").toLowerCase();
+    return (
+      /(^|\s)(update|delete)\s/.test(normalizedStatement) &&
+      !/(^|\s)where\s/.test(normalizedStatement)
+    );
+  });
+
+  if (!unsafeStatement) {
+    return;
+  }
+
+  throw new PlugValidationError(
+    `${fieldLabel} contains UPDATE/DELETE without WHERE. Add a WHERE clause or turn off Require WHERE for UPDATE/DELETE in Additional Options.`,
+  );
+};
+
+const validateGuidedSql = (
+  sql: string,
+  params: JsonObject | undefined,
+  options: {
+    readonly fieldLabel: string;
+    readonly requireWhereForUpdateDelete: boolean;
+  },
+): void => {
+  const marker = findTemplateMarker(sql);
+  if (marker) {
+    throw new PlugValidationError(
+      `${options.fieldLabel} still contains ${marker}; replace it before running the node.`,
+    );
+  }
+
+  validateNamedSqlParameters(sql, params, options.fieldLabel);
+
+  if (options.requireWhereForUpdateDelete) {
+    validateSafeMutationSql(sql, options.fieldLabel);
+  }
+};
+
 const buildGuidedSqlCommand = (
   context: IExecuteFunctions,
   itemIndex: number,
@@ -274,6 +377,8 @@ const buildGuidedSqlCommand = (
   const idempotencyKey = toOptionalString(options.idempotencyKey);
   const apiVersion = toOptionalString(options.apiVersion) ?? DEFAULT_API_VERSION;
   const meta = parseOptionalJsonObject(String(options.metaJson ?? ""), "RPC Meta JSON");
+  const requireWhereForUpdateDelete =
+    toOptionalBoolean(options.requireWhereForUpdateDelete) ?? true;
 
   if (
     (page !== undefined && pageSize === undefined) ||
@@ -300,6 +405,11 @@ const buildGuidedSqlCommand = (
       "Multi Result cannot be combined with Named Params JSON",
     );
   }
+
+  validateGuidedSql(sql, params, {
+    fieldLabel: "SQL",
+    requireWhereForUpdateDelete,
+  });
 
   const command = applyCommandDefaults(
     {
@@ -359,6 +469,8 @@ const buildGuidedBatchCommand = (
   const idempotencyKey = toOptionalString(options.idempotencyKey);
   const apiVersion = toOptionalString(options.apiVersion) ?? DEFAULT_API_VERSION;
   const meta = parseOptionalJsonObject(String(options.metaJson ?? ""), "RPC Meta JSON");
+  const requireWhereForUpdateDelete =
+    toOptionalBoolean(options.requireWhereForUpdateDelete) ?? true;
 
   const batchItems = commands.map((item, index) => {
     if (!isRecord(item)) {
@@ -368,9 +480,15 @@ const buildGuidedBatchCommand = (
       throw new PlugValidationError(`Batch command at index ${index} must include sql`);
     }
 
+    const params = isRecord(item.params) ? item.params : undefined;
+    validateGuidedSql(item.sql, params, {
+      fieldLabel: `Batch command at index ${index}`,
+      requireWhereForUpdateDelete,
+    });
+
     return {
       sql: item.sql,
-      ...(isRecord(item.params) ? { params: item.params } : {}),
+      ...(params ? { params } : {}),
       ...(typeof item.execution_order === "number"
         ? { execution_order: item.execution_order }
         : {}),

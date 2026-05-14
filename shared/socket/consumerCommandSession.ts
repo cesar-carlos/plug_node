@@ -4,6 +4,7 @@ import {
   DEFAULT_API_VERSION,
   DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
   DEFAULT_REQUEST_TIMEOUT_MS,
+  SOCKET_PROTOCOL_VERSION,
   type BridgeCommand,
   type ConsumerCommandNotificationResponse,
   type ConsumerCommandSocketResponsePayload,
@@ -18,6 +19,7 @@ import {
   type PlugSession,
   type RelayConnectionReadyPayload,
   type RpcSingleCommand,
+  type SocketCommandRuntimeMetrics,
 } from "../contracts/api";
 import type { PayloadFrameSigningOptions } from "../contracts/payload-frame";
 import { PlugError, PlugTimeoutError, PlugValidationError } from "../contracts/errors";
@@ -605,6 +607,7 @@ const requestStreamPull = async (
   streamId: string,
   timeoutMs: number,
   windowSize = DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
+  onIgnoredResponse?: (payload: ConsumerCommandStreamPullResponsePayload) => void,
 ): Promise<number> =>
   new Promise<number>((resolve, reject) => {
     const normalizedWindowSize = normalizeStreamPullWindowSize(
@@ -623,6 +626,7 @@ const requestStreamPull = async (
       try {
         const response = normalizeStreamPullResponse(payload);
         if (!matchesStreamPullResponse(response, requestId, streamId)) {
+          onIgnoredResponse?.(response);
           return;
         }
 
@@ -729,6 +733,21 @@ export const executeConsumerCommand = async (
     let chunkCount = 0;
     let bufferedBytes = 0;
     let bufferedRows = 0;
+    let ignoredCommandResponses = 0;
+    let ignoredStreamChunks = 0;
+    let ignoredStreamCompletes = 0;
+    let ignoredStreamPullResponses = 0;
+
+    const buildMetrics = (): SocketCommandRuntimeMetrics => ({
+      ignoredCommandResponses,
+      ignoredStreamChunks,
+      ignoredStreamCompletes,
+      ignoredStreamPullResponses,
+      streamPullRequests: pullCount,
+      streamChunks: chunkCount,
+      bufferedBytes,
+      bufferedRows,
+    });
 
     const assertBufferLimits = (): void => {
       if (
@@ -773,6 +792,7 @@ export const executeConsumerCommand = async (
         notification: true,
         acceptedCommands: response.acceptedCommands,
         ...(connectionReady ? { connectionReady } : {}),
+        metrics: buildMetrics(),
       });
     };
 
@@ -782,6 +802,7 @@ export const executeConsumerCommand = async (
       }
 
       streamPullInFlight = true;
+      pullCount += 1;
       try {
         const nextWindowSize = await requestStreamPull(
           input.transport,
@@ -789,8 +810,18 @@ export const executeConsumerCommand = async (
           activeStreamId,
           timeoutMs,
           input.streamPullWindowSize ?? DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
+          (payload) => {
+            ignoredStreamPullResponses += 1;
+            plugLogger.debug("transport.socket.command.stream_pull_ignored", {
+              socketMode: "agentsCommand",
+              agentId: input.agentId,
+              expectedRequestId: activeRequestId,
+              expectedStreamId: activeStreamId,
+              requestId: payload.requestId,
+              streamId: payload.streamId,
+            });
+          },
         );
-        pullCount += 1;
         streamCreditsRemaining = Math.max(nextWindowSize - pendingChunksDuringPull, 0);
         pendingChunksDuringPull = 0;
       } finally {
@@ -820,6 +851,15 @@ export const executeConsumerCommand = async (
         try {
           const response = normalizeCommandResponse(payload);
           if (!matchesCommandRequest(response, commandRequestId)) {
+            ignoredCommandResponses += 1;
+            plugLogger.debug("transport.socket.command.response_ignored", {
+              socketMode: "agentsCommand",
+              agentId: input.agentId,
+              expectedRequestId: commandRequestId,
+              requestId: response.requestId,
+              clientRequestId: response.clientRequestId,
+              streamId: response.streamId,
+            });
             return;
           }
 
@@ -889,6 +929,7 @@ export const executeConsumerCommand = async (
               rawResponsePayload: response.response,
               chunkPayloads,
               rawChunkFrames: [],
+              metrics: buildMetrics(),
             });
             return;
           }
@@ -913,6 +954,16 @@ export const executeConsumerCommand = async (
               activeStreamId,
             )
           ) {
+            ignoredStreamChunks += 1;
+            plugLogger.debug("transport.socket.command.stream_chunk_ignored", {
+              socketMode: "agentsCommand",
+              agentId: input.agentId,
+              expectedRequestId: activeRequestId,
+              commandRequestId,
+              expectedStreamId: activeStreamId,
+              requestId: toRequestId(chunk.request_id),
+              streamId: typeof chunk.stream_id === "string" ? chunk.stream_id : undefined,
+            });
             return;
           }
 
@@ -958,6 +1009,17 @@ export const executeConsumerCommand = async (
             activeStreamId,
           )
         ) {
+          ignoredStreamCompletes += 1;
+          plugLogger.debug("transport.socket.command.stream_complete_ignored", {
+            socketMode: "agentsCommand",
+            agentId: input.agentId,
+            expectedRequestId: activeRequestId,
+            commandRequestId,
+            expectedStreamId: activeStreamId,
+            requestId: toRequestId(complete.request_id),
+            streamId:
+              typeof complete.stream_id === "string" ? complete.stream_id : undefined,
+          });
           return;
         }
 
@@ -992,6 +1054,7 @@ export const executeConsumerCommand = async (
           chunkPayloads,
           completePayload,
           rawChunkFrames: [],
+          metrics: buildMetrics(),
         });
       } catch (error: unknown) {
         cleanup();
@@ -1027,6 +1090,7 @@ export const executeConsumerCommand = async (
     input.transport.on(appErrorEvent, handleAppError);
     input.transport.on(disconnectEvent, handleDisconnect);
     input.transport.emit(commandEvent, {
+      protocolVersion: SOCKET_PROTOCOL_VERSION,
       requestId: commandRequestId,
       clientRequestId: commandRequestId,
       agentId: input.agentId,

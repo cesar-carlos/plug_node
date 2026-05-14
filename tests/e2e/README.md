@@ -11,12 +11,18 @@ Exercise the real Plug API and relay socket integration with local credentials s
 
 The tracked file is `.env.example`. Real credentials stay only in `.env`, which is ignored by Git.
 
+For socket E2E, prefer a dedicated test agent with minimal permissions. Set
+`PLUG_E2E_SOCKET_AGENT_ID` and `PLUG_E2E_SOCKET_CLIENT_TOKEN` when the socket test
+agent differs from the REST smoke-test agent. When those variables are empty, the
+socket suite falls back to `PLUG_E2E_AGENT_ID` and `PLUG_E2E_CLIENT_TOKEN`.
+
 ## Commands
 
 ```bash
 npm run test:e2e
 npm run test:e2e:rest
 npm run test:e2e:socket
+npm run test:socket
 ```
 
 Local protocol and codec guardrails that do not need live Plug credentials run in the normal unit suite. PayloadFrame decode cost can be sampled with:

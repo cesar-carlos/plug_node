@@ -24,6 +24,10 @@ The canonical package provides only the Socket.IO transport adapter. The shared 
 
 Socket error classification lives in `shared/socket/socketErrors.ts`. Keep token refreshability, terminal auth codes, `connect_error`, and `app:error` mapping there instead of duplicating it across relay, `agents:command`, and custom event sessions.
 
+`agents:command` envelopes include `protocolVersion` as an explicit client protocol marker. The current value is `2026-05-14`; keep socket fixtures and server-facing documentation aligned when this changes.
+
+Socket command results expose correlation counters in `__plug.metrics` when Plug metadata is included. These counters are intended for production troubleshooting of stale responses, ignored stream chunks, ignored stream completes, ignored stream pull responses, accepted chunks, pull requests, and local buffer usage.
+
 Protocol fixtures live in `tests/fixtures/socketProtocolFixtures.ts`, with regression coverage in `tests/internal/socketProtocolContracts.test.ts`. Update those fixtures when the server contract changes.
 
 After changing `shared`, run `npm run sync-shared`. Do not manually edit files under `packages/*/generated/shared`.

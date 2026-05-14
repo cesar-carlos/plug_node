@@ -36,6 +36,15 @@ The API base URL is fixed in code.
 - `Include Plug Metadata`
   - enabled by default
 
+## Guided SQL UX
+
+- guided SQL uses placeholders and descriptions as safe references instead of auto-filling an executable query
+- examples use named parameters such as `:id` plus `Named Params JSON` values like `{{$json.id}}`
+- guided SQL rejects unreplaced template markers before sending commands to Plug
+- guided SQL checks that every `:name` placeholder has a matching key in `Named Params JSON`
+- `Require WHERE for UPDATE/DELETE` is enabled by default for guided SQL and guided batch commands
+- advanced JSON-RPC mode remains the escape hatch for intentional low-level commands
+
 ## Error presentation
 
 - prefer user-facing API messages

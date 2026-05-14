@@ -6,11 +6,13 @@ import type {
   ConsumerCommandStreamCompletePayload,
   ConsumerCommandStreamPullResponsePayload,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
+import { SOCKET_PROTOCOL_VERSION } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 
 export const socketProtocolRequestId = "request-contract-1";
 export const socketProtocolStreamId = "stream-contract-1";
 
 export const agentsCommandRequestFixture = {
+  protocolVersion: SOCKET_PROTOCOL_VERSION,
   requestId: socketProtocolRequestId,
   clientRequestId: socketProtocolRequestId,
   agentId: "agent-1",

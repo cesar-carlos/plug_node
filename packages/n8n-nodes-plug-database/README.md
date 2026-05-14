@@ -102,6 +102,27 @@ The package uses the fixed API base URL:
 
 - `https://plug-server.se7esistemassinop.com.br/api/v1`
 
+## SQL Examples and Safe Mode
+
+`Resource = SQL` uses guided placeholders as references instead of inserting an executable query automatically. Replace template markers such as `{{substitua_pela_tabela}}` before running the node.
+
+For named parameters, use SQL placeholders and `Named Params JSON`:
+
+```sql
+SELECT *
+FROM Cliente
+WHERE id = :id
+LIMIT 10;
+```
+
+```json
+{
+  "id": "{{$json.id}}"
+}
+```
+
+Guided SQL and guided batch commands reject unreplaced template markers, missing named parameters, and `UPDATE` or `DELETE` statements without a `WHERE` clause. Turn off `Require WHERE for UPDATE/DELETE` only for workflows that intentionally perform a global mutation. Advanced JSON-RPC mode does not apply these guided-mode checks.
+
 `Plura.ai Automations API` asks for:
 
 - `Email`

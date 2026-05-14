@@ -8,6 +8,42 @@ import {
 } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/payloadFrameCodec";
 import type { PayloadFrameEnvelope } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/payload-frame";
 
+const createDeterministicRandom = (seed: number): (() => number) => {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1_664_525 + 1_013_904_223) >>> 0;
+    return state / 0x1_0000_0000;
+  };
+};
+
+const createRandomJsonPayload = (random: () => number, depth = 0): unknown => {
+  const pick = Math.floor(random() * (depth > 2 ? 4 : 7));
+  if (pick === 0) {
+    return null;
+  }
+  if (pick === 1) {
+    return Math.floor(random() * 10_000);
+  }
+  if (pick === 2) {
+    return random() > 0.5;
+  }
+  if (pick === 3) {
+    return `value-${Math.floor(random() * 1_000_000).toString(36)}`;
+  }
+  if (pick === 4) {
+    return Array.from({ length: Math.floor(random() * 5) }, () =>
+      createRandomJsonPayload(random, depth + 1),
+    );
+  }
+
+  return Object.fromEntries(
+    Array.from({ length: 1 + Math.floor(random() * 4) }, (_, index) => [
+      `field_${depth}_${index}`,
+      createRandomJsonPayload(random, depth + 1),
+    ]),
+  );
+};
+
 describe("payloadFrameCodec", () => {
   it("encodes and decodes JSON payloads", () => {
     const frame = encodePayloadFrame(
@@ -305,5 +341,57 @@ describe("payloadFrameCodec", () => {
         unexpected: true,
       }),
     ).rejects.toThrow("PayloadFrame contains unsupported fields");
+  });
+
+  it("round-trips deterministic random JSON payloads across compression modes", async () => {
+    const random = createDeterministicRandom(0xc0ffee);
+    const compressionModes = ["none", "default", "always"] as const;
+
+    for (let index = 0; index < 48; index += 1) {
+      const payload = createRandomJsonPayload(random);
+      const compression = compressionModes[index % compressionModes.length];
+      const frame = encodePayloadFrame(payload, {
+        requestId: `fuzz-${index}`,
+        compression,
+        signing: {
+          key: "shared-secret",
+        },
+      });
+
+      expect(
+        decodePayloadFrame(frame, {
+          signing: {
+            key: "shared-secret",
+          },
+        }).data,
+      ).toEqual(payload);
+
+      await expect(
+        decodePayloadFrameAsync(frame, {
+          signing: {
+            key: "wrong-secret",
+          },
+        }),
+      ).rejects.toThrow("PayloadFrame signature verification failed");
+    }
+  });
+
+  it("rejects deterministic random metadata tampering before payload trust", () => {
+    const random = createDeterministicRandom(0x5afe);
+
+    for (let index = 0; index < 24; index += 1) {
+      const frame = encodePayloadFrame(createRandomJsonPayload(random), {
+        requestId: `tamper-${index}`,
+        compression: index % 2 === 0 ? "none" : "always",
+      });
+      const tampered =
+        index % 3 === 0
+          ? { ...frame, compressedSize: frame.compressedSize + 1 }
+          : index % 3 === 1
+            ? { ...frame, enc: "text" }
+            : { ...frame, contentType: "text/plain" };
+
+      expect(() => decodePayloadFrame(tampered)).toThrow();
+    }
   });
 });

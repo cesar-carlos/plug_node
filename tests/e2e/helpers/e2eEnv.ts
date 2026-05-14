@@ -9,6 +9,7 @@ import { DEFAULT_BASE_URL } from "../../../packages/n8n-nodes-plug-database/gene
 
 export interface PlugE2EConfig {
   readonly credentials: PlugCredentials;
+  readonly socketCredentials: PlugCredentials;
   readonly timeoutMs: number;
   readonly sqlQueries: readonly string[];
   readonly multiResultSuccessSqlQuery: string;
@@ -77,6 +78,11 @@ const getOptionalQuery = (name: string, fallback: string): string => {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
 };
 
+const getOptionalEnv = (name: string): string | undefined => {
+  const value = process.env[name];
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+};
+
 export const getPlugE2EConfig = (): PlugE2EConfig => {
   if (cachedConfig) {
     return cachedConfig;
@@ -90,16 +96,24 @@ export const getPlugE2EConfig = (): PlugE2EConfig => {
 
   loadDotEnv({ path: envPath, quiet: true });
 
+  const credentials: PlugCredentials = {
+    user: getRequiredEnv("PLUG_E2E_USER"),
+    password: getRequiredEnv("PLUG_E2E_PASSWORD"),
+    agentId: getRequiredEnv("PLUG_E2E_AGENT_ID"),
+    clientToken: getRequiredEnv("PLUG_E2E_CLIENT_TOKEN"),
+    baseUrl:
+      process.env.PLUG_E2E_BASE_URL && process.env.PLUG_E2E_BASE_URL.trim() !== ""
+        ? process.env.PLUG_E2E_BASE_URL.trim()
+        : DEFAULT_BASE_URL,
+  };
+
   cachedConfig = {
-    credentials: {
-      user: getRequiredEnv("PLUG_E2E_USER"),
-      password: getRequiredEnv("PLUG_E2E_PASSWORD"),
-      agentId: getRequiredEnv("PLUG_E2E_AGENT_ID"),
-      clientToken: getRequiredEnv("PLUG_E2E_CLIENT_TOKEN"),
-      baseUrl:
-        process.env.PLUG_E2E_BASE_URL && process.env.PLUG_E2E_BASE_URL.trim() !== ""
-          ? process.env.PLUG_E2E_BASE_URL.trim()
-          : DEFAULT_BASE_URL,
+    credentials,
+    socketCredentials: {
+      ...credentials,
+      agentId: getOptionalEnv("PLUG_E2E_SOCKET_AGENT_ID") ?? credentials.agentId,
+      clientToken:
+        getOptionalEnv("PLUG_E2E_SOCKET_CLIENT_TOKEN") ?? credentials.clientToken,
     },
     timeoutMs: parseTimeoutMs(),
     sqlQueries: getOptionalSqlQueries(),

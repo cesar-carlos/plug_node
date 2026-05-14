@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 import { executePlugClientNode } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugClientExecution";
+import { buildPlugClientNodeDescription } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugClientDescription";
 import type { PlugCredentials } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 import { createMockExecuteContext } from "../helpers/mockExecuteFunctions";
 
@@ -408,6 +409,309 @@ describe("executePlugClientNode", () => {
         },
       },
     });
+  });
+
+  it("builds guided SQL with named parameters from n8n expressions", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeSql",
+        inputMode: "guided",
+        responseMode: "aggregatedJson",
+        includePlugMetadata: true,
+        sql: "SELECT * FROM Cliente WHERE id = :id",
+        namedParamsJson: '{"id":"{{$json.id}}"}',
+        sqlOptions: {},
+      },
+      inputData: [{ json: { id: 123 } }],
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-1",
+            requestId: "request-1",
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: "rpc-1",
+                success: true,
+                result: {
+                  rows: [{ id: 123 }],
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(context.httpRequestMock.mock.calls[1][0].body).toMatchObject({
+      command: {
+        method: "sql.execute",
+        params: {
+          sql: "SELECT * FROM Cliente WHERE id = :id",
+          params: {
+            id: "{{$json.id}}",
+          },
+        },
+      },
+    });
+  });
+
+  it("rejects guided SQL when template markers were not replaced", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeSql",
+        inputMode: "guided",
+        responseMode: "aggregatedJson",
+        includePlugMetadata: true,
+        sql: "SELECT * FROM {{substitua_pela_tabela}} WHERE id = :id",
+        namedParamsJson: '{"id":1}',
+        sqlOptions: {},
+      },
+      responses: [],
+    });
+
+    await expect(
+      executePlugClientNode(context, {
+        supportsSocket: false,
+      }),
+    ).rejects.toThrow(
+      "SQL still contains {{substitua_pela_tabela}}; replace it before running the node.",
+    );
+  });
+
+  it("rejects guided SQL when a named parameter is missing", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeSql",
+        inputMode: "guided",
+        responseMode: "aggregatedJson",
+        includePlugMetadata: true,
+        sql: "SELECT * FROM Cliente WHERE id = :id",
+        namedParamsJson: "",
+        sqlOptions: {},
+      },
+      responses: [],
+    });
+
+    await expect(
+      executePlugClientNode(context, {
+        supportsSocket: false,
+      }),
+    ).rejects.toThrow(
+      'SQL uses :id, but Named Params JSON does not contain the key "id".',
+    );
+  });
+
+  it("blocks guided UPDATE without WHERE by default", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeSql",
+        inputMode: "guided",
+        responseMode: "aggregatedJson",
+        includePlugMetadata: true,
+        sql: "UPDATE Cliente SET ativo = 0",
+        namedParamsJson: "",
+        sqlOptions: {},
+      },
+      responses: [],
+    });
+
+    await expect(
+      executePlugClientNode(context, {
+        supportsSocket: false,
+      }),
+    ).rejects.toThrow(
+      "SQL contains UPDATE/DELETE without WHERE. Add a WHERE clause or turn off Require WHERE for UPDATE/DELETE in Additional Options.",
+    );
+  });
+
+  it("allows guided UPDATE without WHERE when safe mutation validation is disabled", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeSql",
+        inputMode: "guided",
+        responseMode: "aggregatedJson",
+        includePlugMetadata: true,
+        sql: "UPDATE Cliente SET ativo = 0",
+        namedParamsJson: "",
+        sqlOptions: {
+          requireWhereForUpdateDelete: false,
+        },
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-1",
+            requestId: "request-1",
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: "rpc-1",
+                success: true,
+                result: {
+                  affectedRows: 2,
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(context.httpRequestMock.mock.calls[1][0].body).toMatchObject({
+      command: {
+        method: "sql.execute",
+        params: {
+          sql: "UPDATE Cliente SET ativo = 0",
+        },
+      },
+    });
+  });
+
+  it("applies guided SQL validation to each batch command with the item index", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeBatch",
+        inputMode: "guided",
+        responseMode: "aggregatedJson",
+        includePlugMetadata: true,
+        batchCommandsJson:
+          '[{"sql":"SELECT * FROM Cliente WHERE id = :id","params":{"id":1}},{"sql":"DELETE FROM Cliente"}]',
+        batchOptions: {},
+      },
+      responses: [],
+    });
+
+    await expect(
+      executePlugClientNode(context, {
+        supportsSocket: false,
+      }),
+    ).rejects.toThrow(
+      "Batch command at index 1 contains UPDATE/DELETE without WHERE. Add a WHERE clause or turn off Require WHERE for UPDATE/DELETE in Additional Options.",
+    );
+  });
+
+  it("keeps advanced JSON-RPC SQL outside guided safe mutation validation", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeSql",
+        inputMode: "advanced",
+        responseMode: "rawJsonRpc",
+        includePlugMetadata: true,
+        advancedCommandJson:
+          '{"jsonrpc":"2.0","method":"sql.execute","params":{"sql":"DELETE FROM Cliente"}}',
+        sqlOptions: {},
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-1",
+            requestId: "request-1",
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: "rpc-1",
+                success: true,
+                result: {
+                  affectedRows: 10,
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(context.httpRequestMock.mock.calls[1][0].body).toMatchObject({
+      command: {
+        method: "sql.execute",
+        params: {
+          sql: "DELETE FROM Cliente",
+        },
+      },
+    });
+  });
+
+  it("exposes guided SQL templates and safe mode options in the node description", () => {
+    const description = buildPlugClientNodeDescription({
+      supportsSocket: true,
+      displayName: "Plug Database",
+      technicalName: "plugDatabase",
+      credentialName: "plugDatabaseAccountApi",
+      iconBaseName: "plugDatabaseV2",
+      description: "Run Plug Database commands over REST or Socket.",
+      version: [1, 2],
+      defaultVersion: 2,
+    });
+    const sqlProperty = description.properties.find(
+      (property) => property.name === "sql",
+    );
+    const namedParamsProperty = description.properties.find(
+      (property) => property.name === "namedParamsJson",
+    );
+    const sqlOptions = description.properties.find(
+      (property) => property.name === "sqlOptions",
+    );
+    const optionNames =
+      sqlOptions && "options" in sqlOptions
+        ? sqlOptions.options?.map((option) => option.name)
+        : [];
+
+    expect(sqlProperty?.placeholder).toContain("{{substitua_pela_tabela}}");
+    expect(namedParamsProperty?.placeholder).toContain("{{$json.id}}");
+    expect(optionNames).toContain("requireWhereForUpdateDelete");
+    expect(JSON.stringify([sqlProperty, namedParamsProperty, sqlOptions])).not.toContain(
+      "client-token",
+    );
+    expect(JSON.stringify([sqlProperty, namedParamsProperty, sqlOptions])).not.toContain(
+      "secret",
+    );
   });
 
   it("allows discoverRpc without a resolved client token", async () => {

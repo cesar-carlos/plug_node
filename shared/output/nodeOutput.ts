@@ -28,6 +28,7 @@ const toMetadata = (result: PlugCommandTransportResult): JsonObject => ({
               inFlight: result.accepted.inFlight,
             }
           : {}),
+        ...(result.metrics ? { metrics: result.metrics } : {}),
       }
     : {}),
 });

@@ -3,6 +3,7 @@ export const DEFAULT_API_VERSION = "2.8";
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 export const DEFAULT_RELAY_PULL_WINDOW = 32;
 export const DEFAULT_CONSUMER_SOCKET_PULL_WINDOW = 32;
+export const SOCKET_PROTOCOL_VERSION = "2026-05-14";
 
 export type PlugChannel = "rest" | "socket";
 export type PlugSocketImplementation = "agentsCommand" | "relay";
@@ -229,6 +230,7 @@ export type RpcSingleCommand =
 export type BridgeCommand = RpcSingleCommand | RpcSingleCommand[];
 
 export interface AgentCommandRequestBody {
+  readonly protocolVersion?: typeof SOCKET_PROTOCOL_VERSION;
   readonly requestId?: string;
   readonly clientRequestId?: string;
   readonly agentId: string;
@@ -474,6 +476,18 @@ export interface SocketTransportNotificationResult {
   readonly notification: true;
   readonly acceptedCommands: number;
   readonly connectionReady?: RelayConnectionReadyPayload;
+  readonly metrics?: SocketCommandRuntimeMetrics;
+}
+
+export interface SocketCommandRuntimeMetrics extends JsonObject {
+  readonly ignoredCommandResponses: number;
+  readonly ignoredStreamChunks: number;
+  readonly ignoredStreamCompletes: number;
+  readonly ignoredStreamPullResponses: number;
+  readonly streamPullRequests: number;
+  readonly streamChunks: number;
+  readonly bufferedBytes: number;
+  readonly bufferedRows: number;
 }
 
 export interface SocketTransportResult {
@@ -492,6 +506,7 @@ export interface SocketTransportResult {
   readonly rawResponseFrame?: unknown;
   readonly rawChunkFrames: unknown[];
   readonly rawCompleteFrame?: unknown;
+  readonly metrics?: SocketCommandRuntimeMetrics;
 }
 
 export type PlugCommandTransportResult =

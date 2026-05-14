@@ -40,7 +40,7 @@ sequenceDiagram
   A-->>N: accessToken
   N->>S: Socket.IO connect(token)
   S-->>N: connection:ready PayloadFrame
-  N->>S: agents:command { requestId, clientRequestId, command }
+  N->>S: agents:command { protocolVersion, requestId, clientRequestId, command }
   S->>G: encaminha comando
   G-->>S: resposta ou stream
   S-->>N: agents:command_response
@@ -63,7 +63,7 @@ Para compatibilidade com `agents:command`, o servidor deve cumprir estes pontos:
 
 | Evento                           | Requisito                                                                                                                                                              |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agents:command`                 | Receber envelope com `requestId`, `clientRequestId`, `agentId`, `command`, `timeoutMs` e `payloadFrameCompression`.                                                    |
+| `agents:command`                 | Receber envelope com `protocolVersion`, `requestId`, `clientRequestId`, `agentId`, `command`, `timeoutMs` e `payloadFrameCompression`.                                 |
 | `agents:command_response`        | Ecoar `requestId` no sucesso; em stream, também enviar `streamId`. Falhas devem incluir `error.code` e `error.message`, e podem incluir `requestId` quando disponível. |
 | `agents:stream_pull`             | Receber `requestId`, `streamId` e `windowSize`.                                                                                                                        |
 | `agents:stream_pull_response`    | Ecoar `requestId`, `streamId` e `windowSize` positivo no sucesso.                                                                                                      |

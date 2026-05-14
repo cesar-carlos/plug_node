@@ -149,6 +149,10 @@ describe("socket protocol contracts", () => {
       socketMode: "agentsCommand",
       requestId: socketProtocolRequestId,
       response: agentsCommandResponseFixture.response,
+      metrics: {
+        ignoredCommandResponses: 0,
+        streamChunks: 0,
+      },
     });
   });
 
@@ -179,6 +183,13 @@ describe("socket protocol contracts", () => {
         result: {
           rows: [{ id: 1 }, { id: 2 }],
         },
+      },
+    });
+    expect(result).toMatchObject({
+      metrics: {
+        ignoredStreamChunks: 1,
+        streamPullRequests: 1,
+        streamChunks: 1,
       },
     });
   });
