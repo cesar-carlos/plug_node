@@ -14,7 +14,6 @@ import {
   type RelayRpcAcceptedSuccessPayload,
   type RelayStreamPullResponsePayload,
   type RpcSingleCommand,
-  type SocketAppErrorPayload,
 } from "../contracts/api";
 import type {
   PayloadFrameEnvelope,
@@ -25,6 +24,7 @@ import { plugLogger } from "../logging/plugLogger";
 import { normalizeRpcPayload } from "../output/rpcNormalization";
 import { decodePayloadFrameAsync, encodePayloadFrameAsync } from "./payloadFrameCodec";
 import { estimateJsonUtf8Bytes, isRecord } from "../utils/json";
+import { createSocketApplicationError, createSocketConnectError } from "./socketErrors";
 
 const appErrorEvent = "app:error";
 const connectErrorEvent = "connect_error";
@@ -62,48 +62,11 @@ const normalizeStreamPullWindowSize = (value: unknown, fallback: number): number
   return Math.min(maxStreamPullWindowSize, Math.max(1, Math.floor(value)));
 };
 
-const createSocketAppError = (payload: unknown): PlugError => {
-  const appError = isRecord(payload) ? (payload as SocketAppErrorPayload) : {};
-  const code =
-    typeof appError.code === "string" && appError.code.trim() !== ""
-      ? appError.code
-      : "SOCKET_APP_ERROR";
-  const details = isRecord(appError.details) ? appError.details : undefined;
-
-  if (code === "ACCOUNT_BLOCKED") {
-    return new PlugError("The Plug account is blocked.", {
-      code,
-      description:
-        "The server closed the socket because the user or client account is blocked.",
-      details,
-      technicalMessage:
-        typeof appError.message === "string" ? appError.message : undefined,
-      authRelated: true,
-    });
-  }
-
-  if (code === "AGENT_ACCESS_REVOKED") {
-    return new PlugError("Client access to this agent was revoked.", {
-      code,
-      description:
-        "Ask the agent owner to approve access again or update the credential before retrying.",
-      details,
-      technicalMessage:
-        typeof appError.message === "string" ? appError.message : undefined,
-      authRelated: true,
-    });
-  }
-
-  return new PlugError(
-    typeof appError.message === "string" && appError.message.trim() !== ""
-      ? appError.message
-      : "Plug socket reported an application error.",
-    {
-      code,
-      details,
-    },
-  );
-};
+const createSocketAppError = (payload: unknown): PlugError =>
+  createSocketApplicationError(payload, {
+    refreshDescription:
+      "The Plug session will be refreshed before retrying the socket operation.",
+  });
 
 const createRelayControlError = (input: {
   readonly code?: string;
@@ -198,21 +161,12 @@ const createDisconnectError = (reason: unknown): PlugError =>
     retryable: true,
   });
 
-const createConnectError = (payload: unknown): PlugError => {
-  const message =
-    payload instanceof Error
-      ? payload.message
-      : typeof payload === "string"
-        ? payload
-        : "Socket connection failed";
-
-  return new PlugError("Failed to connect to the Plug socket.", {
-    code: "SOCKET_CONNECT_ERROR",
-    description: "Run the node again to create a fresh socket connection.",
-    technicalMessage: message,
-    retryable: true,
+const createConnectError = (payload: unknown): PlugError =>
+  createSocketConnectError(payload, {
+    refreshDescription:
+      "The Plug session will be refreshed before retrying the socket operation.",
+    retryDescription: "Run the node again to create a fresh socket connection.",
   });
-};
 
 export interface RelaySocketTransport {
   readonly connected: boolean;

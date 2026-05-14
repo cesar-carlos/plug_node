@@ -29,6 +29,7 @@
     "publish:packages": "changeset publish",
     "sync-shared": "node ./scripts/sync-shared.mjs",
     "build": "npm run build --workspaces --if-present",
+    "bench:payload-frame": "npm run sync-shared && npm run build --workspace n8n-nodes-plug-database && node ./scripts/benchmark-payload-frame.mjs",
     "ci": "npm run verify",
     "dev": "npm run dev --workspaces --if-present",
     "format": "prettier --write .",

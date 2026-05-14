@@ -47,14 +47,20 @@ const credentialName = "plugDatabaseAccountApi";
 const defaultReconnectInitialDelayMs = 1000;
 const defaultReconnectMaxDelayMs = 30_000;
 const defaultReconnectFailureWindowMs = 300_000;
+const backpressureStatsLogIntervalMs = 30_000;
 
 type PayloadSignatureRequirement = "all" | "customEvents" | "agentProfileUpdated";
 
 interface BackpressureSnapshot {
   readonly queuedCount: number;
   readonly inflightCount: number;
+  readonly startedCount: number;
+  readonly processedCount: number;
+  readonly failedCount: number;
   readonly droppedNewestCount: number;
   readonly droppedOldestCount: number;
+  readonly averageQueueLatencyMs: number;
+  readonly averageProcessingMs: number;
 }
 
 interface SubscriptionRefreshSnapshot {
@@ -254,16 +260,62 @@ const createBackpressureQueue = (input: {
   readonly maxQueueSize: number;
   readonly overflowPolicy: SocketEventOverflowPolicy;
   readonly emitError: (error: PlugError) => void;
+  readonly statsLogIntervalMs?: number;
   readonly onDrop?: (
     reason: "dropNewest" | "dropOldest",
     metadata: { readonly queueSize: number },
   ) => void;
+  readonly onStats?: (
+    snapshot: BackpressureSnapshot,
+    metadata: { readonly reason: "drop" | "drain" },
+  ) => void;
 }) => {
-  const queue: Array<() => Promise<void>> = [];
+  const queue: Array<{
+    readonly task: () => Promise<void>;
+    readonly enqueuedAtMs: number;
+  }> = [];
   let inflight = 0;
   let closed = false;
+  let startedCount = 0;
+  let processedCount = 0;
+  let failedCount = 0;
   let droppedNewestCount = 0;
   let droppedOldestCount = 0;
+  let totalQueueLatencyMs = 0;
+  let totalProcessingMs = 0;
+  let lastStatsLoggedAtMs = 0;
+
+  const getStats = (): BackpressureSnapshot => {
+    const completedCount = processedCount + failedCount;
+    return {
+      queuedCount: queue.length,
+      inflightCount: inflight,
+      startedCount,
+      processedCount,
+      failedCount,
+      droppedNewestCount,
+      droppedOldestCount,
+      averageQueueLatencyMs:
+        startedCount > 0 ? Math.round(totalQueueLatencyMs / startedCount) : 0,
+      averageProcessingMs:
+        completedCount > 0 ? Math.round(totalProcessingMs / completedCount) : 0,
+    };
+  };
+
+  const maybeLogStats = (reason: "drop" | "drain"): void => {
+    if (!input.onStats) {
+      return;
+    }
+
+    const now = Date.now();
+    const intervalMs = input.statsLogIntervalMs ?? backpressureStatsLogIntervalMs;
+    if (reason !== "drop" && now - lastStatsLoggedAtMs < intervalMs) {
+      return;
+    }
+
+    lastStatsLoggedAtMs = now;
+    input.onStats(getStats(), { reason });
+  };
 
   const drain = (): void => {
     if (closed) {
@@ -271,18 +323,26 @@ const createBackpressureQueue = (input: {
     }
 
     while (inflight < input.maxInflightEvents && queue.length > 0) {
-      const task = queue.shift();
-      if (!task) {
+      const queuedTask = queue.shift();
+      if (!queuedTask) {
         return;
       }
 
+      const startedAtMs = Date.now();
+      startedCount += 1;
+      totalQueueLatencyMs += Math.max(0, startedAtMs - queuedTask.enqueuedAtMs);
       inflight += 1;
-      task()
+      queuedTask
+        .task()
+        .then(() => {
+          processedCount += 1;
+        })
         .catch((error: unknown) => {
           if (closed) {
             return;
           }
 
+          failedCount += 1;
           input.emitError(
             error instanceof PlugError
               ? error
@@ -293,7 +353,9 @@ const createBackpressureQueue = (input: {
           );
         })
         .finally(() => {
+          totalProcessingMs += Math.max(0, Date.now() - startedAtMs);
           inflight -= 1;
+          maybeLogStats("drain");
           drain();
         });
     }
@@ -304,9 +366,10 @@ const createBackpressureQueue = (input: {
       if (closed) {
         return;
       }
+      const queuedTask = { task, enqueuedAtMs: Date.now() };
 
       if (inflight < input.maxInflightEvents && queue.length === 0) {
-        queue.push(task);
+        queue.push(queuedTask);
         drain();
         return;
       }
@@ -315,6 +378,7 @@ const createBackpressureQueue = (input: {
         if (input.overflowPolicy === "dropNewest") {
           droppedNewestCount += 1;
           input.onDrop?.("dropNewest", { queueSize: queue.length });
+          maybeLogStats("drop");
           return;
         }
 
@@ -322,6 +386,7 @@ const createBackpressureQueue = (input: {
           queue.shift();
           droppedOldestCount += 1;
           input.onDrop?.("dropOldest", { queueSize: queue.length });
+          maybeLogStats("drop");
         } else {
           input.emitError(
             new PlugError("Plug socket event queue is full.", {
@@ -335,7 +400,7 @@ const createBackpressureQueue = (input: {
         }
       }
 
-      queue.push(task);
+      queue.push(queuedTask);
       drain();
     },
     close(): void {
@@ -343,12 +408,7 @@ const createBackpressureQueue = (input: {
       queue.length = 0;
     },
     getStats(): BackpressureSnapshot {
-      return {
-        queuedCount: queue.length,
-        inflightCount: inflight,
-        droppedNewestCount,
-        droppedOldestCount,
-      };
+      return getStats();
     },
   };
 };
@@ -815,12 +875,21 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
       emitError: (error) => {
         this.emitError(error);
       },
+      statsLogIntervalMs: backpressureStatsLogIntervalMs,
       onDrop: (reason, metadata) => {
         plugLogger.warn("transport.socket.custom_event_trigger.dropped", {
           reason,
           queueSize: metadata.queueSize,
           maxQueueSize,
           maxInflightEvents,
+        });
+      },
+      onStats: (snapshot, metadata) => {
+        plugLogger.info("transport.socket.custom_event_trigger.backpressure_stats", {
+          reason: metadata.reason,
+          maxQueueSize,
+          maxInflightEvents,
+          ...snapshot,
         });
       },
     });
@@ -880,6 +949,9 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
             eventSource === "customEvents"
               ? requirePayloadSignatureForCustomEvents
               : requirePayloadSignatureForAgentProfileUpdated,
+          scheduleEvent: (task: () => Promise<void>) => {
+            eventQueue.enqueue(task);
+          },
           onFatalError: (error: PlugError) => {
             void handleRuntimeError(error);
           },
@@ -889,24 +961,22 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
           eventSource === "agentProfileUpdated"
             ? await startAgentProfileUpdatedSession({
                 ...commonInput,
-                onEvent: (event: AgentProfileUpdatedPayload, metadata) => {
-                  eventQueue.enqueue(async () => {
-                    if (closed) {
-                      return;
-                    }
+                onEvent: async (event: AgentProfileUpdatedPayload, metadata) => {
+                  if (closed) {
+                    return;
+                  }
 
-                    const item = buildAgentProfileUpdatedItem(
-                      event,
-                      includeMetadata,
-                      metadata,
-                      eventQueue.getStats(),
-                    );
-                    if (closed) {
-                      return;
-                    }
+                  const item = buildAgentProfileUpdatedItem(
+                    event,
+                    includeMetadata,
+                    metadata,
+                    eventQueue.getStats(),
+                  );
+                  if (closed) {
+                    return;
+                  }
 
-                    this.emit([[item]]);
-                  });
+                  this.emit([[item]]);
                 },
               })
             : await startCustomSocketEventSession({
@@ -916,30 +986,28 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
                   deduplicateEvents && deduplicationTtlMs > 0
                     ? deduplicationTtlMs
                     : undefined,
-                onEvent: (event, metadata: SocketEventRuntimeMetadata) => {
-                  eventQueue.enqueue(async () => {
-                    if (closed) {
-                      return;
-                    }
+                onEvent: async (event, metadata: SocketEventRuntimeMetadata) => {
+                  if (closed) {
+                    return;
+                  }
 
-                    const item = await buildTriggerItem(
-                      this,
-                      event,
-                      binaryPropertyPrefix,
-                      includeMetadata,
-                      metadata,
-                      eventQueue.getStats(),
-                      {
-                        refreshCount: subscriptionRefreshCount,
-                        lastRefreshedAt: lastSubscriptionRefreshAt,
-                      },
-                    );
-                    if (closed) {
-                      return;
-                    }
+                  const item = await buildTriggerItem(
+                    this,
+                    event,
+                    binaryPropertyPrefix,
+                    includeMetadata,
+                    metadata,
+                    eventQueue.getStats(),
+                    {
+                      refreshCount: subscriptionRefreshCount,
+                      lastRefreshedAt: lastSubscriptionRefreshAt,
+                    },
+                  );
+                  if (closed) {
+                    return;
+                  }
 
-                    this.emit([[item]]);
-                  });
+                  this.emit([[item]]);
                 },
               });
       });
@@ -959,7 +1027,6 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
             closed ||
             !reconnectOnDisconnect ||
             !plugError.retryable ||
-            plugError.authRelated ||
             (normalizedMaxReconnectAttempts > 0 &&
               reconnectAttempts >= normalizedMaxReconnectAttempts)
           ) {
@@ -977,7 +1044,7 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
     };
 
     const scheduleReconnect = (error: PlugError): void => {
-      if (closed || !reconnectOnDisconnect || !error.retryable || error.authRelated) {
+      if (closed || !reconnectOnDisconnect || !error.retryable) {
         this.emitError(error);
         return;
       }

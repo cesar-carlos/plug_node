@@ -560,8 +560,12 @@ export const buildAuthorizedHeaders = (
   authorization: `Bearer ${session.accessToken}`,
 });
 
+const terminalAuthErrorCodes = new Set(["ACCOUNT_BLOCKED", "AGENT_ACCESS_REVOKED"]);
+
 export const isAuthRelatedError = (error: unknown): error is PlugError =>
-  error instanceof PlugError && error.authRelated;
+  error instanceof PlugError &&
+  error.authRelated &&
+  !terminalAuthErrorCodes.has(error.code);
 
 export const createHttpError = (
   statusCode: number,

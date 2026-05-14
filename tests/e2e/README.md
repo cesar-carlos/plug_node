@@ -19,6 +19,12 @@ npm run test:e2e:rest
 npm run test:e2e:socket
 ```
 
+Local protocol and codec guardrails that do not need live Plug credentials run in the normal unit suite. PayloadFrame decode cost can be sampled with:
+
+```bash
+npm run bench:payload-frame
+```
+
 ## Scope
 
 - real login
@@ -29,6 +35,7 @@ npm run test:e2e:socket
 - real REST bridge command execution
 - real `/consumers` socket connection
 - real relay `PayloadFrame` decode path
+- local `agents:command` protocol fixtures for request/response/stream correlation
 - real negative SQL cases for authorization and invalid syntax
 - real `multi_result` behavior for success+success and success+error flows
 

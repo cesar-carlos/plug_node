@@ -8,6 +8,15 @@ import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database/gener
 
 const createdSockets: MockSocket[] = [];
 let suppressProbeResponse = false;
+let suppressCommandResponse = false;
+let commandResponseRequestId: string | undefined;
+
+const readCommandRequestId = (payload: unknown): string | undefined =>
+  typeof payload === "object" &&
+  payload !== null &&
+  typeof (payload as { readonly requestId?: unknown }).requestId === "string"
+    ? (payload as { readonly requestId: string }).requestId
+    : undefined;
 
 class MockSocket {
   connected = false;
@@ -75,10 +84,20 @@ class MockSocket {
         return;
       }
 
+      if (!isProbe && suppressCommandResponse) {
+        return;
+      }
+
+      const requestId =
+        !isProbe && commandResponseRequestId
+          ? commandResponseRequestId
+          : (readCommandRequestId(payload) ??
+            `request-${createdSockets.indexOf(this) + 1}`);
+
       queueMicrotask(() => {
         this.dispatch("agents:command_response", {
           success: true,
-          requestId: `request-${createdSockets.indexOf(this) + 1}`,
+          requestId,
           response: {
             type: "single",
             success: true,
@@ -139,6 +158,8 @@ describe("ConsumerSocketExecutionManager", () => {
   beforeEach(() => {
     createdSockets.length = 0;
     suppressProbeResponse = false;
+    suppressCommandResponse = false;
+    commandResponseRequestId = undefined;
   });
 
   it("reuses one /consumers socket across multiple commands in the same execution", async () => {
@@ -289,4 +310,103 @@ describe("ConsumerSocketExecutionManager", () => {
     expect(fallbackExecutor).toHaveBeenCalledTimes(1);
     executor.close();
   });
+
+  it("falls back to relay when a single command only receives uncorrelated responses", async () => {
+    commandResponseRequestId = "stale-request";
+    const { createSocketCommandExecutor } =
+      await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/socketCommandExecutor");
+    const fallbackExecutor = vi.fn(async (input) => ({
+      channel: "socket" as const,
+      socketMode: "relay" as const,
+      agentId: input.agentId,
+      requestId: "relay-request-1",
+      notification: false as const,
+      conversationId: "conversation-1",
+      accepted: {
+        success: true as const,
+        conversationId: "conversation-1",
+        requestId: "relay-request-1",
+      },
+      connectionReady: {
+        id: "socket-legacy-1",
+        message: "ready",
+        user: { id: "client-1" },
+      },
+      response: {
+        type: "single" as const,
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            policy: "approved",
+          },
+        },
+      },
+      rawResponsePayload: {
+        policy: "approved",
+      },
+      chunkPayloads: [],
+      rawResponseFrame: {
+        payload: {
+          event: "relay:rpc.response",
+        },
+      },
+      rawChunkFrames: [],
+    }));
+    const executor = createSocketCommandExecutor(fallbackExecutor);
+
+    const result = await executor.execute({
+      session,
+      agentId: "agent-1",
+      command: {
+        jsonrpc: "2.0",
+        method: "client_token.getPolicy",
+        id: "request-1",
+        params: {
+          client_token: "client-token",
+        },
+      },
+      responseMode: "aggregatedJson",
+      timeoutMs: 25,
+      payloadFrameCompression: "default",
+    });
+
+    expect(result.socketMode).toBe("relay");
+    expect(fallbackExecutor).toHaveBeenCalledTimes(1);
+    executor.close();
+  }, 15_000);
+
+  it("fails batch clearly when agents:command does not return a correlated response", async () => {
+    suppressProbeResponse = true;
+    suppressCommandResponse = true;
+    const { createSocketCommandExecutor } =
+      await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/socketCommandExecutor");
+    const fallbackExecutor = vi.fn();
+    const executor = createSocketCommandExecutor(fallbackExecutor);
+
+    await expect(
+      executor.execute({
+        session,
+        agentId: "agent-1",
+        command: [
+          {
+            jsonrpc: "2.0",
+            method: "client_token.getPolicy",
+            id: "request-1",
+            params: {
+              client_token: "client-token",
+            },
+          },
+        ],
+        responseMode: "aggregatedJson",
+        timeoutMs: 25,
+        payloadFrameCompression: "default",
+      }),
+    ).rejects.toThrow(
+      "Execute Batch over Socket requires a Plug server that returns correlated agents:command responses.",
+    );
+    expect(fallbackExecutor).not.toHaveBeenCalled();
+    executor.close();
+  }, 15_000);
 });

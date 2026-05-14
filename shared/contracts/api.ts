@@ -229,6 +229,8 @@ export type RpcSingleCommand =
 export type BridgeCommand = RpcSingleCommand | RpcSingleCommand[];
 
 export interface AgentCommandRequestBody {
+  readonly requestId?: string;
+  readonly clientRequestId?: string;
   readonly agentId: string;
   readonly command: BridgeCommand;
   readonly timeoutMs?: number;
@@ -373,6 +375,7 @@ export interface SocketAppErrorPayload {
 export interface ConsumerCommandSocketSuccessPayload {
   readonly success: true;
   readonly requestId: string;
+  readonly clientRequestId?: string;
   readonly response: NormalizedAgentRpcResponse | ConsumerCommandNotificationResponse;
   readonly streamId?: string;
   readonly retryAfterSeconds?: number;
@@ -381,6 +384,8 @@ export interface ConsumerCommandSocketSuccessPayload {
 export interface ConsumerCommandSocketFailurePayload {
   readonly success: false;
   readonly requestId?: string;
+  readonly clientRequestId?: string;
+  readonly streamId?: string;
   readonly error: {
     readonly code: string;
     readonly message: string;
@@ -424,6 +429,8 @@ export interface ConsumerCommandStreamPullResponseSuccessPayload {
 
 export interface ConsumerCommandStreamPullResponseFailurePayload {
   readonly success: false;
+  readonly requestId?: string;
+  readonly streamId?: string;
   readonly error: {
     readonly code: string;
     readonly message: string;

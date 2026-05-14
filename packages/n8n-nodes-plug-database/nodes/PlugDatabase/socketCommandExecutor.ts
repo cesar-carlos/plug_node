@@ -172,7 +172,11 @@ export class ConsumerSocketExecutionManager {
       return true;
     }
 
-    if (this.capability === "unsupported" && cacheFresh) {
+    if (
+      this.capability === "unsupported" &&
+      cacheFresh &&
+      !Array.isArray(input.command)
+    ) {
       return false;
     }
 
@@ -220,6 +224,18 @@ export class ConsumerSocketExecutionManager {
         } catch (error: unknown) {
           if (error instanceof PlugTimeoutError) {
             await sleep(nextProbeBackoffMs());
+            if (Array.isArray(input.command)) {
+              this.stale = true;
+              this.socket?.disconnect();
+              plugLogger.warn("transport.socket.capability_probe.try_direct_batch", {
+                socketMode: "agentsCommand",
+                agentId: input.agentId,
+                durationMs: Date.now() - probeStartedAt,
+                fallbackReason: "probe_timeout",
+              });
+              return true;
+            }
+
             this.capability = "unsupported";
             this.capabilityCacheKey = capabilityKey;
             this.capabilityCheckedAtMs = Date.now();
@@ -325,6 +341,25 @@ export class ConsumerSocketExecutionManager {
         durationMs: Date.now() - executionStartedAt,
         code: error instanceof PlugError ? error.code : undefined,
       });
+
+      if (
+        error instanceof PlugTimeoutError &&
+        !Array.isArray(input.command) &&
+        options?.fallbackExecutor
+      ) {
+        plugLogger.warn("transport.socket.manager.timeout_using_relay", {
+          socketMode: "relay",
+          agentId: input.agentId,
+        });
+        return options.fallbackExecutor(input);
+      }
+
+      if (error instanceof PlugTimeoutError && Array.isArray(input.command)) {
+        throw new PlugValidationError(
+          "Execute Batch over Socket requires a Plug server that returns correlated agents:command responses. Use REST or upgrade the server.",
+        );
+      }
+
       throw error;
     }
   }

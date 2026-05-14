@@ -40,7 +40,7 @@ sequenceDiagram
   A-->>N: accessToken
   N->>S: Socket.IO connect(token)
   S-->>N: connection:ready PayloadFrame
-  N->>S: agents:command { requestId, command }
+  N->>S: agents:command { requestId, clientRequestId, command }
   S->>G: encaminha comando
   G-->>S: resposta ou stream
   S-->>N: agents:command_response
@@ -48,6 +48,30 @@ sequenceDiagram
   S-->>N: agents:command_stream_complete
   N->>S: disconnect
 ```
+
+## Correlação de comando
+
+Cada `agents:command` enviado pelo node inclui um `requestId` no envelope. Para comandos únicos com `command.id` preenchido, o node usa `String(command.id)` como `requestId`; para notificações, probes e batch, o node gera um UUID local. `clientRequestId` é enviado com o mesmo valor para facilitar compatibilidade durante a transição.
+
+O runtime só aceita `agents:command_response`, `agents:command_stream_chunk`, `agents:command_stream_complete` e `agents:stream_pull_response` que correspondem ao `requestId` e ao `streamId` ativos. Respostas atrasadas ou pertencentes a outra execução são ignoradas.
+
+Para comando único, se um servidor antigo não ecoar a correlação esperada, o node pode cair para o fluxo legado de relay. Para `Execute Batch`, o servidor precisa responder com `requestId` correlacionado no transporte `agents:command`; caso contrário, use REST ou atualize o servidor.
+
+## Contrato mínimo do servidor
+
+Para compatibilidade com `agents:command`, o servidor deve cumprir estes pontos:
+
+| Evento                           | Requisito                                                                                                                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agents:command`                 | Receber envelope com `requestId`, `clientRequestId`, `agentId`, `command`, `timeoutMs` e `payloadFrameCompression`.                                                    |
+| `agents:command_response`        | Ecoar `requestId` no sucesso; em stream, também enviar `streamId`. Falhas devem incluir `error.code` e `error.message`, e podem incluir `requestId` quando disponível. |
+| `agents:stream_pull`             | Receber `requestId`, `streamId` e `windowSize`.                                                                                                                        |
+| `agents:stream_pull_response`    | Ecoar `requestId`, `streamId` e `windowSize` positivo no sucesso.                                                                                                      |
+| `agents:command_stream_chunk`    | Enviar `request_id` e `stream_id` do stream ativo.                                                                                                                     |
+| `agents:command_stream_complete` | Enviar `request_id`, `stream_id` e `terminal_status`.                                                                                                                  |
+| `connect_error` / `app:error`    | Usar códigos estáveis como `TOKEN_EXPIRED`, `INVALID_TOKEN`, `ACCOUNT_BLOCKED` e `AGENT_ACCESS_REVOKED` para permitir reconnect ou encerramento correto.               |
+
+O node ignora mensagens que não batem com a correlação ativa. Isso protege execuções concorrentes e respostas atrasadas, mas exige que batch e stream usem `requestId`/`streamId` corretamente.
 
 ## PayloadFrame
 
@@ -76,7 +100,7 @@ Esses limites evitam que um workflow consuma memória indefinidamente quando o a
 
 ## Fallback
 
-O node prefere `agents:command` para `Channel = Socket`. Para fluxos de comando único, quando o servidor não responde ao transporte novo, a implementação pode usar o fluxo legado de relay. `Execute Batch` via Socket exige `agents:command`; se o servidor não suportar, use REST ou atualize o servidor.
+O node prefere `agents:command` para `Channel = Socket`. Para fluxos de comando único, quando o servidor não responde ao transporte novo ou não devolve resposta correlacionada, a implementação pode usar o fluxo legado de relay. `Execute Batch` via Socket exige `agents:command` com correlação por `requestId`; se o servidor não suportar, use REST ou atualize o servidor.
 
 ## Metadados de Saída
 

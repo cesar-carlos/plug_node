@@ -6,6 +6,7 @@ import {
   encodePayloadFrame,
   encodePayloadFrameAsync,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/payloadFrameCodec";
+import type { PayloadFrameEnvelope } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/payload-frame";
 
 describe("payloadFrameCodec", () => {
   it("encodes and decodes JSON payloads", () => {
@@ -232,6 +233,46 @@ describe("payloadFrameCodec", () => {
         },
       }),
     ).rejects.toThrow("PayloadFrame signature verification failed");
+  });
+
+  it("rejects gzip frames whose declared decoded size exceeds 10 MiB before inflation", () => {
+    const frame = encodePayloadFrame(
+      {
+        text: "small payload",
+      },
+      {
+        requestId: "req-declared-too-large",
+        compression: "always",
+      },
+    );
+    const tamperedFrame: PayloadFrameEnvelope = {
+      ...frame,
+      originalSize: 10 * 1024 * 1024 + 1,
+    };
+
+    expect(() => decodePayloadFrame(tamperedFrame)).toThrow(
+      "PayloadFrame exceeds the 10 MiB decoded limit",
+    );
+  });
+
+  it("rejects gzip frames whose declared inflation ratio is unsafe before inflation", async () => {
+    const frame = await encodePayloadFrameAsync(
+      {
+        text: "small payload",
+      },
+      {
+        requestId: "req-inflation-ratio",
+        compression: "always",
+      },
+    );
+    const tamperedFrame: PayloadFrameEnvelope = {
+      ...frame,
+      originalSize: frame.compressedSize * 21,
+    };
+
+    await expect(decodePayloadFrameAsync(tamperedFrame)).rejects.toThrow(
+      "PayloadFrame exceeded the allowed gzip inflation ratio",
+    );
   });
 
   it("async decode rejects invalid signatures, key mismatches, and unsupported fields", async () => {

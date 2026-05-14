@@ -67,7 +67,7 @@ Limites locais:
 - payload decodificado: até 10 MiB
 - razão máxima de inflação: 20x
 
-Esses limites reduzem risco de payloads inflarem demais no processo n8n.
+Na decodificação, a assinatura HMAC é verificada antes de qualquer descompressão. Depois disso, `originalSize`, `compressedSize` e a razão esperada de inflação são validados antes do `gunzip`; o `gunzip` também roda com limite de saída de 10 MiB. Isso reduz o risco de payloads maliciosos inflarem demais no processo n8n.
 
 <a id="assinatura-hmac"></a>
 
@@ -93,5 +93,16 @@ Se o frame chega com assinatura mas a credencial não tem chave, a decodificaç�
 - `PayloadFrame schemaVersion must be 1.0`: versão não suportada.
 - `PayloadFrame cmp must be none or gzip`: compressão desconhecida.
 - `PayloadFrame exceeds the 10 MiB decoded limit`: payload grande demais depois de descompactar.
+- `PayloadFrame exceeded the allowed gzip inflation ratio`: gzip com razão de inflação acima do limite local.
 - `PayloadFrame signature verification failed`: HMAC inválido.
 - `PayloadFrame signature key_id mismatch`: `key_id` do frame não bate com a credencial.
+
+## Benchmark local
+
+Para medir o custo local de decode em caminhos comuns e rejeições de segurança:
+
+```bash
+npm run bench:payload-frame
+```
+
+O script sincroniza `shared`, compila o pacote e mede PayloadFrames pequenos, gzip normal, gzip forçado e rejeição por metadados de inflação. Ajuste `PLUG_BENCH_ITERATIONS` para aumentar ou reduzir as iterações.

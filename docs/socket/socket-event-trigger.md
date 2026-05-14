@@ -41,11 +41,13 @@ Campos:
 - `Reconnect Failure Window (MS)`: janela do circuit breaker.
 - `Max Reconnect Failures in Window`: `0` desativa o circuit breaker.
 
-Erros retryable incluem falhas temporárias de conexão, disconnects e algumas respostas `app:error`. Erros de autenticação, como `ACCOUNT_BLOCKED` e `AGENT_ACCESS_REVOKED`, são tratados como permanentes.
+Erros retryable incluem falhas temporárias de conexão, disconnects e algumas respostas `app:error`. `connect_error` ou `app:error` de token expirado/inválido dispara refresh da sessão e reconnect com novo token. Erros de autorização permanentes, como `ACCOUNT_BLOCKED` e `AGENT_ACCESS_REVOKED`, encerram sem retry.
 
 ## Backpressure
 
-O trigger prepara itens n8n de forma assíncrona. Para evitar acúmulo ilimitado:
+O trigger prepara itens n8n de forma assíncrona. A fila limita todo o trabalho por evento, incluindo decode de `PayloadFrame`, validação do contrato, deduplicação, conversão de anexos e emissão do item. Assim, um burst de frames inválidos ou muito grandes também respeita backpressure antes de consumir CPU/memória em decode.
+
+Para evitar acúmulo ilimitado:
 
 - `Max Inflight Events`: quantos eventos podem ser preparados ao mesmo tempo. Padrão `8`.
 - `Max Queue Size`: quantos eventos ficam em fila quando todos os slots estão ocupados. Padrão `128`.
@@ -62,12 +64,19 @@ Com `Include Plug Metadata = true`, cada item customizado recebe:
     "backpressure": {
       "queuedCount": 0,
       "inflightCount": 1,
+      "startedCount": 1,
+      "processedCount": 0,
+      "failedCount": 0,
       "droppedNewestCount": 0,
-      "droppedOldestCount": 0
+      "droppedOldestCount": 0,
+      "averageQueueLatencyMs": 0,
+      "averageProcessingMs": 0
     }
   }
 }
 ```
+
+Além do snapshot no item, o runtime registra `transport.socket.custom_event_trigger.backpressure_stats` periodicamente com contadores agregados e médias locais. Os logs não incluem payload, SQL, tokens nem anexos.
 
 ## Deduplicação
 
@@ -153,3 +162,4 @@ Quando habilitado, frames recebidos precisam trazer assinatura HMAC SHA-256 vál
 - Use `Overflow Policy = Fail` quando perda de evento for inaceitável.
 - Use `Drop Oldest` ou `Drop Newest` somente em eventos de telemetria ou status onde o dado mais recente basta.
 - Configure assinatura obrigatória em ambientes onde eventos cruzam fronteiras de confiança.
+- Eventos recebidos com anexos inline passam pelos mesmos limites padrão da publicação: quantidade máxima de arquivos, tamanho por arquivo e tamanho total.

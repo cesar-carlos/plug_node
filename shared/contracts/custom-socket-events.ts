@@ -516,8 +516,27 @@ export const assertCustomSocketEventFramePayload = (
     throw new PlugValidationError("Custom socket event payload is missing attachments");
   }
 
+  if (value.attachments.length > defaultCustomSocketEventMaxFiles) {
+    throw new PlugValidationError(
+      `Custom socket event attachments must include at most ${defaultCustomSocketEventMaxFiles} files`,
+    );
+  }
+
+  let totalAttachmentBytes = 0;
   for (const attachment of value.attachments) {
-    assertCustomSocketEventAttachment(attachment);
+    const validatedAttachment = assertCustomSocketEventAttachment(attachment);
+    totalAttachmentBytes += validatedAttachment.sizeBytes;
+    if (validatedAttachment.sizeBytes > defaultCustomSocketEventFileMaxBytes) {
+      throw new PlugValidationError(
+        `Custom socket event attachment ${validatedAttachment.originalName} must be at most ${defaultCustomSocketEventFileMaxBytes} bytes`,
+      );
+    }
+  }
+
+  if (totalAttachmentBytes > defaultCustomSocketEventTotalFilesMaxBytes) {
+    throw new PlugValidationError(
+      `Custom socket event attachments total size must be at most ${defaultCustomSocketEventTotalFilesMaxBytes} bytes`,
+    );
   }
 
   return {

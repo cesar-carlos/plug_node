@@ -9,11 +9,13 @@ const socketMock = vi.hoisted(() => {
 
   const state: {
     connectErrorsBeforeReady: number;
+    connectErrorPayloads: unknown[];
     readyFrame?: unknown;
     subscribeFailureSocketIndices: Set<number>;
     sockets: MockSocket[];
   } = {
     connectErrorsBeforeReady: 0,
+    connectErrorPayloads: [],
     subscribeFailureSocketIndices: new Set<number>(),
     sockets: [],
   };
@@ -33,6 +35,14 @@ const socketMock = vi.hoisted(() => {
     ) {}
 
     connect(): void {
+      const connectErrorPayload = state.connectErrorPayloads.shift();
+      if (connectErrorPayload !== undefined) {
+        queueMicrotask(() => {
+          this.dispatch("connect_error", connectErrorPayload);
+        });
+        return;
+      }
+
       if (state.connectErrorsBeforeReady > 0) {
         state.connectErrorsBeforeReady -= 1;
         queueMicrotask(() => {
@@ -148,24 +158,33 @@ const createContext = (
 ): ITriggerFunctions => {
   const emit = vi.fn();
   const emitError = vi.fn();
+  const authBody = (accessToken: string, refreshToken = "refresh-1") => ({
+    accessToken,
+    refreshToken,
+    client: {
+      id: "client-1",
+      userId: "user-1",
+      email: "client@example.com",
+      name: "Plug",
+      lastName: "Client",
+      status: "active",
+      role: "client",
+    },
+  });
   const httpRequest = vi.fn(async (request: IHttpRequestOptions) => {
     if (String(request.url).endsWith("/client-auth/login")) {
       return {
         statusCode: 200,
         headers: {},
-        body: {
-          accessToken: `access-${httpRequest.mock.calls.length}`,
-          refreshToken: "refresh-1",
-          client: {
-            id: "client-1",
-            userId: "user-1",
-            email: "client@example.com",
-            name: "Plug",
-            lastName: "Client",
-            status: "active",
-            role: "client",
-          },
-        },
+        body: authBody(`access-${httpRequest.mock.calls.length}`),
+      };
+    }
+
+    if (String(request.url).endsWith("/client-auth/refresh")) {
+      return {
+        statusCode: 200,
+        headers: {},
+        body: authBody(`access-${httpRequest.mock.calls.length}`, "refresh-2"),
       };
     }
 
@@ -231,6 +250,18 @@ const flushAsync = async (iterations = 4): Promise<void> => {
   for (let index = 0; index < iterations; index += 1) {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
+};
+
+const createSocketConnectError = (
+  code: string,
+  message: string,
+  statusCode: number,
+): Error & { readonly data: { readonly code: string; readonly statusCode: number } } => {
+  const error = new Error(message) as Error & {
+    data: { readonly code: string; readonly statusCode: number };
+  };
+  error.data = { code, statusCode };
+  return error;
 };
 
 describe("PlugDatabaseSocketEventTrigger", () => {
@@ -404,6 +435,83 @@ describe("PlugDatabaseSocketEventTrigger", () => {
     }
   });
 
+  it("refreshes auth and reconnects after token-expired connect_error", async () => {
+    socketMock.state.sockets = [];
+    socketMock.state.subscribeFailureSocketIndices = new Set<number>();
+    socketMock.state.connectErrorsBeforeReady = 0;
+    socketMock.state.connectErrorPayloads = [
+      createSocketConnectError("TOKEN_EXPIRED", "token expired", 401),
+    ];
+    socketMock.state.readyFrame = encodePayloadFrame(
+      {
+        id: "socket-1",
+        message: "ready",
+        user: { sub: "client-1" },
+      },
+      { requestId: "handshake", compression: "none" },
+    );
+    const node = new PlugDatabaseSocketEventTrigger();
+    const context = createContext({
+      maxReconnectAttempts: 2,
+    });
+
+    const response = await node.trigger.call(context);
+
+    expect(socketMock.state.sockets).toHaveLength(2);
+    expect(socketMock.io).toHaveBeenLastCalledWith(
+      "https://plug-server.example.com/consumers",
+      expect.objectContaining({
+        auth: {
+          token: "access-2",
+        },
+      }),
+    );
+    expect(
+      (context.helpers.httpRequest as unknown as ReturnType<typeof vi.fn>).mock.calls.map(
+        ([request]) => String((request as IHttpRequestOptions).url),
+      ),
+    ).toEqual([
+      "https://plug-server.example.com/api/v1/client-auth/login",
+      "https://plug-server.example.com/api/v1/client-auth/refresh",
+    ]);
+
+    await response.closeFunction?.();
+  });
+
+  it("does not retry blocked accounts after terminal connect_error", async () => {
+    socketMock.state.sockets = [];
+    socketMock.state.subscribeFailureSocketIndices = new Set<number>();
+    socketMock.state.connectErrorsBeforeReady = 0;
+    socketMock.state.connectErrorPayloads = [
+      createSocketConnectError("ACCOUNT_BLOCKED", "account blocked", 403),
+    ];
+    socketMock.state.readyFrame = encodePayloadFrame(
+      {
+        id: "socket-1",
+        message: "ready",
+        user: { sub: "client-1" },
+      },
+      { requestId: "handshake", compression: "none" },
+    );
+    const node = new PlugDatabaseSocketEventTrigger();
+    const context = createContext({
+      maxReconnectAttempts: 2,
+    });
+
+    await expect(node.trigger.call(context)).rejects.toMatchObject({
+      code: "ACCOUNT_BLOCKED",
+      retryable: false,
+      authRelated: true,
+    });
+
+    expect(socketMock.state.sockets).toHaveLength(1);
+    expect(
+      (context.helpers.httpRequest as unknown as ReturnType<typeof vi.fn>).mock.calls.map(
+        ([request]) => String((request as IHttpRequestOptions).url),
+      ),
+    ).toEqual(["https://plug-server.example.com/api/v1/client-auth/login"]);
+  });
+
   it("opens the reconnect circuit breaker during repeated activation failures", async () => {
     vi.useFakeTimers();
     try {
@@ -535,6 +643,118 @@ describe("PlugDatabaseSocketEventTrigger", () => {
     expect(
       (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit,
     ).toHaveBeenCalledTimes(1);
+
+    await response.closeFunction?.();
+  });
+
+  it("applies dropNewest backpressure before decoding queued custom event frames", async () => {
+    socketMock.state.sockets = [];
+    socketMock.state.subscribeFailureSocketIndices = new Set<number>();
+    socketMock.state.connectErrorsBeforeReady = 0;
+    socketMock.state.readyFrame = encodePayloadFrame(
+      {
+        id: "socket-1",
+        message: "ready",
+        user: { sub: "client-1" },
+      },
+      { requestId: "handshake", compression: "none" },
+    );
+    const node = new PlugDatabaseSocketEventTrigger();
+    const context = createContext({
+      maxInflightEvents: 1,
+      maxQueueSize: 0,
+      overflowPolicy: "dropNewest",
+    });
+    let releasePrepare: (() => void) | undefined;
+    const prepareStarted = new Promise<void>((resolve) => {
+      (
+        context.helpers.prepareBinaryData as unknown as ReturnType<typeof vi.fn>
+      ).mockImplementationOnce(
+        async (
+          data: Buffer,
+          fileName?: string,
+          mimeType?: string,
+        ): Promise<IBinaryData> => {
+          resolve();
+          await new Promise<void>((release) => {
+            releasePrepare = release;
+          });
+          return {
+            data: data.toString("base64"),
+            fileName,
+            mimeType,
+          };
+        },
+      );
+    });
+
+    const response = await node.trigger.call(context);
+    const socket = socketMock.state.sockets[0];
+
+    socket.dispatch(
+      "client:custom.status.changed",
+      encodePayloadFrame(
+        {
+          eventId: "event-1",
+          eventName: "client:custom.status.changed",
+          emittedAt: "2026-05-11T12:00:00.000Z",
+          publisher: { principalType: "client", clientId: "client-1" },
+          payload: { status: "ready" },
+          attachments: [
+            {
+              fieldName: "files",
+              originalName: "hello.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+              base64: Buffer.from("hello").toString("base64"),
+            },
+          ],
+        },
+        { requestId: "event-1", compression: "none" },
+      ),
+    );
+    await prepareStarted;
+
+    socket.dispatch(
+      "client:custom.status.changed",
+      encodePayloadFrame(
+        {
+          eventId: "event-invalid",
+          eventName: "client:custom.other",
+          emittedAt: "2026-05-11T12:00:00.000Z",
+          publisher: { principalType: "client", clientId: "client-1" },
+          payload: { status: "invalid" },
+          attachments: [],
+        },
+        { requestId: "event-invalid", compression: "none" },
+      ),
+    );
+    await flushAsync();
+
+    expect(
+      (context as unknown as { __emitError: ReturnType<typeof vi.fn> }).__emitError,
+    ).not.toHaveBeenCalled();
+
+    releasePrepare?.();
+    await flushAsync();
+
+    expect(
+      (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit,
+    ).toHaveBeenCalledWith([
+      [
+        expect.objectContaining({
+          json: expect.objectContaining({
+            eventId: "event-1",
+          }),
+        }),
+      ],
+    ]);
+    expect(
+      (context as unknown as { __emitError: ReturnType<typeof vi.fn> }).__emitError,
+    ).not.toHaveBeenCalled();
 
     await response.closeFunction?.();
   });

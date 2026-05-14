@@ -12,6 +12,9 @@ import {
   assertSocketEventPublishedAck,
   clientAgentProfileUpdatedEventName,
   assertSocketEventControlAck,
+  defaultCustomSocketEventFileMaxBytes,
+  defaultCustomSocketEventMaxFiles,
+  defaultCustomSocketEventTotalFilesMaxBytes,
   defaultSocketEventListenTimeoutMaxMs,
   toAttachmentMetadata,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/custom-socket-events";
@@ -484,6 +487,14 @@ const session: PlugSession = {
     },
   },
 };
+
+const buildInlineAttachment = (name: string, sizeBytes: number) => ({
+  fieldName: "files",
+  originalName: name,
+  mimeType: "application/octet-stream",
+  sizeBytes,
+  base64: Buffer.alloc(sizeBytes).toString("base64"),
+});
 
 describe("custom socket events", () => {
   it("validates custom event names against the server contract", () => {
@@ -1252,6 +1263,98 @@ describe("custom socket events", () => {
         ],
       }),
     ).toThrow("sizeBytes does not match");
+  });
+
+  it("enforces inbound custom event attachment count, per-file size, and total size", () => {
+    const basePayload = {
+      eventId: "event-1",
+      eventName: "client:custom.status.changed",
+      emittedAt: "2026-05-11T12:00:00.000Z",
+      publisher: {},
+      payload: null,
+    };
+
+    expect(() =>
+      assertCustomSocketEventFramePayload({
+        ...basePayload,
+        attachments: Array.from(
+          { length: defaultCustomSocketEventMaxFiles + 1 },
+          (_, index) => buildInlineAttachment(`file-${index}.bin`, 1),
+        ),
+      }),
+    ).toThrow(
+      `Custom socket event attachments must include at most ${defaultCustomSocketEventMaxFiles} files`,
+    );
+
+    expect(() =>
+      assertCustomSocketEventFramePayload({
+        ...basePayload,
+        attachments: [
+          buildInlineAttachment("large.bin", defaultCustomSocketEventFileMaxBytes + 1),
+        ],
+      }),
+    ).toThrow(
+      `Custom socket event attachment large.bin must be at most ${defaultCustomSocketEventFileMaxBytes} bytes`,
+    );
+
+    expect(() =>
+      assertCustomSocketEventFramePayload({
+        ...basePayload,
+        attachments: Array.from({ length: 5 }, (_, index) =>
+          buildInlineAttachment(
+            `total-${index}.bin`,
+            defaultCustomSocketEventFileMaxBytes,
+          ),
+        ),
+      }),
+    ).toThrow(
+      `Custom socket event attachments total size must be at most ${defaultCustomSocketEventTotalFilesMaxBytes} bytes`,
+    );
+  });
+
+  it("can schedule custom event decode and validation behind an external queue", async () => {
+    const transport = new MockCustomEventTransport();
+    const tasks: Array<() => Promise<void>> = [];
+    const failures: unknown[] = [];
+    const received: unknown[] = [];
+    const sessionHandle = await startCustomSocketEventSession({
+      transport,
+      eventNames: ["client:custom.status.changed"],
+      ackTimeoutMs: 1000,
+      scheduleEvent: (task) => {
+        tasks.push(task);
+      },
+      onFatalError: (error) => {
+        failures.push(error);
+      },
+      onEvent: (event) => {
+        received.push(event);
+      },
+    });
+
+    transport.dispatch(
+      "client:custom.status.changed",
+      encodePayloadFrame(
+        {
+          eventId: "event-invalid",
+          eventName: "client:custom.other",
+          emittedAt: "2026-05-11T12:00:00.000Z",
+          publisher: { principalType: "client", clientId: "client-1" },
+          payload: { status: "ready" },
+          attachments: [],
+        },
+        { requestId: "event-invalid", compression: "none" },
+      ),
+    );
+
+    expect(tasks).toHaveLength(1);
+    expect(failures).toHaveLength(0);
+    expect(received).toHaveLength(0);
+    await expect(tasks[0]()).rejects.toThrow(
+      "Custom socket event payload eventName does not match listener",
+    );
+    expect(failures).toHaveLength(0);
+    await sessionHandle.close();
   });
 
   it("strips attachment base64 from metadata helpers", () => {

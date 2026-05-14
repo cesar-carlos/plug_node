@@ -12,6 +12,29 @@ import {
 } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/consumerCommandSession";
 import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/payloadFrameCodec";
 
+const readCommandRequestId = (payload: unknown, fallback = "request-1"): string =>
+  typeof payload === "object" &&
+  payload !== null &&
+  typeof (payload as { readonly requestId?: unknown }).requestId === "string"
+    ? (payload as { readonly requestId: string }).requestId
+    : fallback;
+
+const buildCommandSuccessResponse = (requestId: string) => ({
+  success: true,
+  requestId,
+  response: {
+    type: "single",
+    success: true,
+    item: {
+      id: "rpc-1",
+      success: true,
+      result: {
+        policy: "approved",
+      },
+    },
+  },
+});
+
 class SimpleConsumerTransport implements ConsumerSocketTransport {
   connected = false;
 
@@ -19,6 +42,8 @@ class SimpleConsumerTransport implements ConsumerSocketTransport {
     [];
 
   private readonly handlers = new Map<string, Set<(payload: unknown) => void>>();
+
+  constructor(private readonly emitUnmatchedResponse = false) {}
 
   connect(): void {
     this.connected = true;
@@ -60,22 +85,13 @@ class SimpleConsumerTransport implements ConsumerSocketTransport {
     this.emittedEvents.push({ event, payload });
 
     if (event === "agents:command") {
+      const requestId = readCommandRequestId(payload);
       queueMicrotask(() => {
-        this.dispatch("agents:command_response", {
-          success: true,
-          requestId: "request-1",
-          response: {
-            type: "single",
-            success: true,
-            item: {
-              id: "rpc-1",
-              success: true,
-              result: {
-                policy: "approved",
-              },
-            },
-          },
-        });
+        if (this.emitUnmatchedResponse) {
+          this.dispatch("agents:command_response", buildCommandSuccessResponse("stale"));
+        }
+
+        this.dispatch("agents:command_response", buildCommandSuccessResponse(requestId));
       });
     }
   }
@@ -128,12 +144,18 @@ class NotificationConsumerTransport implements ConsumerSocketTransport {
     this.handlers.get(event)?.delete(handler);
   }
 
-  emit(event: string): void {
+  emit(event: string, payload?: unknown): void {
     if (event === "agents:command") {
+      const requestId =
+        typeof payload === "object" &&
+        payload !== null &&
+        typeof (payload as { requestId?: unknown }).requestId === "string"
+          ? (payload as { requestId: string }).requestId
+          : "request-1";
       queueMicrotask(() => {
         this.dispatch("agents:command_response", {
           success: true,
-          requestId: "request-1",
+          requestId,
           response: {
             type: "notification",
             accepted: true,
@@ -155,6 +177,8 @@ class StreamingConsumerTransport implements ConsumerSocketTransport {
   connected = false;
 
   streamPullRequests = 0;
+
+  private requestId = "request-1";
 
   private readonly handlers = new Map<string, Set<(payload: unknown) => void>>();
 
@@ -196,10 +220,11 @@ class StreamingConsumerTransport implements ConsumerSocketTransport {
 
   emit(event: string, payload?: unknown): void {
     if (event === "agents:command") {
+      this.requestId = readCommandRequestId(payload);
       queueMicrotask(() => {
         this.dispatch("agents:command_response", {
           success: true,
-          requestId: "request-1",
+          requestId: this.requestId,
           streamId: "stream-1",
           response: {
             type: "single",
@@ -225,14 +250,29 @@ class StreamingConsumerTransport implements ConsumerSocketTransport {
       queueMicrotask(() => {
         this.dispatch("agents:stream_pull_response", {
           success: true,
-          requestId: "request-1",
+          requestId: this.requestId,
           streamId: "stream-1",
           windowSize: 1,
         });
 
         if (pullNumber === 1) {
           this.dispatch("agents:command_stream_chunk", {
-            request_id: "request-1",
+            request_id: "stale-request",
+            stream_id: "stream-1",
+            rows: [{ id: 999, name: "Stale" }],
+          });
+          this.dispatch("agents:command_stream_chunk", {
+            request_id: this.requestId,
+            stream_id: "stale-stream",
+            rows: [{ id: 998, name: "Wrong Stream" }],
+          });
+          this.dispatch("agents:command_stream_complete", {
+            request_id: "stale-request",
+            stream_id: "stream-1",
+            terminal_status: "completed",
+          });
+          this.dispatch("agents:command_stream_chunk", {
+            request_id: this.requestId,
             stream_id: "stream-1",
             rows: [{ id: 2, name: "Beta" }],
           });
@@ -240,12 +280,12 @@ class StreamingConsumerTransport implements ConsumerSocketTransport {
         }
 
         this.dispatch("agents:command_stream_chunk", {
-          request_id: "request-1",
+          request_id: this.requestId,
           stream_id: "stream-1",
           rows: [{ id: 3, name: "Gamma" }],
         });
         this.dispatch("agents:command_stream_complete", {
-          request_id: "request-1",
+          request_id: this.requestId,
           stream_id: "stream-1",
           terminal_status: "completed",
         });
@@ -630,11 +670,18 @@ class RateLimitedConsumerTransport implements ConsumerSocketTransport {
     this.handlers.get(event)?.delete(handler);
   }
 
-  emit(event: string): void {
+  emit(event: string, payload?: unknown): void {
     if (event === "agents:command") {
+      const requestId =
+        typeof payload === "object" &&
+        payload !== null &&
+        typeof (payload as { requestId?: unknown }).requestId === "string"
+          ? (payload as { requestId: string }).requestId
+          : "request-1";
       queueMicrotask(() => {
         this.dispatch("agents:command_response", {
           success: false,
+          requestId,
           error: {
             code: "TOO_MANY_REQUESTS",
             message: "slow down",
@@ -694,11 +741,18 @@ class ServiceUnavailableConsumerTransport implements ConsumerSocketTransport {
     this.handlers.get(event)?.delete(handler);
   }
 
-  emit(event: string): void {
+  emit(event: string, payload?: unknown): void {
     if (event === "agents:command") {
+      const requestId =
+        typeof payload === "object" &&
+        payload !== null &&
+        typeof (payload as { requestId?: unknown }).requestId === "string"
+          ? (payload as { requestId: string }).requestId
+          : "request-1";
       queueMicrotask(() => {
         this.dispatch("agents:command_response", {
           success: false,
+          requestId,
           error: {
             code: "SERVICE_UNAVAILABLE",
             message: "relay overloaded",
@@ -743,8 +797,9 @@ const session: PlugSession = {
 
 describe("executeConsumerCommand", () => {
   it("returns normalized JSON for simple agents:command responses", async () => {
+    const transport = new SimpleConsumerTransport();
     const result = await executeConsumerCommand({
-      transport: new SimpleConsumerTransport(),
+      transport,
       session,
       agentId: "agent-1",
       command: {
@@ -767,6 +822,74 @@ describe("executeConsumerCommand", () => {
     expect(items[0]).toMatchObject({
       result: {
         policy: "approved",
+      },
+    });
+    expect(transport.emittedEvents[0].payload).toMatchObject({
+      requestId: "request-1",
+      clientRequestId: "request-1",
+      agentId: "agent-1",
+      timeoutMs: 5000,
+      payloadFrameCompression: "default",
+      command: expect.objectContaining({
+        id: "request-1",
+      }),
+    });
+  });
+
+  it("generates requestId and command.id when a single command omits id", async () => {
+    const transport = new SimpleConsumerTransport();
+
+    const result = await executeConsumerCommand({
+      transport,
+      session,
+      agentId: "agent-1",
+      command: {
+        jsonrpc: "2.0",
+        method: "client_token.getPolicy",
+        params: {
+          client_token: "client-token",
+        },
+      },
+      responseMode: "aggregatedJson",
+      timeoutMs: 5000,
+      payloadFrameCompression: "default",
+    });
+    const payload = transport.emittedEvents[0].payload as {
+      readonly requestId: string;
+      readonly clientRequestId: string;
+      readonly command: { readonly id?: unknown };
+    };
+
+    expect(result.requestId).toBe(payload.requestId);
+    expect(payload.requestId).toEqual(expect.any(String));
+    expect(payload.clientRequestId).toBe(payload.requestId);
+    expect(payload.command.id).toBe(payload.requestId);
+  });
+
+  it("ignores stale agents:command_response payloads that do not match requestId", async () => {
+    const result = await executeConsumerCommand({
+      transport: new SimpleConsumerTransport(true),
+      session,
+      agentId: "agent-1",
+      command: {
+        jsonrpc: "2.0",
+        method: "client_token.getPolicy",
+        id: "request-1",
+        params: {
+          client_token: "client-token",
+        },
+      },
+      responseMode: "aggregatedJson",
+      timeoutMs: 5000,
+      payloadFrameCompression: "default",
+    });
+
+    expect(result.requestId).toBe("request-1");
+    expect(result.response).toMatchObject({
+      item: {
+        result: {
+          policy: "approved",
+        },
       },
     });
   });

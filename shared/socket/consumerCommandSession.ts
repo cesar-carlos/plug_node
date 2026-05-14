@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   DEFAULT_API_VERSION,
   DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
@@ -22,6 +24,7 @@ import { PlugError, PlugTimeoutError, PlugValidationError } from "../contracts/e
 import { plugLogger } from "../logging/plugLogger";
 import { decodePayloadFrameAsync } from "./payloadFrameCodec";
 import { estimateJsonUtf8Bytes, isRecord } from "../utils/json";
+import { createSocketApplicationError, createSocketConnectError } from "./socketErrors";
 
 const appErrorEvent = "app:error";
 const connectErrorEvent = "connect_error";
@@ -64,48 +67,18 @@ export interface ExecuteConsumerCommandInput {
   readonly streamPullWindowSize?: number;
 }
 
-const createSocketAppError = (payload: unknown): PlugError => {
-  const appError = isRecord(payload) ? payload : {};
-  const code =
-    typeof appError.code === "string" && appError.code.trim() !== ""
-      ? appError.code
-      : "SOCKET_APP_ERROR";
-  const details = isRecord(appError.details) ? appError.details : undefined;
+const createConnectError = (payload: unknown): PlugError =>
+  createSocketConnectError(payload, {
+    refreshDescription:
+      "The Plug session will be refreshed before retrying the socket operation.",
+    retryDescription: "Run the node again to create a fresh socket connection.",
+  });
 
-  if (code === "ACCOUNT_BLOCKED") {
-    return new PlugError("The Plug account is blocked.", {
-      code,
-      description:
-        "The server closed the socket because the user or client account is blocked.",
-      details,
-      technicalMessage:
-        typeof appError.message === "string" ? appError.message : undefined,
-      authRelated: true,
-    });
-  }
-
-  if (code === "AGENT_ACCESS_REVOKED") {
-    return new PlugError("Client access to this agent was revoked.", {
-      code,
-      description:
-        "Ask the agent owner to approve access again or update the credential before retrying.",
-      details,
-      technicalMessage:
-        typeof appError.message === "string" ? appError.message : undefined,
-      authRelated: true,
-    });
-  }
-
-  return new PlugError(
-    typeof appError.message === "string" && appError.message.trim() !== ""
-      ? appError.message
-      : "Plug socket reported an application error.",
-    {
-      code,
-      details,
-    },
-  );
-};
+const createSocketAppError = (payload: unknown): PlugError =>
+  createSocketApplicationError(payload, {
+    refreshDescription:
+      "The Plug session will be refreshed before retrying the socket operation.",
+  });
 
 const normalizeStreamPullWindowSize = (value: unknown, fallback: number): number => {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
@@ -251,6 +224,33 @@ const normalizeCommandResponse = (
     );
   }
 
+  if (
+    payload.clientRequestId !== undefined &&
+    (typeof payload.clientRequestId !== "string" || payload.clientRequestId.trim() === "")
+  ) {
+    throw new PlugValidationError(
+      "agents:command_response clientRequestId must be a non-empty string",
+    );
+  }
+
+  if (
+    payload.requestId !== undefined &&
+    (typeof payload.requestId !== "string" || payload.requestId.trim() === "")
+  ) {
+    throw new PlugValidationError(
+      "agents:command_response requestId must be a non-empty string",
+    );
+  }
+
+  if (
+    payload.streamId !== undefined &&
+    (typeof payload.streamId !== "string" || payload.streamId.trim() === "")
+  ) {
+    throw new PlugValidationError(
+      "agents:command_response streamId must be a non-empty string",
+    );
+  }
+
   return payload as unknown as ConsumerCommandSocketResponsePayload;
 };
 
@@ -311,6 +311,24 @@ const normalizeStreamPullResponse = (
     );
   }
 
+  if (
+    payload.requestId !== undefined &&
+    (typeof payload.requestId !== "string" || payload.requestId.trim() === "")
+  ) {
+    throw new PlugValidationError(
+      "agents:stream_pull_response requestId must be a non-empty string",
+    );
+  }
+
+  if (
+    payload.streamId !== undefined &&
+    (typeof payload.streamId !== "string" || payload.streamId.trim() === "")
+  ) {
+    throw new PlugValidationError(
+      "agents:stream_pull_response streamId must be a non-empty string",
+    );
+  }
+
   return payload as unknown as ConsumerCommandStreamPullResponsePayload;
 };
 
@@ -324,6 +342,28 @@ const toRequestId = (value: unknown): string | undefined => {
   }
 
   return undefined;
+};
+
+const resolveCommandRequestId = (command: BridgeCommand): string => {
+  if (Array.isArray(command)) {
+    return randomUUID();
+  }
+
+  return toRequestId(command.id) ?? randomUUID();
+};
+
+const withCommandRequestId = (
+  command: BridgeCommand,
+  requestId: string,
+): BridgeCommand => {
+  if (Array.isArray(command) || command.id !== undefined) {
+    return command;
+  }
+
+  return {
+    ...command,
+    id: requestId,
+  } as RpcSingleCommand;
 };
 
 const isNotificationResponse = (
@@ -487,20 +527,7 @@ const waitForConnectionReady = async (
 
     const handleConnectError = (payload: unknown): void => {
       cleanup();
-      const message =
-        payload instanceof Error
-          ? payload.message
-          : typeof payload === "string"
-            ? payload
-            : "Socket connection failed";
-      reject(
-        new PlugError("Failed to connect to the Plug socket.", {
-          code: "SOCKET_CONNECT_ERROR",
-          description: "Run the node again to create a fresh socket connection.",
-          technicalMessage: message,
-          retryable: true,
-        }),
-      );
+      reject(createConnectError(payload));
     };
 
     const handleDisconnect = (payload: unknown): void => {
@@ -526,6 +553,52 @@ const waitForConnectionReady = async (
   });
 };
 
+const matchesCommandRequest = (
+  payload: {
+    readonly requestId?: string;
+    readonly clientRequestId?: string;
+  },
+  requestId: string,
+): boolean => payload.requestId === requestId || payload.clientRequestId === requestId;
+
+const matchesStreamPullResponse = (
+  response: ConsumerCommandStreamPullResponsePayload,
+  requestId: string,
+  streamId: string,
+): boolean => {
+  if (response.success) {
+    return response.requestId === requestId && response.streamId === streamId;
+  }
+
+  if (response.requestId !== undefined && response.requestId !== requestId) {
+    return false;
+  }
+
+  if (response.streamId !== undefined && response.streamId !== streamId) {
+    return false;
+  }
+
+  return response.requestId === requestId || response.streamId === streamId;
+};
+
+const matchesStreamPayload = (
+  payload: JsonObject,
+  activeRequestId: string,
+  commandRequestId: string,
+  activeStreamId: string | undefined,
+): boolean => {
+  const requestId = toRequestId(payload.request_id);
+  if (requestId !== activeRequestId && requestId !== commandRequestId) {
+    return false;
+  }
+
+  return (
+    activeStreamId === undefined ||
+    typeof payload.stream_id !== "string" ||
+    payload.stream_id === activeStreamId
+  );
+};
+
 const requestStreamPull = async (
   transport: ConsumerSocketTransport,
   requestId: string,
@@ -549,6 +622,10 @@ const requestStreamPull = async (
     const handlePullResponse = (payload: unknown): void => {
       try {
         const response = normalizeStreamPullResponse(payload);
+        if (!matchesStreamPullResponse(response, requestId, streamId)) {
+          return;
+        }
+
         if (!response.success) {
           cleanup();
           reject(
@@ -560,10 +637,6 @@ const requestStreamPull = async (
               details: response.rateLimit ? { rateLimit: response.rateLimit } : undefined,
             }),
           );
-          return;
-        }
-
-        if (response.requestId !== requestId || response.streamId !== streamId) {
           return;
         }
 
@@ -582,20 +655,7 @@ const requestStreamPull = async (
 
     const handleConnectError = (payload: unknown): void => {
       cleanup();
-      const message =
-        payload instanceof Error
-          ? payload.message
-          : typeof payload === "string"
-            ? payload
-            : "Socket connection failed";
-      reject(
-        new PlugError("Failed to connect to the Plug socket.", {
-          code: "SOCKET_CONNECT_ERROR",
-          description: "Run the node again to create a fresh socket connection.",
-          technicalMessage: message,
-          retryable: true,
-        }),
-      );
+      reject(createConnectError(payload));
     };
 
     const handleDisconnect = (payload: unknown): void => {
@@ -637,6 +697,8 @@ export const executeConsumerCommand = async (
     maxBufferedBytes: input.bufferLimits?.maxBufferedBytes ?? defaultMaxBufferedBytes,
   };
   const commandStartMs = Date.now();
+  const commandRequestId = resolveCommandRequestId(input.command);
+  const command = withCommandRequestId(input.command, commandRequestId);
   const connectionReady = await waitForConnectionReady(
     input.transport,
     timeoutMs,
@@ -654,7 +716,7 @@ export const executeConsumerCommand = async (
 
   return new Promise<PlugCommandTransportResult>((resolve, reject) => {
     const chunkPayloads: JsonObject[] = [];
-    let activeRequestId: string | undefined;
+    let activeRequestId = commandRequestId;
     let activeStreamId: string | undefined;
     let rawResponsePayload: unknown;
     let normalizedResponse: NormalizedAgentRpcResponse | undefined;
@@ -667,6 +729,21 @@ export const executeConsumerCommand = async (
     let chunkCount = 0;
     let bufferedBytes = 0;
     let bufferedRows = 0;
+
+    const assertBufferLimits = (): void => {
+      if (
+        bufferedBytes > limits.maxBufferedBytes ||
+        bufferedRows > limits.maxBufferedRows ||
+        chunkCount > limits.maxBufferedChunkItems
+      ) {
+        throw buildSocketBufferError({
+          ...limits,
+          bufferedBytes,
+          bufferedRows,
+          chunkCount,
+        });
+      }
+    };
 
     const cleanup = (): void => {
       clearTimeout(timer);
@@ -700,7 +777,7 @@ export const executeConsumerCommand = async (
     };
 
     const requestNextStreamWindow = async (): Promise<void> => {
-      if (!activeRequestId || !activeStreamId || streamPullInFlight || streamCompleted) {
+      if (!activeStreamId || streamPullInFlight || streamCompleted) {
         return;
       }
 
@@ -742,6 +819,10 @@ export const executeConsumerCommand = async (
       void (async () => {
         try {
           const response = normalizeCommandResponse(payload);
+          if (!matchesCommandRequest(response, commandRequestId)) {
+            return;
+          }
+
           if (!response.success) {
             cleanup();
             reject(
@@ -752,10 +833,6 @@ export const executeConsumerCommand = async (
                 retryAfterMs: response.error.retryAfterMs,
               }),
             );
-            return;
-          }
-
-          if (activeRequestId && response.requestId !== activeRequestId) {
             return;
           }
 
@@ -776,6 +853,7 @@ export const executeConsumerCommand = async (
           if (isSingleSuccessWithRows(response.response)) {
             bufferedRows += countRows(response.response.item.result.rows);
           }
+          assertBufferLimits();
 
           if (isNotificationResponse(response.response)) {
             resolveNotification(response.requestId, response.response);
@@ -827,12 +905,14 @@ export const executeConsumerCommand = async (
       void (async () => {
         try {
           const chunk = normalizeStreamChunkPayload(payload);
-          if (!activeRequestId) {
-            return;
-          }
-
-          const requestId = toRequestId(chunk.request_id);
-          if (activeRequestId && requestId && requestId !== activeRequestId) {
+          if (
+            !matchesStreamPayload(
+              chunk,
+              activeRequestId,
+              commandRequestId,
+              activeStreamId,
+            )
+          ) {
             return;
           }
 
@@ -849,18 +929,7 @@ export const executeConsumerCommand = async (
             chunkPayloads.pop();
           }
 
-          if (
-            bufferedBytes > limits.maxBufferedBytes ||
-            bufferedRows > limits.maxBufferedRows ||
-            chunkCount > limits.maxBufferedChunkItems
-          ) {
-            throw buildSocketBufferError({
-              ...limits,
-              bufferedBytes,
-              bufferedRows,
-              chunkCount,
-            });
-          }
+          assertBufferLimits();
 
           if (activeStreamId && streamPullInFlight) {
             pendingChunksDuringPull += 1;
@@ -881,12 +950,14 @@ export const executeConsumerCommand = async (
     const handleCommandStreamComplete = (payload: unknown): void => {
       try {
         const complete = normalizeStreamCompletePayload(payload);
-        if (!activeRequestId) {
-          return;
-        }
-
-        const requestId = toRequestId(complete.request_id);
-        if (activeRequestId && requestId && requestId !== activeRequestId) {
+        if (
+          !matchesStreamPayload(
+            complete,
+            activeRequestId,
+            commandRequestId,
+            activeStreamId,
+          )
+        ) {
           return;
         }
 
@@ -899,7 +970,7 @@ export const executeConsumerCommand = async (
         plugLogger.info("transport.socket.command.complete", {
           socketMode: "agentsCommand",
           agentId: input.agentId,
-          requestId: activeRequestId ?? requestId ?? "unknown-request",
+          requestId: activeRequestId,
           durationMs: Date.now() - commandStartMs,
           chunkCount,
           pullCount,
@@ -910,7 +981,7 @@ export const executeConsumerCommand = async (
           channel: "socket",
           socketMode: "agentsCommand",
           agentId: input.agentId,
-          requestId: activeRequestId ?? requestId ?? "unknown-request",
+          requestId: activeRequestId,
           notification: false,
           ...(connectionReady ? { connectionReady } : {}),
           response:
@@ -956,8 +1027,10 @@ export const executeConsumerCommand = async (
     input.transport.on(appErrorEvent, handleAppError);
     input.transport.on(disconnectEvent, handleDisconnect);
     input.transport.emit(commandEvent, {
+      requestId: commandRequestId,
+      clientRequestId: commandRequestId,
       agentId: input.agentId,
-      command: input.command,
+      command,
       timeoutMs,
       payloadFrameCompression: input.payloadFrameCompression ?? "default",
     });

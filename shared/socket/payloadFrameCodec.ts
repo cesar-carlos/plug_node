@@ -26,7 +26,6 @@ const asyncGzipThresholdBytes = 128 * 1024;
 const asyncGunzipThresholdBytes = 64 * 1024;
 const signatureAlgorithm = "hmac-sha256";
 const gzipAsync = promisify(gzipCallback);
-const gunzipAsync = promisify(gunzipCallback);
 const allowedRootKeys = new Set([
   "schemaVersion",
   "enc",
@@ -219,6 +218,68 @@ const assertPayloadSizeLimits = (payloadLength: number, originalLength: number):
   }
 };
 
+const assertDecodedMetadataLimits = (
+  frame: PayloadFrameEnvelope,
+  compressedLength: number,
+): void => {
+  if (frame.originalSize > maxDecodedBytes) {
+    throw new PlugValidationError("PayloadFrame exceeds the 10 MiB decoded limit");
+  }
+
+  if (
+    frame.cmp === "gzip" &&
+    compressedLength > 0 &&
+    frame.originalSize / compressedLength > maxInflationRatio
+  ) {
+    throw new PlugValidationError(
+      "PayloadFrame exceeded the allowed gzip inflation ratio",
+    );
+  }
+};
+
+const gunzipWithLimitSync = (compressedBytes: Buffer): Buffer => {
+  try {
+    return gunzipSync(compressedBytes, { maxOutputLength: maxDecodedBytes });
+  } catch (error: unknown) {
+    if (
+      isRecord(error) &&
+      (error.code === "ERR_BUFFER_TOO_LARGE" ||
+        String(error.message ?? "").includes("maxOutputLength"))
+    ) {
+      throw new PlugValidationError("PayloadFrame exceeds the 10 MiB decoded limit");
+    }
+
+    throw error;
+  }
+};
+
+const gunzipWithLimitAsync = async (compressedBytes: Buffer): Promise<Buffer> =>
+  new Promise<Buffer>((resolve, reject) => {
+    gunzipCallback(
+      compressedBytes,
+      { maxOutputLength: maxDecodedBytes },
+      (error, result) => {
+        if (error) {
+          if (
+            isRecord(error) &&
+            (error.code === "ERR_BUFFER_TOO_LARGE" ||
+              String(error.message ?? "").includes("maxOutputLength"))
+          ) {
+            reject(
+              new PlugValidationError("PayloadFrame exceeds the 10 MiB decoded limit"),
+            );
+            return;
+          }
+
+          reject(error);
+          return;
+        }
+
+        resolve(result);
+      },
+    );
+  });
+
 const buildFrame = (
   payload: Buffer,
   originalLength: number,
@@ -368,6 +429,7 @@ const parseFrameForDecode = (
   }
 
   verifyFrameSignature(frame, compressedBytes, signing);
+  assertDecodedMetadataLimits(frame, compressedBytes.length);
 
   return { frame, compressedBytes };
 };
@@ -471,7 +533,7 @@ export const decodePayloadFrame = <TData = unknown>(
   const { frame, compressedBytes } = parseFrameForDecode(value, options?.signing);
 
   const decodedBytes =
-    frame.cmp === "gzip" ? gunzipSync(compressedBytes) : compressedBytes;
+    frame.cmp === "gzip" ? gunzipWithLimitSync(compressedBytes) : compressedBytes;
 
   validateDecodedPayload(
     frame,
@@ -499,8 +561,8 @@ export const decodePayloadFrameAsync = async <TData = unknown>(
   const decodedBytes =
     frame.cmp === "gzip"
       ? compressedBytes.length >= asyncGunzipThresholdBytes
-        ? await gunzipAsync(compressedBytes)
-        : gunzipSync(compressedBytes)
+        ? await gunzipWithLimitAsync(compressedBytes)
+        : gunzipWithLimitSync(compressedBytes)
       : compressedBytes;
 
   validateDecodedPayload(

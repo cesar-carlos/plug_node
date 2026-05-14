@@ -26,8 +26,8 @@ import {
 } from "../contracts/custom-socket-events";
 import { PlugError, PlugTimeoutError, PlugValidationError } from "../contracts/errors";
 import { plugLogger } from "../logging/plugLogger";
-import { isRecord } from "../utils/json";
 import { decodePayloadFrameAsync } from "./payloadFrameCodec";
+import { createSocketApplicationError, createSocketConnectError } from "./socketErrors";
 
 const appErrorEvent = "app:error";
 const connectErrorEvent = "connect_error";
@@ -58,6 +58,7 @@ export interface StartCustomSocketEventSessionInput {
   readonly reconnectAttempt?: number;
   readonly requirePayloadSignature?: boolean;
   readonly deduplicateEventIdsTtlMs?: number;
+  readonly scheduleEvent?: (task: () => Promise<void>) => void;
   readonly onEvent: (
     event: CustomSocketEventFramePayload,
     metadata: SocketEventRuntimeMetadata,
@@ -71,6 +72,7 @@ export interface StartAgentProfileUpdatedSessionInput {
   readonly payloadFrameSigning?: PayloadFrameSigningOptions;
   readonly reconnectAttempt?: number;
   readonly requirePayloadSignature?: boolean;
+  readonly scheduleEvent?: (task: () => Promise<void>) => void;
   readonly onEvent: (
     event: AgentProfileUpdatedPayload,
     metadata: SocketEventRuntimeMetadata,
@@ -158,77 +160,23 @@ const normalizeRetryAfterSeconds = (retryAfterMs: unknown): number | undefined =
   return Math.max(1, Math.ceil(retryAfterMs / 1000));
 };
 
-const createSocketAppError = (payload: unknown): PlugError => {
-  const appError = isRecord(payload) ? payload : {};
-  const code =
-    typeof appError.code === "string" && appError.code.trim() !== ""
-      ? appError.code
-      : "SOCKET_APP_ERROR";
-
-  if (code === "ACCOUNT_BLOCKED") {
-    return new PlugError("The Plug account is blocked.", {
-      code,
-      description:
-        "The server closed the socket because the user or client account is blocked.",
-      details: isRecord(appError.details) ? appError.details : undefined,
-      technicalMessage:
-        typeof appError.message === "string" ? appError.message : undefined,
-      authRelated: true,
-    });
-  }
-
-  if (code === "AGENT_ACCESS_REVOKED") {
-    return new PlugError("Client access to this agent was revoked.", {
-      code,
-      description:
-        "Ask the agent owner to approve access again or update the credential before retrying.",
-      details: isRecord(appError.details) ? appError.details : undefined,
-      technicalMessage:
-        typeof appError.message === "string" ? appError.message : undefined,
-      authRelated: true,
-    });
-  }
-
-  if (code === "NAMESPACE_DEPRECATED") {
-    return new PlugError("The Plug socket namespace is deprecated.", {
-      code,
-      description: "Use the /consumers namespace for custom socket events.",
-      details: isRecord(appError.details) ? appError.details : undefined,
-      technicalMessage:
-        typeof appError.message === "string" ? appError.message : undefined,
-    });
-  }
-
-  return new PlugError(
-    typeof appError.message === "string" && appError.message.trim() !== ""
-      ? appError.message
-      : "Plug socket reported an application error.",
-    {
-      code,
-      details: isRecord(appError.details) ? appError.details : undefined,
-      retryable:
-        code === "CONSUMER_SOCKET_INITIALIZATION_FAILED" ||
-        code === "ROOM_JOIN_FAILED" ||
-        code === "SOCKET_APP_ERROR",
-    },
-  );
-};
-
-const createConnectError = (payload: unknown): PlugError => {
-  const message =
-    payload instanceof Error
-      ? payload.message
-      : typeof payload === "string"
-        ? payload
-        : "Socket connection failed";
-
-  return new PlugError("Failed to connect to the Plug socket.", {
-    code: "SOCKET_CONNECT_ERROR",
-    description: "Run the workflow again to create a fresh socket connection.",
-    technicalMessage: message,
-    retryable: true,
+const createSocketAppError = (payload: unknown): PlugError =>
+  createSocketApplicationError(payload, {
+    refreshDescription: "The workflow will refresh the Plug session and reconnect.",
+    namespaceDeprecatedDescription:
+      "Use the /consumers namespace for custom socket events.",
+    retryableCodes: [
+      "CONSUMER_SOCKET_INITIALIZATION_FAILED",
+      "ROOM_JOIN_FAILED",
+      "SOCKET_APP_ERROR",
+    ],
   });
-};
+
+const createConnectError = (payload: unknown): PlugError =>
+  createSocketConnectError(payload, {
+    refreshDescription: "The workflow will refresh the Plug session and reconnect.",
+    retryDescription: "Run the workflow again to create a fresh socket connection.",
+  });
 
 const createDisconnectError = (reason: unknown): PlugError =>
   new PlugError("The Plug socket disconnected while listening for custom events.", {
@@ -287,6 +235,19 @@ const assertRequiredPayloadSigningKey = (
       "Payload Signing Key is required when Require Payload Signature is enabled.",
     );
   }
+};
+
+const scheduleSocketEventTask = (
+  scheduler: ((task: () => Promise<void>) => void) | undefined,
+  task: () => Promise<void>,
+  onError: (error: unknown) => void,
+): void => {
+  if (scheduler) {
+    scheduler(task);
+    return;
+  }
+
+  void task().catch(onError);
 };
 
 const normalizeListenTimeoutMs = (value: number | undefined): number => {
@@ -722,13 +683,15 @@ export const startCustomSocketEventSession = async (
   try {
     for (const eventName of eventNames) {
       const handler = (payload: unknown): void => {
-        void decodePayloadFrameAsync<unknown>(payload, {
-          signing: withSigningPolicy(
-            input.payloadFrameSigning,
-            input.requirePayloadSignature,
-          ),
-        })
-          .then((decoded) => {
+        scheduleSocketEventTask(
+          input.scheduleEvent,
+          async () => {
+            const decoded = await decodePayloadFrameAsync<unknown>(payload, {
+              signing: withSigningPolicy(
+                input.payloadFrameSigning,
+                input.requirePayloadSignature,
+              ),
+            });
             const event = assertCustomSocketEventFramePayload(decoded.data);
             if (event.eventName !== eventName) {
               throw new PlugValidationError(
@@ -743,7 +706,7 @@ export const startCustomSocketEventSession = async (
               return undefined;
             }
 
-            return input.onEvent(event, {
+            await input.onEvent(event, {
               eventName,
               socketId: input.transport.id,
               reconnectAttempt,
@@ -751,8 +714,8 @@ export const startCustomSocketEventSession = async (
               payloadFrameRequestId:
                 decoded.frame.requestId === null ? undefined : decoded.frame.requestId,
             });
-          })
-          .catch((error: unknown) => {
+          },
+          (error: unknown) => {
             notifyFatal(
               error instanceof PlugError
                 ? error
@@ -761,7 +724,8 @@ export const startCustomSocketEventSession = async (
                     technicalMessage: error instanceof Error ? error.message : undefined,
                   }),
             );
-          });
+          },
+        );
       };
 
       input.transport.on(eventName, handler);
@@ -849,23 +813,25 @@ export const startAgentProfileUpdatedSession = async (
     notifyFatal(createDisconnectError(payload));
   };
   const handleProfileUpdated = (payload: unknown): void => {
-    void decodePayloadFrameAsync<unknown>(payload, {
-      signing: withSigningPolicy(
-        input.payloadFrameSigning,
-        input.requirePayloadSignature,
-      ),
-    })
-      .then((decoded) =>
-        input.onEvent(assertAgentProfileUpdatedPayload(decoded.data), {
+    scheduleSocketEventTask(
+      input.scheduleEvent,
+      async () => {
+        const decoded = await decodePayloadFrameAsync<unknown>(payload, {
+          signing: withSigningPolicy(
+            input.payloadFrameSigning,
+            input.requirePayloadSignature,
+          ),
+        });
+        await input.onEvent(assertAgentProfileUpdatedPayload(decoded.data), {
           eventName: clientAgentProfileUpdatedEventName,
           socketId: input.transport.id,
           reconnectAttempt,
           subscriptionCount: 1,
           payloadFrameRequestId:
             decoded.frame.requestId === null ? undefined : decoded.frame.requestId,
-        }),
-      )
-      .catch((error: unknown) => {
+        });
+      },
+      (error: unknown) => {
         notifyFatal(
           error instanceof PlugError
             ? error
@@ -874,7 +840,8 @@ export const startAgentProfileUpdatedSession = async (
                 technicalMessage: error instanceof Error ? error.message : undefined,
               }),
         );
-      });
+      },
+    );
   };
 
   input.transport.on(appErrorEvent, handleAppError);

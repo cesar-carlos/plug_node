@@ -22,6 +22,10 @@ Socket lifecycle helpers live in `shared/socket/customSocketEventSession.ts`:
 
 The canonical package provides only the Socket.IO transport adapter. The shared layer owns validation, correlation, timeout handling, HMAC policy, and user-safe error classification.
 
+Socket error classification lives in `shared/socket/socketErrors.ts`. Keep token refreshability, terminal auth codes, `connect_error`, and `app:error` mapping there instead of duplicating it across relay, `agents:command`, and custom event sessions.
+
+Protocol fixtures live in `tests/fixtures/socketProtocolFixtures.ts`, with regression coverage in `tests/internal/socketProtocolContracts.test.ts`. Update those fixtures when the server contract changes.
+
 After changing `shared`, run `npm run sync-shared`. Do not manually edit files under `packages/*/generated/shared`.
 
 ## Operational limits
