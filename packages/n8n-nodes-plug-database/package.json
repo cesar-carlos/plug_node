@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-plug-database",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Plug Database n8n nodes with REST and consumer socket support",
   "license": "MIT",
   "author": {
