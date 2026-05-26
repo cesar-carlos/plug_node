@@ -10,7 +10,9 @@ O node autentica por REST, abre uma conexão Socket.IO no namespace `/consumers`
 
 ## Operações Compatíveis
 
-Na versão 1 do node, Socket está disponível para:
+> **Nota sobre versões**: a "versão" abaixo refere-se ao `typeVersion` do nó `Plug Database` no n8n, não à versão do pacote npm. O `typeVersion 2` é o padrão em workflows novos desde o pacote 2.0.0; o `typeVersion 1` continua suportado para compatibilidade com workflows criados antes da consolidação.
+
+No `typeVersion 1` do nó, Socket está disponível para:
 
 - `Validate Context`
 - `Execute SQL`
@@ -19,7 +21,7 @@ Na versão 1 do node, Socket está disponível para:
 - `Get Agent Profile`
 - `Get Client Token Policy`
 
-Na versão 2, `Execute Batch` também pode usar Socket quando o servidor suporta `agents:command`.
+No `typeVersion 2` (padrão atual), `Execute Batch` também pode usar Socket quando o servidor suporta `agents:command`.
 
 ## Recursos fora deste guia
 

@@ -50,3 +50,11 @@ The API base URL is fixed in code.
 - prefer user-facing API messages
 - hide low-level technical errors from the primary message
 - preserve correlation and retry metadata for debugging
+
+## 3.0.0 breaking changes
+
+Three workflow-visible changes shipped in `n8n-nodes-plug-database@3.0.0`. Existing workflows keep working in most cases but the items below may affect users that depend on the previous behavior:
+
+- **`Plug Tools > Encrypt Text` envelope now carries `iterations`.** The runtime moved from 120.000 to 600.000 PBKDF2 iterations to align with OWASP 2023 guidance. The full envelope returned by `Encrypt Text` already includes the iteration count, so passing the entire envelope to `Decrypt Text` is sufficient. Workflows that persisted only `ciphertext` / `iv` / `salt` / `tag` from 2.x will keep decrypting under the legacy 120.000 default; ciphertexts produced by 3.0.0 require the new envelope (including `iterations`) to be decrypted.
+- **`Plug Tools > Validate Client Token` `valid` flag is now consistent with warnings.** Tokens shorter than 16 characters now return `valid: false` together with a warning. The 2.x behavior was `valid: true` for short tokens. Workflows that branched on `valid === true` for short tokens must read the `warnings` array instead.
+- **`Plug Database` HTTP transport now raises `HTTP_RESPONSE_MISSING_STATUS`.** When the underlying n8n HTTP helper returns a response without a numeric `statusCode`, the requester throws instead of silently assuming `200`. Workflows that intentionally depend on the previous lenient behavior should add `Continue On Fail` and branch on the new error code (see [Error and Authorization Contracts](./error-and-authorization-contracts.md#node-side-error-codes)).

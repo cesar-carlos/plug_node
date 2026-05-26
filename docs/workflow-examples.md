@@ -221,3 +221,82 @@ Use `Plug Database` with:
 - binary output: `Output Binary Property`, default `data`
 
 Use these helpers when the workflow needs file preparation close to Plug SQL, access, or socket-event logic.
+
+## Encrypt and decrypt a value across executions
+
+Use `Plug Database > Tools > Encrypt Text` to encrypt sensitive data, persist the full envelope, and decrypt it later in another execution or workflow.
+
+Encrypt step:
+
+- node: `Plug Database`
+- resource: `Tools`
+- operation: `Encrypt Text`
+- text: the plaintext to protect
+- passphrase: a strong passphrase from a secret store
+
+Output (3.0.0):
+
+```json
+{
+  "ciphertext": "...",
+  "iv": "...",
+  "salt": "...",
+  "tag": "...",
+  "algorithm": "aes-256-gcm",
+  "iterations": 600000
+}
+```
+
+Persist the **entire** envelope (including `iterations`) in your storage. Pass it back to `Decrypt Text` later:
+
+- operation: `Decrypt Text`
+- encryptedJson: the full envelope captured above
+- passphrase: same passphrase used to encrypt
+
+The `iterations` field is read from the envelope, so payloads written by 2.x (without `iterations`) still decrypt under the legacy 120000 default. New payloads use 600000 PBKDF2 iterations (OWASP 2023 alignment).
+
+## Validate input with a JSON Schema
+
+Use `Plug Database > Tools > Validate JSON Schema` to ensure inputs match a contract before sending them downstream.
+
+- node: `Plug Database`
+- resource: `Tools`
+- operation: `Validate JSON Schema`
+- data: the JSON to validate (often `{{$json}}`)
+- schema: a JSON object or a boolean (`true` accepts anything; `false` rejects everything)
+
+Example schema:
+
+```json
+{
+  "type": "object",
+  "required": ["id", "email"],
+  "properties": {
+    "id": { "type": "string" },
+    "email": { "type": "string", "format": "email" }
+  }
+}
+```
+
+Output:
+
+```json
+{
+  "valid": true,
+  "errors": []
+}
+```
+
+When `valid` is `false`, `errors` contains the Ajv error list. Boolean schemas (`true` / `false`) are accepted since 3.0.0.
+
+## Parse a permissive CSV
+
+Use `Plug Database > Tools > CSV to JSON` for CSV inputs that may have rows of varying width.
+
+- node: `Plug Database`
+- resource: `Tools`
+- operation: `CSV to JSON`
+- csv: the CSV text (often from a previous binary node)
+- options: `header = true`, `skipEmptyLines = true`
+
+Since 3.0.0 the tool tolerates `FieldMismatch` warnings (rows with more or fewer fields than the header). Only fatal Papa Parse errors abort the parse, so real-world CSVs with stray rows still come through.

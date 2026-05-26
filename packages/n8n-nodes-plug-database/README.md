@@ -171,5 +171,7 @@ Use n8n's built-in `Compression`, `Convert to File`, and `Extract From File` nod
 - [Project summary](https://github.com/cesar-carlos/plug_node/blob/main/docs/project-summary.md)
 - [Communication patterns](https://github.com/cesar-carlos/plug_node/blob/main/docs/communication-patterns.md)
 - [Socket guide](https://github.com/cesar-carlos/plug_node/blob/main/docs/socket/README.md)
-- [Custom Socket Events](https://github.com/cesar-carlos/plug_node/blob/main/docs/custom-socket-events.md)
+- [Custom Socket Events](https://github.com/cesar-carlos/plug_node/blob/main/docs/socket/custom-events.md)
+- [Client Access](https://github.com/cesar-carlos/plug_node/blob/main/docs/client-access.md)
+- [User Access](https://github.com/cesar-carlos/plug_node/blob/main/docs/user-access.md)
 - [Workflow examples](https://github.com/cesar-carlos/plug_node/blob/main/docs/workflow-examples.md)

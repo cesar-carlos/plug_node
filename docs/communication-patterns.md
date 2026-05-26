@@ -28,7 +28,7 @@ Flow:
 
 Custom Socket Events also use `/consumers`. `Plug Database` can publish through REST or `socket:event.publish`, wait one-shot for the first matching `client:custom.*` event inside `Tools`, enforces server-aligned local payload limits before sending, and the trigger listens to exact `client:custom.*` names or the internal `client:agent.profile.updated` push.
 
-See [Socket guide](./socket/README.md) for SQL over Socket, custom events, trigger behavior, PayloadFrame, examples, troubleshooting, and shared-code maintenance notes. The older [Custom Socket Events](./custom-socket-events.md) page remains as a focused reference for the custom event surface.
+The normative guide for custom socket events is [docs/socket/custom-events.md](./socket/custom-events.md). See the [Socket guide index](./socket/README.md) for SQL over Socket, trigger behavior, PayloadFrame, examples, troubleshooting, and shared-code maintenance notes.
 
 ## PayloadFrame handling
 
@@ -45,4 +45,4 @@ See [Socket guide](./socket/README.md) for SQL over Socket, custom events, trigg
 - `Raw JSON-RPC`
   - preserves the normalized RPC envelope
 - `Chunk Items`
-  - available on the Socket-enabled `Plug Database` node
+  - available when `Channel = Socket` on `Plug Database > Resource = SQL`; emits each stream chunk as its own item without aggregating

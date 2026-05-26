@@ -29,12 +29,24 @@
 
 ## Erros de Comando SQL
 
-| Código ou sintoma                     | Significado                                  | Ação                                                              |
-| ------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------- |
-| `VALIDATION_ERROR`                    | Payload do comando inválido.                 | Revise campos guiados ou JSON-RPC avançado.                       |
-| `RATE_LIMITED` ou `TOO_MANY_REQUESTS` | Limite de requisições.                       | Respeite `retryAfterSeconds` quando presente.                     |
-| `SERVICE_UNAVAILABLE`                 | Hub ou agent indisponível.                   | Tente novamente depois ou use REST se o Socket estiver degradado. |
-| resposta excedeu buffer               | Resultado grande demais para limites locais. | Use filtros SQL, paginação ou `Chunk Items`.                      |
+| Código ou sintoma                     | Significado                                                                               | Ação                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `VALIDATION_ERROR`                    | Payload do comando inválido.                                                              | Revise campos guiados ou JSON-RPC avançado.                       |
+| `RATE_LIMITED` ou `TOO_MANY_REQUESTS` | Limite de requisições.                                                                    | Respeite `retryAfterSeconds` quando presente.                     |
+| `SERVICE_UNAVAILABLE`                 | Hub ou agent indisponível.                                                                | Tente novamente depois ou use REST se o Socket estiver degradado. |
+| `SOCKET_BUFFER_LIMIT`                 | Resposta de stream excedeu os limites locais (max chunks, linhas ou bytes).               | Reduza `Max Rows`, paginate a query, ou use `Chunk Items`.        |
+| `SOCKET_STREAM_ABORTED`               | Servidor encerrou o stream antes de completar (`terminal_status = aborted`).              | Verifique `completePayload` no item de erro e tente novamente.    |
+| `SOCKET_STREAM_ERROR`                 | Stream terminou com `terminal_status = error`.                                            | Verifique `completePayload`; pode indicar erro do agent.          |
+| `RELAY_CONVERSATION_START_FAILED`     | Não foi possível iniciar a conversa de relay (fallback do comando único via socket).      | Verifique disponibilidade do `/consumers`; o node tenta REST.     |
+| `STREAM_LOST`                         | Resposta de stream pull sem identificadores foi recebida (fail-fast adicionado em 3.0.0). | Re-execute o workflow; o servidor pode estar reiniciando.         |
+
+## Erros de Transporte HTTP
+
+| Código                         | Significado                                                                             | Ação                                                                         |
+| ------------------------------ | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `HTTP_RESPONSE_MISSING_STATUS` | Resposta do helper HTTP do n8n não trouxe `statusCode` numérico (introduzido em 3.0.0). | Re-execute. Se persistir, capture logs de rede — a resposta está malformada. |
+| `COLLECT_PAGES_LIMIT_EXCEEDED` | Endpoint de lista REST retornou mais de 100 páginas durante coleta agregada (3.0.0).    | Use `page` / `pageSize` manualmente ou reduza o escopo da consulta.          |
+| `PLUG_TIMEOUT`                 | Timeout local atingido aguardando resposta HTTP ou evento socket.                       | Aumente `Timeout (MS)` no node ou avalie latência da infraestrutura.         |
 
 ## Erros de Eventos Customizados
 
