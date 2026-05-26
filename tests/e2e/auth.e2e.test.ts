@@ -15,10 +15,7 @@ const e2eConfig = getPlugE2EConfig();
 describe.sequential("Plug Database auth E2E", () => {
   it("logs in with the real client credentials", async ({ skip }) => {
     try {
-      const session = await loginClient(
-        createLiveRequester(),
-        e2eConfig.credentials,
-      );
+      const session = await loginClient(createLiveRequester(), e2eConfig.credentials);
 
       expect(session.accessToken).toEqual(expect.any(String));
       expect(session.refreshToken).toEqual(expect.any(String));

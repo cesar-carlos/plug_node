@@ -1,10 +1,6 @@
 import { vi } from "vitest";
 
-import type {
-  IExecuteFunctions,
-  INode,
-  INodeExecutionData,
-} from "n8n-workflow";
+import type { IExecuteFunctions, INode, INodeExecutionData } from "n8n-workflow";
 
 import type {
   PlugClientAuthCredentials,
