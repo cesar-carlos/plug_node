@@ -23,7 +23,7 @@ import { PlugError, PlugTimeoutError, PlugValidationError } from "../contracts/e
 import { plugLogger } from "../logging/plugLogger";
 import { normalizeRpcPayload } from "../output/rpcNormalization";
 import { decodePayloadFrameAsync, encodePayloadFrameAsync } from "./payloadFrameCodec";
-import { estimateJsonUtf8Bytes, isRecord } from "../utils/json";
+import { isRecord } from "../utils/json";
 import { createSocketApplicationError, createSocketConnectError } from "./socketErrors";
 
 const appErrorEvent = "app:error";
@@ -260,8 +260,26 @@ const normalizeConnectionReady = (
 const normalizeConversationStarted = (
   payload: unknown,
 ): RelayConversationStartedPayload => {
-  if (!isRecord(payload)) {
-    throw new PlugValidationError("relay:conversation.started must be an object");
+  if (!isRecord(payload) || typeof payload.success !== "boolean") {
+    throw new PlugValidationError(
+      "relay:conversation.started must be an object with a success boolean",
+    );
+  }
+
+  if (payload.success) {
+    if (!isNonEmptyString(payload.conversationId)) {
+      throw new PlugValidationError(
+        "relay:conversation.started success payload must include conversationId",
+      );
+    }
+  } else if (
+    !isRecord(payload.error) ||
+    !isNonEmptyString(payload.error.code) ||
+    !isNonEmptyString(payload.error.message)
+  ) {
+    throw new PlugValidationError(
+      "relay:conversation.started failure payload must include error.code and error.message",
+    );
   }
 
   return payload as unknown as RelayConversationStartedPayload;
@@ -388,15 +406,21 @@ const isRpcSuccessWithRows = (
   readonly [key: string]: unknown;
 } => isRecord(payload) && isRecord(payload.result) && Array.isArray(payload.result.rows);
 
-const appendChunkRowsToResponse = (response: unknown, chunk: JsonObject): boolean => {
+const tryMergeChunkRowsIntoResponse = (
+  response: unknown,
+  chunk: JsonObject,
+): unknown | undefined => {
   if (!isRpcSuccessWithRows(response) || !Array.isArray(chunk.rows)) {
-    return false;
+    return undefined;
   }
 
-  for (const row of chunk.rows) {
-    response.result.rows.push(row);
-  }
-  return true;
+  return {
+    ...response,
+    result: {
+      ...response.result,
+      rows: [...response.result.rows, ...chunk.rows],
+    },
+  };
 };
 
 const removeStreamMarkerFromResponse = (response: unknown): unknown => {
@@ -751,7 +775,7 @@ export const executeRelayCommand = async (
 
           rawResponseFrame = decoded.frame;
           rawResponsePayload = decoded.data;
-          bufferedBytes += estimateJsonUtf8Bytes(decoded.data);
+          bufferedBytes += decoded.frame.originalSize;
           bufferedRows += countResultRows(decoded.data);
           assertBufferLimits();
 
@@ -783,13 +807,14 @@ export const executeRelayCommand = async (
           }
 
           chunkCount += 1;
-          bufferedBytes += estimateJsonUtf8Bytes(decoded.data);
+          bufferedBytes += decoded.frame.originalSize;
           bufferedRows += countRows(decoded.data.rows);
-          if (
-            input.responseMode === "aggregatedJson" &&
-            appendChunkRowsToResponse(rawResponsePayload, decoded.data)
-          ) {
-            rawResponsePayload = removeStreamMarkerFromResponse(rawResponsePayload);
+          const mergedResponse =
+            input.responseMode === "aggregatedJson"
+              ? tryMergeChunkRowsIntoResponse(rawResponsePayload, decoded.data)
+              : undefined;
+          if (mergedResponse !== undefined) {
+            rawResponsePayload = removeStreamMarkerFromResponse(mergedResponse);
           } else {
             rawChunkFrames.push(decoded.frame);
             chunkPayloads.push(decoded.data);

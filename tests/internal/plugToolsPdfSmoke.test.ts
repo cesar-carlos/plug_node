@@ -7,6 +7,8 @@ import {
   resolvePdfRenderOptions,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/tools/pdf";
 
+// Skipped by default: requires a real Chromium runtime (playwright).
+// Enable by running: PLUG_TEST_REAL_PDF=1 npm test
 describe.skipIf(process.env.PLUG_TEST_REAL_PDF !== "1")(
   "Plug tools real PDF renderer",
   () => {

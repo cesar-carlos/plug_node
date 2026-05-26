@@ -33,8 +33,6 @@ const toMetadata = (result: PlugCommandTransportResult): JsonObject => ({
     : {}),
 });
 
-const cloneRows = (rows: unknown[]): unknown[] => rows.map((row) => row);
-
 const aggregateSocketSqlStream = (
   response: NormalizedAgentRpcResponse,
   chunkPayloads: JsonObject[],
@@ -52,8 +50,11 @@ const aggregateSocketSqlStream = (
     return response;
   }
 
-  const baseResult = { ...response.item.result };
-  const initialRows = Array.isArray(baseResult.rows) ? cloneRows(baseResult.rows) : [];
+  const { stream_id: streamId, ...resultWithoutStreamId } = response.item.result;
+  void streamId;
+  const initialRows = Array.isArray(resultWithoutStreamId.rows)
+    ? [...(resultWithoutStreamId.rows as unknown[])]
+    : [];
   const chunkRows = chunkPayloads.flatMap((chunk) =>
     Array.isArray(chunk.rows) ? chunk.rows : [],
   );
@@ -80,13 +81,12 @@ const aggregateSocketSqlStream = (
     }
   }
 
-  delete baseResult.stream_id;
   return {
     ...response,
     item: {
       ...response.item,
       result: {
-        ...baseResult,
+        ...resultWithoutStreamId,
         rows: [...initialRows, ...chunkRows],
       },
     },

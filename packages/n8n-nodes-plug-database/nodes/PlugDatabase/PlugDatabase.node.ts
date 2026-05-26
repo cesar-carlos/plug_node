@@ -7,6 +7,7 @@ import type {
 
 import { buildPlugClientNodeDescription } from "../../generated/shared/n8n/plugClientDescription";
 import { executePlugClientNode } from "../../generated/shared/n8n/plugClientExecution";
+import { serializeErrorForContinueOnFail } from "../../generated/shared/output/errorOutput";
 import { waitForCustomSocketEventWithSocketIo } from "./customSocketEventListener";
 import { publishCustomSocketEventWithSocketIo } from "./customSocketEventPublisher";
 import { createSocketCommandExecutor } from "./socketCommandExecutor";
@@ -57,8 +58,7 @@ export class PlugDatabase implements INodeType {
           [
             {
               json: {
-                error:
-                  error instanceof Error ? error.message : "Unknown Plug Database error",
+                error: serializeErrorForContinueOnFail(error),
               },
               pairedItem: {
                 item: 0,

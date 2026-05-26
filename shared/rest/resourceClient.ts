@@ -7,7 +7,10 @@ import type {
   PlugSession,
 } from "../contracts/api";
 import { DEFAULT_REQUEST_TIMEOUT_MS } from "../contracts/api";
+import { PlugError } from "../contracts/errors";
 import { buildApiUrl, buildApiUrlWithQuery } from "../utils/url";
+
+const MAX_COLLECT_PAGES = 100;
 
 export interface PlugAuthorizedRequestOptions {
   readonly method: "GET" | "POST" | "PUT" | "DELETE";
@@ -92,6 +95,21 @@ export const collectAllPages = async <
   let lastEnvelope = firstEnvelope;
 
   while (allItems.length < firstEnvelope.total && lastEnvelope.items.length > 0) {
+    if (currentPage >= MAX_COLLECT_PAGES) {
+      throw new PlugError(
+        `Plug API returned more than ${MAX_COLLECT_PAGES} pages. Paginate manually or reduce the query scope.`,
+        {
+          code: "COLLECT_PAGES_LIMIT_EXCEEDED",
+          details: {
+            maxPages: MAX_COLLECT_PAGES,
+            currentPage,
+            totalDeclared: firstEnvelope.total,
+            collectedItems: allItems.length,
+          },
+        },
+      );
+    }
+
     currentPage += 1;
     const nextQuery = {
       ...options.initialQuery,

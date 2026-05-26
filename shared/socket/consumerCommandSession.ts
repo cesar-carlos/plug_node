@@ -263,6 +263,15 @@ const normalizeStreamChunkPayload = (
     throw new PlugValidationError("agents:command_stream_chunk must be an object");
   }
 
+  if (
+    payload.stream_id !== undefined &&
+    (typeof payload.stream_id !== "string" || payload.stream_id.trim() === "")
+  ) {
+    throw new PlugValidationError(
+      "agents:command_stream_chunk stream_id must be a non-empty string when present",
+    );
+  }
+
   return payload as ConsumerCommandStreamChunkPayload;
 };
 
@@ -271,6 +280,24 @@ const normalizeStreamCompletePayload = (
 ): ConsumerCommandStreamCompletePayload => {
   if (!isRecord(payload)) {
     throw new PlugValidationError("agents:command_stream_complete must be an object");
+  }
+
+  if (
+    payload.stream_id !== undefined &&
+    (typeof payload.stream_id !== "string" || payload.stream_id.trim() === "")
+  ) {
+    throw new PlugValidationError(
+      "agents:command_stream_complete stream_id must be a non-empty string when present",
+    );
+  }
+
+  if (
+    payload.terminal_status !== undefined &&
+    typeof payload.terminal_status !== "string"
+  ) {
+    throw new PlugValidationError(
+      "agents:command_stream_complete terminal_status must be a string when present",
+    );
   }
 
   return payload as ConsumerCommandStreamCompletePayload;
@@ -407,18 +434,24 @@ const isSingleSuccessWithRows = (
   isRecord(value.item.result) &&
   Array.isArray(value.item.result.rows);
 
-const appendChunkRowsToResponse = (
+const tryMergeChunkRowsIntoNormalizedResponse = (
   response: NormalizedAgentRpcResponse | undefined,
   chunk: JsonObject,
-): boolean => {
+): NormalizedAgentRpcResponse | undefined => {
   if (!response || !isSingleSuccessWithRows(response) || !Array.isArray(chunk.rows)) {
-    return false;
+    return undefined;
   }
 
-  for (const row of chunk.rows) {
-    response.item.result.rows.push(row);
-  }
-  return true;
+  return {
+    ...response,
+    item: {
+      ...response.item,
+      result: {
+        ...response.item.result,
+        rows: [...response.item.result.rows, ...chunk.rows],
+      },
+    },
+  } as NormalizedAgentRpcResponse;
 };
 
 const removeStreamMarkerFromResponse = (
@@ -578,6 +611,12 @@ const matchesStreamPullResponse = (
 
   if (response.streamId !== undefined && response.streamId !== streamId) {
     return false;
+  }
+
+  // When the failure response carries no identifiers, treat it as matching
+  // this request so the error is surfaced immediately instead of timing out.
+  if (response.requestId === undefined && response.streamId === undefined) {
+    return true;
   }
 
   return response.requestId === requestId || response.streamId === streamId;
@@ -770,6 +809,7 @@ export const executeConsumerCommand = async (
       input.transport.off(commandStreamChunkEvent, handleCommandStreamChunk);
       input.transport.off(commandStreamCompleteEvent, handleCommandStreamComplete);
       input.transport.off(appErrorEvent, handleAppError);
+      input.transport.off(connectErrorEvent, handleConnectError);
       input.transport.off(disconnectEvent, handleDisconnect);
     };
 
@@ -972,12 +1012,15 @@ export const executeConsumerCommand = async (
           bufferedBytes += estimateJsonUtf8Bytes(chunk);
           bufferedRows += countRows(chunk.rows);
 
-          const foldedIntoResponse =
-            input.responseMode === "aggregatedJson" &&
-            appendChunkRowsToResponse(normalizedResponse, chunk);
-
-          if (foldedIntoResponse) {
-            chunkPayloads.pop();
+          if (input.responseMode === "aggregatedJson") {
+            const mergedResponse = tryMergeChunkRowsIntoNormalizedResponse(
+              normalizedResponse,
+              chunk,
+            );
+            if (mergedResponse !== undefined) {
+              normalizedResponse = mergedResponse;
+              chunkPayloads.pop();
+            }
           }
 
           assertBufferLimits();
@@ -1073,6 +1116,17 @@ export const executeConsumerCommand = async (
       reject(createSocketAppError(payload));
     };
 
+    const handleConnectError = (payload: unknown): void => {
+      cleanup();
+      plugLogger.warn("transport.socket.command.connect_error", {
+        socketMode: "agentsCommand",
+        agentId: input.agentId,
+        requestId: activeRequestId,
+        durationMs: Date.now() - commandStartMs,
+      });
+      reject(createConnectError(payload));
+    };
+
     const handleDisconnect = (payload: unknown): void => {
       cleanup();
       plugLogger.warn("transport.socket.command.disconnected", {
@@ -1088,6 +1142,7 @@ export const executeConsumerCommand = async (
     input.transport.on(commandStreamChunkEvent, handleCommandStreamChunk);
     input.transport.on(commandStreamCompleteEvent, handleCommandStreamComplete);
     input.transport.on(appErrorEvent, handleAppError);
+    input.transport.on(connectErrorEvent, handleConnectError);
     input.transport.on(disconnectEvent, handleDisconnect);
     input.transport.emit(commandEvent, {
       protocolVersion: SOCKET_PROTOCOL_VERSION,

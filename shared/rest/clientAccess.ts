@@ -1,5 +1,4 @@
 import type {
-  JsonObject,
   PlugAnyLoginResponse,
   PlugEmailPasswordCredentials,
   PlugClientAuthCredentials,
@@ -21,6 +20,14 @@ import type {
 import { PlugValidationError } from "../contracts/errors";
 import { isRecord } from "../utils/json";
 import { requestAuthorizedJson } from "./resourceClient";
+import {
+  assertOptionalString,
+  assertRecord,
+  assertRecordArray,
+  assertString,
+  assertStringArray,
+  assertNumber,
+} from "./parseHelpers";
 
 const clientAgentsPath = "/client/me/agents";
 const clientAccessRequestsPath = "/client/me/agent-access-requests";
@@ -54,57 +61,6 @@ interface SetClientAgentTokenInput {
   readonly clientToken: string | null;
 }
 
-const assertRecord = (value: unknown, label: string): JsonObject => {
-  if (!isRecord(value)) {
-    throw new PlugValidationError(`${label} must be an object`);
-  }
-
-  return value;
-};
-
-const assertString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new PlugValidationError(`${label} must be a non-empty string`);
-  }
-
-  return value;
-};
-
-const assertOptionalString = (value: unknown): string | null | undefined => {
-  if (value === null || value === undefined) {
-    return value;
-  }
-
-  return typeof value === "string" ? value : undefined;
-};
-
-const assertNumber = (value: unknown, label: string): number => {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new PlugValidationError(`${label} must be a number`);
-  }
-
-  return value;
-};
-
-const assertStringArray = (value: unknown, label: string): string[] => {
-  if (!Array.isArray(value)) {
-    throw new PlugValidationError(`${label} must be an array`);
-  }
-
-  return value.map((item, index) => assertString(item, `${label}[${index}]`));
-};
-
-const assertRecordArray = <TRecord extends JsonObject>(
-  value: unknown,
-  label: string,
-): TRecord[] => {
-  if (!Array.isArray(value)) {
-    throw new PlugValidationError(`${label} must be an array`);
-  }
-
-  return value.map((item, index) => assertRecord(item, `${label}[${index}]`) as TRecord);
-};
-
 const requestClientAccessResource = async <
   TBody = unknown,
   TCredentials extends PlugEmailPasswordCredentials = PlugClientAuthCredentials,
@@ -127,7 +83,6 @@ const parseListClientAgentsResponse = (body: unknown): ListClientAgentsResponse 
   const record = assertRecord(body, "List client agents response");
 
   return {
-    ...record,
     agents: assertRecordArray<ClientAccessibleAgent>(record.agents, "agents"),
     agentIds: assertStringArray(record.agentIds, "agentIds"),
     count: assertNumber(record.count, "count"),
@@ -141,7 +96,6 @@ const parseGetClientAgentResponse = (body: unknown): GetClientAgentResponse => {
   const record = assertRecord(body, "Get client agent response");
 
   return {
-    ...record,
     agent: assertRecord(record.agent, "agent") as ClientAccessibleAgent,
   };
 };
@@ -152,7 +106,6 @@ const parseListAccessRequestsResponse = (
   const record = assertRecord(body, "List access requests response");
 
   return {
-    ...record,
     items: assertRecordArray<ClientAgentAccessRequestRecord>(record.items, "items"),
     total: assertNumber(record.total, "total"),
     page: assertNumber(record.page, "page"),
@@ -164,7 +117,6 @@ const parseRequestAgentAccessResponse = (body: unknown): RequestAgentAccessRespo
   const record = assertRecord(body, "Request agent access response");
 
   return {
-    ...record,
     requested: assertStringArray(record.requested, "requested"),
     alreadyApproved: assertStringArray(record.alreadyApproved, "alreadyApproved"),
     newRequests: assertStringArray(record.newRequests, "newRequests"),
@@ -182,7 +134,6 @@ const parseClientAgentTokenResponse = (body: unknown): ClientAgentTokenResponse 
   }
 
   return {
-    ...record,
     agentId: assertString(record.agentId, "agentId"),
     clientToken,
   };
@@ -262,29 +213,27 @@ export const revokeClientAgentAccess = async (
   input: RevokeClientAgentAccessInput,
 ): Promise<RevokeAgentAccessSummary> => {
   const singleAgentId = input.agentId?.trim();
+  const isRevokeSingle =
+    Boolean(singleAgentId) && (!input.agentIds || input.agentIds.length === 0);
 
-  const body =
-    singleAgentId && (!input.agentIds || input.agentIds.length === 0)
-      ? await requestClientAccessResource(requester, session, {
-          method: "DELETE",
-          path: `${clientAgentsPath}/${encodeURIComponent(singleAgentId)}`,
-        })
-      : await requestClientAccessResource(requester, session, {
-          method: "DELETE",
-          path: clientAgentsPath,
-          body: {
-            agentIds: input.agentIds,
-          },
-        });
+  const body = isRevokeSingle
+    ? await requestClientAccessResource(requester, session, {
+        method: "DELETE",
+        path: `${clientAgentsPath}/${encodeURIComponent(singleAgentId as string)}`,
+      })
+    : await requestClientAccessResource(requester, session, {
+        method: "DELETE",
+        path: clientAgentsPath,
+        body: {
+          agentIds: input.agentIds,
+        },
+      });
 
   return {
-    revokeMode:
-      singleAgentId && (!input.agentIds || input.agentIds.length === 0)
-        ? "single"
-        : "batch",
-    ...(singleAgentId && (!input.agentIds || input.agentIds.length === 0)
+    revokeMode: isRevokeSingle ? "single" : "batch",
+    ...(isRevokeSingle
       ? {
-          agentId: singleAgentId,
+          agentId: singleAgentId as string,
           revokedCount: 1,
         }
       : {

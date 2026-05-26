@@ -367,11 +367,8 @@ const assertLoginResponse = <TLoginResponse extends PlugAnyLoginResponse>(
   authConfig: PlugAuthEndpointConfig,
 ): TLoginResponse => {
   const tokenPair = assertTokenPair(body, "login");
-  if (!isRecord(body)) {
-    throw new PlugValidationError("Plug login returned a non-object response");
-  }
 
-  const profile = body[authConfig.profileKey];
+  const profile = (body as Record<string, unknown>)[authConfig.profileKey];
   if (!isRecord(profile)) {
     throw new PlugValidationError(
       `Plug login response is missing ${authConfig.profileLabel} data`,
@@ -410,16 +407,13 @@ const assertRefreshResponse = <TLoginResponse extends PlugAnyLoginResponse>(
 ): TLoginResponse => {
   const tokenPair = assertTokenPair(body, "refresh");
 
-  if (!isRecord(body)) {
-    throw new PlugValidationError("Plug refresh returned a non-object response");
-  }
-
   const previousProfile = getLoginResponseProfile(
     previousLoginResponse,
     authConfig.profileKey,
   );
-  const nextProfile = isRecord(body[authConfig.profileKey])
-    ? body[authConfig.profileKey]
+  const bodyRecord = body as Record<string, unknown>;
+  const nextProfile = isRecord(bodyRecord[authConfig.profileKey])
+    ? bodyRecord[authConfig.profileKey]
     : previousProfile;
 
   return {

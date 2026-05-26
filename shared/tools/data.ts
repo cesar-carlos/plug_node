@@ -29,6 +29,12 @@ export const transformJson = async (
   return expression.evaluate(input);
 };
 
+// Papa Parse reports row-shape mismatches (FieldMismatch) as non-fatal errors:
+// they indicate a row had more or fewer fields than the header. These should
+// not abort parsing because they are common in real-world CSVs.
+const isFatalPapaError = (error: Papa.ParseError): boolean =>
+  error.type !== "FieldMismatch";
+
 export const csvToJson = (csv: unknown, options: Record<string, unknown>): unknown[] => {
   if (typeof csv !== "string") {
     throw new PlugValidationError("CSV must be a string");
@@ -41,11 +47,10 @@ export const csvToJson = (csv: unknown, options: Record<string, unknown>): unkno
     dynamicTyping: options.dynamicTyping === true,
   });
 
-  if (result.errors.length > 0) {
+  const fatalErrors = result.errors.filter(isFatalPapaError);
+  if (fatalErrors.length > 0) {
     throw new PlugValidationError("CSV could not be parsed", {
-      technicalMessage: result.errors
-        .map((error: Papa.ParseError) => error.message)
-        .join("; "),
+      technicalMessage: fatalErrors.map((error) => error.message).join("; "),
     });
   }
 
@@ -132,7 +137,8 @@ export const validateJsonSchema = (
     typeof schemaValue === "string"
       ? parseJsonText(schemaValue, "JSON Schema")
       : schemaValue;
-  if (!isRecord(schema) && !Array.isArray(schema)) {
+  // JSON Schema spec allows boolean schemas (true allows everything, false rejects).
+  if (!isRecord(schema) && typeof schema !== "boolean") {
     throw new PlugValidationError("JSON Schema must be a JSON object or boolean schema");
   }
 

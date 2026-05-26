@@ -186,31 +186,32 @@ const createDisconnectError = (reason: unknown): PlugError =>
     retryable: true,
   });
 
-const createControlError = (
-  ack: Extract<SocketEventControlAck, { success: false }>,
+const buildSocketAckError = (
+  error: {
+    readonly code: string;
+    readonly message: string;
+    readonly statusCode?: number;
+    readonly retryAfterMs?: number;
+  },
+  rateLimit: unknown,
 ): PlugError => {
-  const retryAfterSeconds = normalizeRetryAfterSeconds(ack.error.retryAfterMs);
-  return new PlugError(ack.error.message, {
-    code: ack.error.code,
-    statusCode: ack.error.statusCode,
-    retryable: ack.error.code === "RATE_LIMITED" || ack.error.statusCode === 429,
+  const retryAfterSeconds = normalizeRetryAfterSeconds(error.retryAfterMs);
+  return new PlugError(error.message, {
+    code: error.code,
+    statusCode: error.statusCode,
+    retryable: error.code === "RATE_LIMITED" || error.statusCode === 429,
     retryAfterSeconds,
-    details: ack.rateLimit ? { rateLimit: ack.rateLimit } : undefined,
+    details: rateLimit ? { rateLimit } : undefined,
   });
 };
 
+const createControlError = (
+  ack: Extract<SocketEventControlAck, { success: false }>,
+): PlugError => buildSocketAckError(ack.error, ack.rateLimit);
+
 const createPublishedError = (
   ack: Extract<SocketEventPublishedAck, { success: false }>,
-): PlugError => {
-  const retryAfterSeconds = normalizeRetryAfterSeconds(ack.error.retryAfterMs);
-  return new PlugError(ack.error.message, {
-    code: ack.error.code,
-    statusCode: ack.error.statusCode,
-    retryable: ack.error.code === "RATE_LIMITED" || ack.error.statusCode === 429,
-    retryAfterSeconds,
-    details: ack.rateLimit ? { rateLimit: ack.rateLimit } : undefined,
-  });
-};
+): PlugError => buildSocketAckError(ack.error, ack.rateLimit);
 
 const withSigningPolicy = (
   signing: PayloadFrameSigningOptions | undefined,

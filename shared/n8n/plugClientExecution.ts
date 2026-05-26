@@ -675,16 +675,17 @@ const buildAdvancedCommand = (
     );
   }
 
-  const profileOptions =
-    operation === "executeSql"
-      ? toCollection(context, "sqlOptions", itemIndex)
-      : operation === "executeBatch"
-        ? toCollection(context, "batchOptions", itemIndex)
-        : operation === "cancelSql"
-          ? toCollection(context, "cancelOptions", itemIndex)
-          : operation === "discoverRpc"
-            ? toCollection(context, "discoverOptions", itemIndex)
-            : toCollection(context, "profileOptions", itemIndex);
+  const operationOptionsCollectionMap: Record<string, string> = {
+    executeSql: "sqlOptions",
+    executeBatch: "batchOptions",
+    cancelSql: "cancelOptions",
+    discoverRpc: "discoverOptions",
+  };
+  const profileOptions = toCollection(
+    context,
+    operationOptionsCollectionMap[operation] ?? "profileOptions",
+    itemIndex,
+  );
 
   const timeoutMs = toOptionalPositiveNumber(profileOptions.timeoutMs);
   const apiVersion = toOptionalString(profileOptions.apiVersion) ?? DEFAULT_API_VERSION;

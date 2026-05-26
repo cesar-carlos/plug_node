@@ -51,23 +51,28 @@ export const buildSocketEventPayload = (
       : payloadValue,
 });
 
+const MIN_RECOMMENDED_CLIENT_TOKEN_LENGTH = 16;
+const MAX_CLIENT_TOKEN_LENGTH = 4096;
+
 export const validateClientToken = (
   tokenValue: unknown,
 ): { valid: boolean; tokenLength: number; warnings: string[] } => {
   const token = asString(tokenValue, "Client Token");
   const warnings: string[] = [];
-  if (token.length < 16) {
-    warnings.push("Token is shorter than the recommended minimum of 16 characters.");
+  if (token.length < MIN_RECOMMENDED_CLIENT_TOKEN_LENGTH) {
+    warnings.push(
+      `Token is shorter than the recommended minimum of ${MIN_RECOMMENDED_CLIENT_TOKEN_LENGTH} characters.`,
+    );
   }
-  if (token.length > 4096) {
-    return {
-      valid: false,
-      tokenLength: token.length,
-      warnings: ["Token exceeds 4096 characters."],
-    };
+  if (token.length > MAX_CLIENT_TOKEN_LENGTH) {
+    warnings.push(`Token exceeds the ${MAX_CLIENT_TOKEN_LENGTH} character limit.`);
   }
 
-  return { valid: true, tokenLength: token.length, warnings };
+  return {
+    valid: warnings.length === 0,
+    tokenLength: token.length,
+    warnings,
+  };
 };
 
 export const validateAgentContext = (

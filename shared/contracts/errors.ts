@@ -36,24 +36,73 @@ export class PlugError extends Error {
   }
 }
 
+type ExtraErrorOptions = Partial<Omit<PlugErrorOptions, "code">> &
+  Record<string, unknown>;
+
+const splitExtraErrorOptions = (
+  input: ExtraErrorOptions | undefined,
+): {
+  readonly known: Partial<Omit<PlugErrorOptions, "code">>;
+  readonly details: Record<string, unknown> | undefined;
+} => {
+  if (!input) {
+    return { known: {}, details: undefined };
+  }
+
+  const {
+    statusCode,
+    correlationId,
+    retryable,
+    retryAfterSeconds,
+    description,
+    technicalMessage,
+    details,
+    authRelated,
+    ...rest
+  } = input;
+
+  const inlineDetails = details && typeof details === "object" ? details : undefined;
+  const mergedDetails =
+    Object.keys(rest).length > 0 || inlineDetails
+      ? { ...(inlineDetails ?? {}), ...rest }
+      : undefined;
+
+  return {
+    known: {
+      ...(statusCode !== undefined ? { statusCode } : {}),
+      ...(correlationId !== undefined ? { correlationId } : {}),
+      ...(retryable !== undefined ? { retryable } : {}),
+      ...(retryAfterSeconds !== undefined ? { retryAfterSeconds } : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(technicalMessage !== undefined ? { technicalMessage } : {}),
+      ...(authRelated !== undefined ? { authRelated } : {}),
+    },
+    details: mergedDetails as Record<string, unknown> | undefined,
+  };
+};
+
 export class PlugValidationError extends PlugError {
-  constructor(message: string, details?: Record<string, unknown>) {
+  constructor(message: string, options?: ExtraErrorOptions) {
+    const { known, details } = splitExtraErrorOptions(options);
     super(message, {
       code: "PLUG_VALIDATION_ERROR",
       statusCode: 400,
-      details,
+      ...known,
+      ...(details !== undefined ? { details } : {}),
     });
     this.name = "PlugValidationError";
   }
 }
 
 export class PlugTimeoutError extends PlugError {
-  constructor(message: string, details?: Record<string, unknown>) {
+  constructor(message: string, options?: ExtraErrorOptions) {
+    const { known, details } = splitExtraErrorOptions(options);
     super(message, {
       code: "PLUG_TIMEOUT",
       statusCode: 408,
       retryable: true,
-      details,
+      ...known,
+      ...(details !== undefined ? { details } : {}),
     });
     this.name = "PlugTimeoutError";
   }

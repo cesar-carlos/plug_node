@@ -14,9 +14,13 @@ import type {
   PaginatedAgentCatalogResponse,
   UserAccessMutationSummary,
 } from "../contracts/user-access";
-import { PlugValidationError } from "../contracts/errors";
-import { isRecord } from "../utils/json";
 import { requestAuthorizedJson } from "./resourceClient";
+import {
+  assertRecord,
+  assertRecordArray,
+  assertString,
+  assertNumber,
+} from "./parseHelpers";
 
 const agentCatalogPath = "/agents/catalog";
 const managedAccessRequestsPath = "/me/client-access-requests";
@@ -29,46 +33,10 @@ interface ListAgentCatalogInput {
   readonly pageSize?: number;
 }
 
-const assertRecord = (value: unknown, label: string): JsonObject => {
-  if (!isRecord(value)) {
-    throw new PlugValidationError(`${label} must be an object`);
-  }
-
-  return value;
-};
-
-const assertString = (value: unknown, label: string): string => {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new PlugValidationError(`${label} must be a non-empty string`);
-  }
-
-  return value;
-};
-
-const assertNumber = (value: unknown, label: string): number => {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new PlugValidationError(`${label} must be a number`);
-  }
-
-  return value;
-};
-
-const assertRecordArray = <TRecord extends JsonObject>(
-  value: unknown,
-  label: string,
-): TRecord[] => {
-  if (!Array.isArray(value)) {
-    throw new PlugValidationError(`${label} must be an array`);
-  }
-
-  return value.map((item, index) => assertRecord(item, `${label}[${index}]`) as TRecord);
-};
-
 const parseAgentCatalogResponse = (body: unknown): PaginatedAgentCatalogResponse => {
   const record = assertRecord(body, "Agent catalog response");
 
   return {
-    ...record,
     agents: assertRecordArray<AgentCatalogRecord>(record.agents, "agents"),
     count: assertNumber(record.count, "count"),
     total: assertNumber(record.total, "total"),

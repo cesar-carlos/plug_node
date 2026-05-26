@@ -16,7 +16,7 @@ describe.sequential("Plug Database auth E2E", () => {
   it("logs in with the real client credentials", async ({ skip }) => {
     try {
       const session = await loginClient(
-        createLiveRequester(e2eConfig.credentials),
+        createLiveRequester(),
         e2eConfig.credentials,
       );
 
@@ -39,7 +39,7 @@ describe.sequential("Plug Database auth E2E", () => {
     skip,
   }) => {
     try {
-      const requester = createLiveRequester(e2eConfig.credentials);
+      const requester = createLiveRequester();
       const session = await loginClient(requester, e2eConfig.credentials);
       const refreshed = await refreshClientSession(requester, session);
 
@@ -62,7 +62,7 @@ describe.sequential("Plug Database auth E2E", () => {
     skip,
   }) => {
     try {
-      const requester = createLiveRequester(e2eConfig.credentials);
+      const requester = createLiveRequester();
       const session = await loginClient(requester, e2eConfig.credentials);
 
       await expect(
@@ -87,7 +87,7 @@ describe.sequential("Plug Database auth E2E", () => {
   it("performs a real refresh when the session runner receives an auth-expiry error", async ({
     skip,
   }) => {
-    const baseRequester = createLiveRequester(e2eConfig.credentials);
+    const baseRequester = createLiveRequester();
     const requester = vi.fn(baseRequester);
     const runner = createExecutionSessionRunner(requester, e2eConfig.credentials);
     const callback = vi

@@ -14,7 +14,7 @@ import type {
 } from "../contracts/payload-frame";
 import type { PayloadFrameCompression } from "../contracts/api";
 import { PlugValidationError } from "../contracts/errors";
-import { isRecord, safeStringify } from "../utils/json";
+import { isRecord, stringifyJson } from "../utils/json";
 
 const compressionThresholdBytes = 1024;
 const minAutoGzipSavingsBytes = 64;
@@ -491,7 +491,7 @@ export const encodePayloadFrame = (
     readonly signing?: PayloadFrameSigningOptions;
   },
 ): PayloadFrameEnvelope => {
-  const json = safeStringify(data);
+  const json = stringifyJson(data);
   const original = Buffer.from(json, "utf8");
   const preference = options?.compression ?? "default";
   const { cmp, payload } = preparePayloadSync(original, preference);
@@ -510,7 +510,7 @@ export const encodePayloadFrameAsync = async (
     readonly signing?: PayloadFrameSigningOptions;
   },
 ): Promise<PayloadFrameEnvelope> => {
-  const json = safeStringify(data);
+  const json = stringifyJson(data);
   const original = Buffer.from(json, "utf8");
   const preference = options?.compression ?? "default";
   const { cmp, payload } = await preparePayloadAsync(original, preference);

@@ -2,7 +2,6 @@ import { vi } from "vitest";
 
 import type {
   IExecuteFunctions,
-  IHttpRequestOptions,
   INode,
   INodeExecutionData,
 } from "n8n-workflow";
@@ -38,7 +37,7 @@ export const createMockExecuteContext = (
   options: MockExecuteContextOptions,
 ): IExecuteFunctions & { readonly httpRequestMock: ReturnType<typeof vi.fn> } => {
   const responseQueue = [...options.responses];
-  const httpRequestMock = vi.fn(async (_request: IHttpRequestOptions) => {
+  const httpRequestMock = vi.fn(async () => {
     if (responseQueue.length === 0) {
       throw new Error("No mocked HTTP response left in the queue");
     }

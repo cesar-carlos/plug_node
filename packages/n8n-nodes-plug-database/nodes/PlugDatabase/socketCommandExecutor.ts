@@ -1,5 +1,3 @@
-import { io, type Socket } from "socket.io-client";
-
 import type { PlugSocketExecutor } from "../../generated/shared/n8n/plugClientExecution";
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
@@ -17,6 +15,7 @@ import {
   type ConsumerSocketTransport,
 } from "../../generated/shared/socket/consumerCommandSession";
 import { deriveSocketNamespaceUrl } from "../../generated/shared/utils/url";
+import { createSocketIoTransport, type SocketIoTransportLike } from "./socketIoTransport";
 
 const appErrorEvent = "app:error";
 const connectErrorEvent = "connect_error";
@@ -35,43 +34,8 @@ const nextProbeBackoffMs = (): number =>
   capabilityProbeBackoffMinMs +
   Math.floor(Math.random() * capabilityProbeBackoffJitterMs);
 
-class SocketIoConsumerTransport implements ConsumerSocketTransport {
-  constructor(private readonly socket: Socket) {}
-
-  get connected(): boolean {
-    return this.socket.connected;
-  }
-
-  connect(): void {
-    this.socket.connect();
-  }
-
-  disconnect(): void {
-    this.socket.disconnect();
-  }
-
-  on(event: string, handler: (payload: unknown) => void): void {
-    this.socket.on(event, handler);
-  }
-
-  off(event: string, handler: (payload: unknown) => void): void {
-    this.socket.off(event, handler);
-  }
-
-  emit(event: string, payload?: unknown): void {
-    if (payload === undefined) {
-      this.socket.emit(event);
-      return;
-    }
-
-    this.socket.emit(event, payload);
-  }
-}
-
 export class ConsumerSocketExecutionManager {
-  private socket?: Socket;
-
-  private transport?: SocketIoConsumerTransport;
+  private transport?: SocketIoTransportLike;
 
   private namespaceUrl?: string;
 
@@ -92,14 +56,13 @@ export class ConsumerSocketExecutionManager {
   };
 
   private disposeSocket(): void {
-    if (this.socket) {
-      this.socket.off(appErrorEvent, this.handleTerminalEvent);
-      this.socket.off(connectErrorEvent, this.handleTerminalEvent);
-      this.socket.off(disconnectEvent, this.handleTerminalEvent);
-      this.socket.disconnect();
+    if (this.transport) {
+      this.transport.off(appErrorEvent, this.handleTerminalEvent);
+      this.transport.off(connectErrorEvent, this.handleTerminalEvent);
+      this.transport.off(disconnectEvent, this.handleTerminalEvent);
+      this.transport.disconnect();
     }
 
-    this.socket = undefined;
     this.transport = undefined;
     this.namespaceUrl = undefined;
     this.accessToken = undefined;
@@ -113,7 +76,6 @@ export class ConsumerSocketExecutionManager {
     const namespaceUrl = deriveSocketNamespaceUrl(baseUrl, "/consumers");
     const shouldRecreate =
       this.transport === undefined ||
-      this.socket === undefined ||
       this.stale ||
       this.namespaceUrl !== namespaceUrl ||
       this.accessToken !== accessToken;
@@ -121,21 +83,12 @@ export class ConsumerSocketExecutionManager {
     if (shouldRecreate) {
       this.disposeSocket();
 
-      const socket = io(namespaceUrl, {
-        autoConnect: false,
-        reconnection: false,
-        transports: ["websocket"],
-        auth: {
-          token: accessToken,
-        },
-      });
+      const transport = createSocketIoTransport({ baseUrl, accessToken });
+      transport.on(appErrorEvent, this.handleTerminalEvent);
+      transport.on(connectErrorEvent, this.handleTerminalEvent);
+      transport.on(disconnectEvent, this.handleTerminalEvent);
 
-      socket.on(appErrorEvent, this.handleTerminalEvent);
-      socket.on(connectErrorEvent, this.handleTerminalEvent);
-      socket.on(disconnectEvent, this.handleTerminalEvent);
-
-      this.socket = socket;
-      this.transport = new SocketIoConsumerTransport(socket);
+      this.transport = transport;
       this.namespaceUrl = namespaceUrl;
       this.accessToken = accessToken;
       this.stale = false;
@@ -226,7 +179,7 @@ export class ConsumerSocketExecutionManager {
             await sleep(nextProbeBackoffMs());
             if (Array.isArray(input.command)) {
               this.stale = true;
-              this.socket?.disconnect();
+              this.transport?.disconnect();
               plugLogger.warn("transport.socket.capability_probe.try_direct_batch", {
                 socketMode: "agentsCommand",
                 agentId: input.agentId,
@@ -240,7 +193,7 @@ export class ConsumerSocketExecutionManager {
             this.capabilityCacheKey = capabilityKey;
             this.capabilityCheckedAtMs = Date.now();
             this.stale = true;
-            this.socket?.disconnect();
+            this.transport?.disconnect();
             plugLogger.warn("transport.socket.capability_probe.fallback", {
               socketMode: "agentsCommand",
               agentId: input.agentId,

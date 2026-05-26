@@ -1,6 +1,7 @@
 import type { IHttpRequestOptions } from "n8n-workflow";
 
 import type { PlugHttpRequester, PlugHttpRequestOptions } from "../contracts/api";
+import { PlugError } from "../contracts/errors";
 import { isRecord } from "../utils/json";
 
 export interface N8nHttpRequesterContext {
@@ -29,19 +30,26 @@ export const buildN8nHttpRequester = (
     };
 
     const response = await context.helpers.httpRequest(requestOptions);
-    const responseBody =
-      isRecord(response) && "body" in response ? response.body : response;
-    const responseHeaders =
-      isRecord(response) && isRecord(response.headers)
-        ? (response.headers as Record<string, string | string[] | undefined>)
-        : {};
-    const statusCode =
-      isRecord(response) && typeof response.statusCode === "number"
-        ? response.statusCode
-        : 200;
+
+    if (!isRecord(response) || typeof response.statusCode !== "number") {
+      throw new PlugError(
+        "Plug HTTP transport returned a response without a status code.",
+        {
+          code: "HTTP_RESPONSE_MISSING_STATUS",
+          description:
+            "The n8n HTTP helper did not include a numeric statusCode. Retry the request and report this if it persists.",
+          retryable: true,
+        },
+      );
+    }
+
+    const responseBody = "body" in response ? response.body : response;
+    const responseHeaders = isRecord(response.headers)
+      ? (response.headers as Record<string, string | string[] | undefined>)
+      : {};
 
     return {
-      statusCode,
+      statusCode: response.statusCode,
       headers: responseHeaders,
       body: responseBody as TBody,
     };

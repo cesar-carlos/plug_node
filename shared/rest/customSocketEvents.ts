@@ -26,9 +26,10 @@ const normalizePublishResponseBody = (body: unknown): unknown => {
 
   try {
     return JSON.parse(body) as unknown;
-  } catch {
+  } catch (error: unknown) {
     throw new PlugValidationError(
       "Plug socket event publish response body must be valid JSON",
+      { technicalMessage: error instanceof Error ? error.message : undefined },
     );
   }
 };

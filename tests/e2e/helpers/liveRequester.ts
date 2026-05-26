@@ -1,7 +1,4 @@
-import type {
-  PlugCredentials,
-  PlugHttpRequester,
-} from "../../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
+import type { PlugHttpRequester } from "../../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 
 const toResponseHeaders = (headers: Headers): Record<string, string> => {
   const normalized: Record<string, string> = {};
@@ -46,7 +43,7 @@ const toFetchBody = (body: unknown): BodyInit | undefined => {
   return JSON.stringify(body);
 };
 
-export const createLiveRequester = (_credentials: PlugCredentials): PlugHttpRequester => {
+export const createLiveRequester = (): PlugHttpRequester => {
   return async (request) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), request.timeoutMs ?? 30_000);
