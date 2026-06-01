@@ -13,10 +13,12 @@ import {
 import {
   createExecutionSessionRunner,
   createHttpError,
+  isSessionRefreshableError,
   loginClient,
   refreshClientSession,
   withAutoRefreshSession,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/auth/session";
+import { createTestAccessToken } from "./helpers/testJwt";
 
 const credentials: PlugCredentials = {
   user: "client@example.com",
@@ -135,7 +137,7 @@ describe("auth session runner", () => {
     expect(requester).toHaveBeenCalledTimes(1);
   });
 
-  it("surfaces the refresh failure when the refresh token is rejected", async () => {
+  it("surfaces login failure when refresh is rejected and relogin also fails", async () => {
     const loginSuccess = loadFixture("login.success.json");
     const requester: PlugHttpRequester = vi
       .fn()
@@ -151,6 +153,14 @@ describe("auth session runner", () => {
           message: "Refresh token expired",
           code: "REFRESH_EXPIRED",
         },
+      })
+      .mockResolvedValueOnce({
+        statusCode: 401,
+        headers: {},
+        body: {
+          message: "Plug rejected the login credentials.",
+          code: "INVALID_CREDENTIALS",
+        },
       });
     const runner = createExecutionSessionRunner(requester, credentials);
 
@@ -163,13 +173,169 @@ describe("auth session runner", () => {
         });
       }),
     ).rejects.toMatchObject<Partial<PlugError>>({
-      message: "The Plug session expired and could not be refreshed.",
-      code: "REFRESH_EXPIRED",
+      message: "Plug rejected the login credentials.",
+      code: "INVALID_CREDENTIALS",
       statusCode: 401,
       authRelated: true,
     });
 
+    expect(requester).toHaveBeenCalledTimes(3);
+  });
+
+  it("deduplicates concurrent refresh attempts into a single HTTP refresh", async () => {
+    const loginSuccess = {
+      ...loadFixture<Record<string, unknown>>("login.success.json"),
+      accessToken: "access-1",
+    };
+    const refreshSuccess = loadFixture("refresh.success.json");
+    let refreshCalls = 0;
+
+    const requester: PlugHttpRequester = vi.fn(async (request) => {
+      if (String(request.url).includes("/client-auth/refresh")) {
+        refreshCalls += 1;
+        await new Promise((resolve) => {
+          setTimeout(resolve, 10);
+        });
+        return {
+          statusCode: 200,
+          headers: {},
+          body: refreshSuccess,
+        };
+      }
+
+      return {
+        statusCode: 200,
+        headers: {},
+        body: loginSuccess,
+      };
+    });
+
+    const runner = createExecutionSessionRunner(requester, credentials);
+    const authError = new PlugError("Expired token", {
+      code: "TOKEN_EXPIRED",
+      statusCode: 401,
+      authRelated: true,
+    });
+
+    await Promise.all([
+      runner(async () => {
+        throw authError;
+      }).catch(() => undefined),
+      runner(async () => {
+        throw authError;
+      }).catch(() => undefined),
+    ]);
+
+    expect(refreshCalls).toBe(1);
+  });
+
+  it("refreshes proactively when the access token is near expiry", async () => {
+    const nearExpiryAccessToken = createTestAccessToken({
+      exp: Math.floor(Date.now() / 1000) + 30,
+    });
+    const loginSuccess = {
+      ...loadFixture<Record<string, unknown>>("login.success.json"),
+      accessToken: nearExpiryAccessToken,
+    };
+    const refreshSuccess = loadFixture("refresh.success.json");
+    const requester: PlugHttpRequester = vi
+      .fn()
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: {},
+        body: loginSuccess,
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: {},
+        body: refreshSuccess,
+      });
+
+    const runner = createExecutionSessionRunner(requester, credentials);
+    const result = await runner(async (session) => session.accessToken);
+
+    expect(result).toBe("access-2");
     expect(requester).toHaveBeenCalledTimes(2);
+    expect(String(requester.mock.calls[1][0].url)).toContain("/client-auth/refresh");
+  });
+
+  it("does not refresh on business 403 errors", async () => {
+    const loginSuccess = loadFixture("login.success.json");
+    const requester: PlugHttpRequester = vi.fn().mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: loginSuccess,
+    });
+    const runner = createExecutionSessionRunner(requester, credentials);
+
+    await expect(
+      runner(async () => {
+        throw new PlugError("Not authorized for this agent", {
+          code: "FORBIDDEN",
+          statusCode: 403,
+          authRelated: true,
+        });
+      }),
+    ).rejects.toMatchObject<Partial<PlugError>>({
+      code: "FORBIDDEN",
+      statusCode: 403,
+    });
+
+    expect(requester).toHaveBeenCalledTimes(1);
+    expect(
+      isSessionRefreshableError(
+        new PlugError("Not authorized for this agent", {
+          code: "FORBIDDEN",
+          statusCode: 403,
+          authRelated: true,
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("falls back to login when refresh is rejected with 401", async () => {
+    const loginSuccess = loadFixture("login.success.json");
+    const requester: PlugHttpRequester = vi
+      .fn()
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: {},
+        body: loginSuccess,
+      })
+      .mockResolvedValueOnce({
+        statusCode: 401,
+        headers: {},
+        body: {
+          message: "Refresh token expired",
+          code: "REFRESH_EXPIRED",
+        },
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: {},
+        body: loginSuccess,
+      });
+
+    const runner = createExecutionSessionRunner(requester, credentials);
+    const callback = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new PlugError("Expired token", {
+          code: "TOKEN_EXPIRED",
+          statusCode: 401,
+          authRelated: true,
+        }),
+      )
+      .mockImplementationOnce(async (session) => session.accessToken);
+
+    const result = await runner(callback);
+
+    expect(result).toBe("access-1");
+    expect(callback).toHaveBeenCalledTimes(2);
+    expect(requester).toHaveBeenCalledTimes(3);
+    expect(String(requester.mock.calls[0][0].url)).toContain("/client-auth/login");
+    expect(String(requester.mock.calls[1][0].url)).toContain("/client-auth/refresh");
+    expect(String(requester.mock.calls[2][0].url)).toContain("/client-auth/login");
   });
 });
 
@@ -381,5 +547,6 @@ describe("createHttpError", () => {
       technicalMessage: "Rate limit exceeded",
     });
     expect(error.description).toContain("Wait 7 second(s) before trying again.");
+    expect(error.description).toContain("Rate limit exceeded");
   });
 });

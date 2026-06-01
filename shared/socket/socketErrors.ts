@@ -1,3 +1,7 @@
+import {
+  isRefreshableAuthErrorData,
+  TERMINAL_AUTH_ERROR_CODES,
+} from "../auth/sessionRefresh";
 import { PlugError } from "../contracts/errors";
 import { isRecord } from "../utils/json";
 
@@ -23,10 +27,7 @@ const accountBlockedCode = "ACCOUNT_BLOCKED";
 const agentAccessRevokedCode = "AGENT_ACCESS_REVOKED";
 const namespaceDeprecatedCode = "NAMESPACE_DEPRECATED";
 
-export const terminalSocketAuthErrorCodes = new Set([
-  accountBlockedCode,
-  agentAccessRevokedCode,
-]);
+export const terminalSocketAuthErrorCodes = TERMINAL_AUTH_ERROR_CODES;
 
 export const readSocketErrorData = (payload: unknown): SocketErrorData => {
   const direct = isRecord(payload) ? payload : {};
@@ -63,24 +64,12 @@ export const readSocketErrorData = (payload: unknown): SocketErrorData => {
   };
 };
 
-export const isRefreshableSocketAuthError = (input: SocketErrorData): boolean => {
-  const code = input.code?.toUpperCase() ?? "";
-  const message = input.message?.toLowerCase() ?? "";
-
-  return (
-    input.statusCode === 401 ||
-    code === "TOKEN_EXPIRED" ||
-    code === "ACCESS_TOKEN_EXPIRED" ||
-    code === "SESSION_EXPIRED" ||
-    code === "INVALID_TOKEN" ||
-    code === "UNAUTHORIZED" ||
-    code === "AUTHENTICATION_FAILED" ||
-    message.includes("token expired") ||
-    message.includes("jwt expired") ||
-    message.includes("invalid token") ||
-    message.includes("unauthorized")
-  );
-};
+export const isRefreshableSocketAuthError = (input: SocketErrorData): boolean =>
+  isRefreshableAuthErrorData({
+    code: input.code,
+    message: input.message,
+    statusCode: input.statusCode,
+  });
 
 export const isTerminalSocketAuthErrorCode = (code: string | undefined): boolean =>
   code !== undefined && terminalSocketAuthErrorCodes.has(code);

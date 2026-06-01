@@ -51,6 +51,20 @@ Terminal authorization codes that stop the node without retrying:
 - `ACCOUNT_BLOCKED`
 - `AGENT_ACCESS_REVOKED`
 
+## Session refresh and retry behavior
+
+Within a single node execution, the shared session runner:
+
+| Step | Behavior |
+| ---- | -------- |
+| Login | One deduplicated `POST /client-auth/login` (or `/auth/login` for user credentials) per execution runner. |
+| Proactive refresh | When the access JWT `exp` is within about 60 seconds, `POST .../refresh` runs before the next command. Concurrent refresh calls share one in-flight request. |
+| Reactive refresh | On a refreshable auth error (`401`, or token-related `403` such as `TOKEN_EXPIRED`), one refresh and one callback retry per runner invocation. |
+| Login fallback | If refresh returns `401`, one additional login with the stored credential password and one more callback retry. |
+| Not retried | Business `403` responses (for example agent permission denied), `429` rate limits, and terminal auth codes. |
+
+HTTP `429` responses keep the user-facing message `Plug rate limited this request.` and include the server rate-limit text in `description` when the API provides it, plus `Retry-After` guidance when present.
+
 ## SQL validation behavior
 
 Observed SQL validation failures include:

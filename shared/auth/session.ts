@@ -14,6 +14,22 @@ import { PlugError, PlugValidationError } from "../contracts/errors";
 import { plugLogger } from "../logging/plugLogger";
 import { isRecord } from "../utils/json";
 import { buildApiUrl } from "../utils/url";
+import {
+  DEFAULT_ACCESS_TOKEN_REFRESH_BUFFER_MS,
+  isSessionRefreshableError,
+  shouldRefreshAccessTokenProactively,
+  TERMINAL_AUTH_ERROR_CODES,
+} from "./sessionRefresh";
+
+export {
+  decodeAccessTokenExpMs,
+  DEFAULT_ACCESS_TOKEN_REFRESH_BUFFER_MS,
+  isRefreshableAuthErrorData,
+  isSessionRefreshableError,
+  REFRESHABLE_AUTH_ERROR_CODES,
+  shouldRefreshAccessTokenProactively,
+  TERMINAL_AUTH_ERROR_CODES,
+} from "./sessionRefresh";
 
 interface PlugAuthEndpointConfig {
   readonly loginPath: string;
@@ -269,12 +285,14 @@ const buildApiErrorPresentation = (input: {
   }
 
   if (input.statusCode === 429) {
+    const rateLimitBase =
+      normalizedMessage !== ""
+        ? `The request exceeded the current rate limit. ${normalizedMessage}`
+        : "The request exceeded the current rate limit.";
+
     return {
       message: "Plug rate limited this request.",
-      description: formatRetryAfterDescription(
-        input.retryAfterSeconds,
-        "The request exceeded the current rate limit.",
-      ),
+      description: formatRetryAfterDescription(input.retryAfterSeconds, rateLimitBase),
     };
   }
 
@@ -554,12 +572,10 @@ export const buildAuthorizedHeaders = (
   authorization: `Bearer ${session.accessToken}`,
 });
 
-const terminalAuthErrorCodes = new Set(["ACCOUNT_BLOCKED", "AGENT_ACCESS_REVOKED"]);
-
 export const isAuthRelatedError = (error: unknown): error is PlugError =>
   error instanceof PlugError &&
   error.authRelated &&
-  !terminalAuthErrorCodes.has(error.code);
+  !TERMINAL_AUTH_ERROR_CODES.has(error.code);
 
 export const createHttpError = (
   statusCode: number,
@@ -599,6 +615,7 @@ export const createExecutionSessionRunner = <
 
   let currentSession: PlugSession<TCredentials, TLoginResponse> | undefined;
   let inFlightLogin: Promise<PlugSession<TCredentials, TLoginResponse>> | undefined;
+  let inFlightRefresh: Promise<PlugSession<TCredentials, TLoginResponse>> | undefined;
 
   const ensureSession = async (): Promise<PlugSession<TCredentials, TLoginResponse>> => {
     if (currentSession) {
@@ -621,18 +638,58 @@ export const createExecutionSessionRunner = <
     }
   };
 
+  const refreshSession = async (
+    session: PlugSession<TCredentials, TLoginResponse>,
+  ): Promise<PlugSession<TCredentials, TLoginResponse>> => {
+    const sourceSession = currentSession ?? session;
+
+    if (!inFlightRefresh) {
+      inFlightRefresh = refreshExecutionSession(
+        requester,
+        sourceSession,
+        effectiveAuthConfig,
+      ).finally(() => {
+        inFlightRefresh = undefined;
+      });
+    }
+
+    currentSession = await inFlightRefresh;
+    return currentSession;
+  };
+
+  const ensureAccessTokenFresh = async (): Promise<PlugSession<TCredentials, TLoginResponse>> => {
+    const session = await ensureSession();
+    if (
+      shouldRefreshAccessTokenProactively(
+        session,
+        DEFAULT_ACCESS_TOKEN_REFRESH_BUFFER_MS,
+      )
+    ) {
+      return refreshSession(session);
+    }
+
+    return session;
+  };
+
   return async <T>(
     callback: (session: PlugSession<TCredentials, TLoginResponse>) => Promise<T>,
   ): Promise<T> => {
-    const firstSession = await ensureSession();
+    let reactiveRefreshUsed = false;
+    let loginFallbackUsed = false;
+
+    const runWithFreshSession = async (): Promise<T> => {
+      const session = await ensureAccessTokenFresh();
+      return callback(session);
+    };
 
     try {
-      return await callback(firstSession);
+      return await runWithFreshSession();
     } catch (error: unknown) {
-      if (!isAuthRelatedError(error)) {
+      if (!isSessionRefreshableError(error) || reactiveRefreshUsed) {
         throw error;
       }
 
+      reactiveRefreshUsed = true;
       plugLogger.warn("auth.retry_after_expiry", {
         baseUrl: credentials.baseUrl,
         code: error.code,
@@ -640,13 +697,27 @@ export const createExecutionSessionRunner = <
         correlationId: error.correlationId,
       });
 
-      const refreshedSession = await refreshExecutionSession(
-        requester,
-        firstSession,
-        effectiveAuthConfig,
-      );
-      currentSession = refreshedSession;
-      return callback(refreshedSession);
+      let sessionAfterRefresh: PlugSession<TCredentials, TLoginResponse>;
+      try {
+        sessionAfterRefresh = await refreshSession(
+          currentSession ?? (await ensureSession()),
+        );
+      } catch (refreshError: unknown) {
+        if (
+          !loginFallbackUsed &&
+          refreshError instanceof PlugError &&
+          refreshError.statusCode === 401
+        ) {
+          loginFallbackUsed = true;
+          currentSession = undefined;
+          const reloggedSession = await ensureSession();
+          return callback(reloggedSession);
+        }
+
+        throw refreshError;
+      }
+
+      return await callback(sessionAfterRefresh);
     }
   };
 };

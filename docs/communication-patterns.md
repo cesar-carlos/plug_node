@@ -4,9 +4,10 @@
 
 1. Login with `/client-auth/login`.
 2. Reuse the access token inside the execution.
-3. Refresh once with `/client-auth/refresh` when authentication expires.
-4. Execute commands through `/agents/commands`.
-5. Normalize JSON-RPC responses into n8n-friendly JSON output.
+3. Refresh with `/client-auth/refresh` when the access token is near expiry (about 60 seconds before JWT `exp`) or when a refreshable auth error occurs (typically `401`, or token-related `403`).
+4. On refresh `401`, retry once with a fresh login using the credential email and password.
+5. Execute commands through `/agents/commands`.
+6. Normalize JSON-RPC responses into n8n-friendly JSON output.
 
 ## Socket relay flow
 
