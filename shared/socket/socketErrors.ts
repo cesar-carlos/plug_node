@@ -92,11 +92,23 @@ const createTerminalSocketAuthError = (input: {
     });
   }
 
-  return new PlugError("Client access to this agent was revoked.", {
+  if (input.code === agentAccessRevokedCode) {
+    return new PlugError("Client access to this agent was revoked.", {
+      code: input.code,
+      statusCode: input.statusCode,
+      description:
+        "Ask the agent owner to approve access again or update the credential before retrying.",
+      details: input.details,
+      technicalMessage: input.message,
+      authRelated: true,
+    });
+  }
+
+  return new PlugError("The Plug socket session was rejected.", {
     code: input.code,
     statusCode: input.statusCode,
     description:
-      "Ask the agent owner to approve access again or update the credential before retrying.",
+      "The server closed the socket with a terminal auth error. Update credentials or contact support before retrying.",
     details: input.details,
     technicalMessage: input.message,
     authRelated: true,

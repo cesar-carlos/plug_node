@@ -20,12 +20,12 @@
 
 ## Erros de Autorização
 
-| Código                            | Significado                             | Ação                                                                        |
-| --------------------------------- | --------------------------------------- | --------------------------------------------------------------------------- |
-| `ACCOUNT_BLOCKED`                 | Conta bloqueada no Plug.                | Corrija a conta antes de tentar novamente.                                  |
-| `AGENT_ACCESS_REVOKED`            | Acesso do client ao agent foi removido. | Solicite nova aprovação ao dono do agent.                                   |
+| Código                            | Significado                             | Ação                                                                                                                                                                   |
+| --------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ACCOUNT_BLOCKED`                 | Conta bloqueada no Plug.                | Corrija a conta antes de tentar novamente.                                                                                                                             |
+| `AGENT_ACCESS_REVOKED`            | Acesso do client ao agent foi removido. | Solicite nova aprovação ao dono do agent.                                                                                                                              |
 | token expirado/inválido no socket | Sessão antiga no `/consumers`.          | O node renova o access token (proactivamente perto do `exp` ou após erro retryable), faz login de fallback se o refresh falhar, e reconecta quando o erro é retryable. |
-| erro de login                     | Credenciais inválidas.                  | Atualize usuário/senha na credencial global.                                |
+| erro de login                     | Credenciais inválidas.                  | Atualize usuário/senha na credencial global.                                                                                                                           |
 
 ## Erros de Comando SQL
 

@@ -1,7 +1,14 @@
-import type { PlugAnyLoginResponse, PlugEmailPasswordCredentials, PlugSession } from "../contracts/api";
+import type {
+  PlugAnyLoginResponse,
+  PlugEmailPasswordCredentials,
+  PlugSession,
+} from "../contracts/api";
 import { PlugError } from "../contracts/errors";
 
-export const TERMINAL_AUTH_ERROR_CODES = new Set(["ACCOUNT_BLOCKED", "AGENT_ACCESS_REVOKED"]);
+export const TERMINAL_AUTH_ERROR_CODES = new Set([
+  "ACCOUNT_BLOCKED",
+  "AGENT_ACCESS_REVOKED",
+]);
 
 export const REFRESHABLE_AUTH_ERROR_CODES = new Set([
   "TOKEN_EXPIRED",
@@ -23,7 +30,8 @@ const refreshableAuthMessageFragments = [
 
 const decodeBase64UrlJson = (segment: string): unknown => {
   const normalized = segment.replace(/-/g, "+").replace(/_/g, "/");
-  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
+  const padding =
+    normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
   const decoded = Buffer.from(`${normalized}${padding}`, "base64").toString("utf8");
   return JSON.parse(decoded) as unknown;
 };
@@ -76,7 +84,9 @@ const hasRefreshableAuthMessage = (message: string | undefined): boolean => {
   }
 
   const normalized = message.toLowerCase();
-  return refreshableAuthMessageFragments.some((fragment) => normalized.includes(fragment));
+  return refreshableAuthMessageFragments.some((fragment) =>
+    normalized.includes(fragment),
+  );
 };
 
 export const isRefreshableAuthErrorData = (input: {
@@ -94,7 +104,9 @@ export const isRefreshableAuthErrorData = (input: {
   }
 
   if (input.statusCode === 403) {
-    return REFRESHABLE_AUTH_ERROR_CODES.has(code) || hasRefreshableAuthMessage(input.message);
+    return (
+      REFRESHABLE_AUTH_ERROR_CODES.has(code) || hasRefreshableAuthMessage(input.message)
+    );
   }
 
   return false;

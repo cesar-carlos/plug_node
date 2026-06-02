@@ -657,13 +657,12 @@ export const createExecutionSessionRunner = <
     return currentSession;
   };
 
-  const ensureAccessTokenFresh = async (): Promise<PlugSession<TCredentials, TLoginResponse>> => {
+  const ensureAccessTokenFresh = async (): Promise<
+    PlugSession<TCredentials, TLoginResponse>
+  > => {
     const session = await ensureSession();
     if (
-      shouldRefreshAccessTokenProactively(
-        session,
-        DEFAULT_ACCESS_TOKEN_REFRESH_BUFFER_MS,
-      )
+      shouldRefreshAccessTokenProactively(session, DEFAULT_ACCESS_TOKEN_REFRESH_BUFFER_MS)
     ) {
       return refreshSession(session);
     }

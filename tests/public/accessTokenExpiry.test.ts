@@ -46,7 +46,9 @@ describe("decodeAccessTokenExpMs", () => {
   it("returns undefined for malformed tokens", () => {
     expect(decodeAccessTokenExpMs("not-a-jwt")).toBeUndefined();
     expect(decodeAccessTokenExpMs("a.b")).toBeUndefined();
-    expect(decodeAccessTokenExpMs(createTestAccessToken({ sub: "client-1" }))).toBeUndefined();
+    expect(
+      decodeAccessTokenExpMs(createTestAccessToken({ sub: "client-1" })),
+    ).toBeUndefined();
   });
 });
 
@@ -57,9 +59,9 @@ describe("shouldRefreshAccessTokenProactively", () => {
       exp: Math.floor((nowMs + 30_000) / 1000),
     });
 
-    expect(
-      shouldRefreshAccessTokenProactively(buildSession(token), 60_000, nowMs),
-    ).toBe(true);
+    expect(shouldRefreshAccessTokenProactively(buildSession(token), 60_000, nowMs)).toBe(
+      true,
+    );
   });
 
   it("returns false when access token expires outside the buffer window", () => {
@@ -68,8 +70,8 @@ describe("shouldRefreshAccessTokenProactively", () => {
       exp: Math.floor((nowMs + 120_000) / 1000),
     });
 
-    expect(
-      shouldRefreshAccessTokenProactively(buildSession(token), 60_000, nowMs),
-    ).toBe(false);
+    expect(shouldRefreshAccessTokenProactively(buildSession(token), 60_000, nowMs)).toBe(
+      false,
+    );
   });
 });

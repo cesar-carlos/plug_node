@@ -1,5 +1,15 @@
 # n8n-nodes-plug-database
 
+## 3.0.1
+
+### Patch Changes
+
+- Harden Plug session refresh to reduce avoidable auth churn.
+  - Reuse access tokens until shortly before expiry instead of refreshing on every socket reconnect.
+  - Centralize refresh scheduling in `sessionRefresh` with clearer error mapping for expired or invalid sessions.
+  - Align socket error codes when refresh fails so workflows can branch on stable `PlugError` codes.
+  - Add regression tests for token expiry boundaries and refresh backoff behavior.
+
 ## 3.0.0
 
 ### Major Changes
