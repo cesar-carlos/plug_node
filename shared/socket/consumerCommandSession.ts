@@ -189,6 +189,21 @@ const normalizeRetryAfterSeconds = (input: {
   return undefined;
 };
 
+const isPayloadFrameEnvelope = (payload: unknown): boolean =>
+  isRecord(payload) && payload.schemaVersion === "1.0" && payload.enc === "json";
+
+const decodeConsumerCommandWirePayload = async <T>(
+  payload: unknown,
+  signing?: PayloadFrameSigningOptions,
+): Promise<T> => {
+  if (!isPayloadFrameEnvelope(payload)) {
+    return payload as T;
+  }
+
+  const decoded = await decodePayloadFrameAsync<T>(payload, { signing });
+  return decoded.data;
+};
+
 const normalizeConnectionReady = (
   payload: unknown,
   signing?: PayloadFrameSigningOptions,
@@ -647,6 +662,7 @@ const requestStreamPull = async (
   timeoutMs: number,
   windowSize = DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
   onIgnoredResponse?: (payload: ConsumerCommandStreamPullResponsePayload) => void,
+  signing?: PayloadFrameSigningOptions,
 ): Promise<number> =>
   new Promise<number>((resolve, reject) => {
     const normalizedWindowSize = normalizeStreamPullWindowSize(
@@ -662,33 +678,40 @@ const requestStreamPull = async (
     };
 
     const handlePullResponse = (payload: unknown): void => {
-      try {
-        const response = normalizeStreamPullResponse(payload);
-        if (!matchesStreamPullResponse(response, requestId, streamId)) {
-          onIgnoredResponse?.(response);
-          return;
-        }
+      void (async () => {
+        try {
+          const decodedPayload = await decodeConsumerCommandWirePayload(payload, signing);
+          const response = normalizeStreamPullResponse(decodedPayload);
+          if (!matchesStreamPullResponse(response, requestId, streamId)) {
+            onIgnoredResponse?.(response);
+            return;
+          }
 
-        if (!response.success) {
+          if (!response.success) {
+            cleanup();
+            reject(
+              createConsumerControlError({
+                code: response.error.code,
+                message: response.error.message,
+                statusCode: response.error.statusCode,
+                retryAfterMs: response.error.retryAfterMs,
+                details: response.rateLimit
+                  ? { rateLimit: response.rateLimit }
+                  : undefined,
+              }),
+            );
+            return;
+          }
+
           cleanup();
-          reject(
-            createConsumerControlError({
-              code: response.error.code,
-              message: response.error.message,
-              statusCode: response.error.statusCode,
-              retryAfterMs: response.error.retryAfterMs,
-              details: response.rateLimit ? { rateLimit: response.rateLimit } : undefined,
-            }),
+          resolve(
+            normalizeStreamPullWindowSize(response.windowSize, normalizedWindowSize),
           );
-          return;
+        } catch (error: unknown) {
+          cleanup();
+          reject(error);
         }
-
-        cleanup();
-        resolve(normalizeStreamPullWindowSize(response.windowSize, normalizedWindowSize));
-      } catch (error: unknown) {
-        cleanup();
-        reject(error);
-      }
+      })();
     };
 
     const handleAppError = (payload: unknown): void => {
@@ -861,6 +884,7 @@ export const executeConsumerCommand = async (
               streamId: payload.streamId,
             });
           },
+          input.payloadFrameSigning,
         );
         streamCreditsRemaining = Math.max(nextWindowSize - pendingChunksDuringPull, 0);
         pendingChunksDuringPull = 0;
@@ -889,7 +913,11 @@ export const executeConsumerCommand = async (
     const handleCommandResponse = (payload: unknown): void => {
       void (async () => {
         try {
-          const response = normalizeCommandResponse(payload);
+          const decodedPayload = await decodeConsumerCommandWirePayload(
+            payload,
+            input.payloadFrameSigning,
+          );
+          const response = normalizeCommandResponse(decodedPayload);
           if (!matchesCommandRequest(response, commandRequestId)) {
             ignoredCommandResponses += 1;
             plugLogger.debug("transport.socket.command.response_ignored", {
@@ -985,7 +1013,11 @@ export const executeConsumerCommand = async (
     const handleCommandStreamChunk = (payload: unknown): void => {
       void (async () => {
         try {
-          const chunk = normalizeStreamChunkPayload(payload);
+          const decodedPayload = await decodeConsumerCommandWirePayload(
+            payload,
+            input.payloadFrameSigning,
+          );
+          const chunk = normalizeStreamChunkPayload(decodedPayload);
           if (
             !matchesStreamPayload(
               chunk,
@@ -1042,67 +1074,76 @@ export const executeConsumerCommand = async (
     };
 
     const handleCommandStreamComplete = (payload: unknown): void => {
-      try {
-        const complete = normalizeStreamCompletePayload(payload);
-        if (
-          !matchesStreamPayload(
-            complete,
-            activeRequestId,
-            commandRequestId,
-            activeStreamId,
-          )
-        ) {
-          ignoredStreamCompletes += 1;
-          plugLogger.debug("transport.socket.command.stream_complete_ignored", {
+      void (async () => {
+        try {
+          const decodedPayload = await decodeConsumerCommandWirePayload(
+            payload,
+            input.payloadFrameSigning,
+          );
+          const complete = normalizeStreamCompletePayload(decodedPayload);
+          if (
+            !matchesStreamPayload(
+              complete,
+              activeRequestId,
+              commandRequestId,
+              activeStreamId,
+            )
+          ) {
+            ignoredStreamCompletes += 1;
+            plugLogger.debug("transport.socket.command.stream_complete_ignored", {
+              socketMode: "agentsCommand",
+              agentId: input.agentId,
+              expectedRequestId: activeRequestId,
+              commandRequestId,
+              expectedStreamId: activeStreamId,
+              requestId: toRequestId(complete.request_id),
+              streamId:
+                typeof complete.stream_id === "string" ? complete.stream_id : undefined,
+            });
+            return;
+          }
+
+          streamCompleted = true;
+          completePayload = complete;
+          if (input.responseMode === "aggregatedJson") {
+            normalizedResponse = removeStreamMarkerFromResponse(normalizedResponse);
+          }
+          cleanup();
+          plugLogger.info("transport.socket.command.complete", {
             socketMode: "agentsCommand",
             agentId: input.agentId,
-            expectedRequestId: activeRequestId,
-            commandRequestId,
-            expectedStreamId: activeStreamId,
-            requestId: toRequestId(complete.request_id),
-            streamId:
-              typeof complete.stream_id === "string" ? complete.stream_id : undefined,
+            requestId: activeRequestId,
+            durationMs: Date.now() - commandStartMs,
+            chunkCount,
+            pullCount,
+            bufferedBytes,
+            bufferedRows,
           });
-          return;
+          resolve({
+            channel: "socket",
+            socketMode: "agentsCommand",
+            agentId: input.agentId,
+            requestId: activeRequestId,
+            notification: false,
+            ...(connectionReady ? { connectionReady } : {}),
+            response:
+              input.responseMode === "aggregatedJson" && normalizedResponse
+                ? normalizedResponse
+                : (rawResponsePayload as NormalizedAgentRpcResponse),
+            rawResponsePayload,
+            chunkPayloads,
+            completePayload,
+            rawChunkFrames: [],
+            metrics: buildMetrics(),
+            executionMetrics: {
+              connectedAfterMs: connectedAfterMs,
+            },
+          });
+        } catch (error: unknown) {
+          cleanup();
+          reject(error);
         }
-
-        streamCompleted = true;
-        completePayload = complete;
-        if (input.responseMode === "aggregatedJson") {
-          normalizedResponse = removeStreamMarkerFromResponse(normalizedResponse);
-        }
-        cleanup();
-        plugLogger.info("transport.socket.command.complete", {
-          socketMode: "agentsCommand",
-          agentId: input.agentId,
-          requestId: activeRequestId,
-          durationMs: Date.now() - commandStartMs,
-          chunkCount,
-          pullCount,
-          bufferedBytes,
-          bufferedRows,
-        });
-        resolve({
-          channel: "socket",
-          socketMode: "agentsCommand",
-          agentId: input.agentId,
-          requestId: activeRequestId,
-          notification: false,
-          ...(connectionReady ? { connectionReady } : {}),
-          response:
-            input.responseMode === "aggregatedJson" && normalizedResponse
-              ? normalizedResponse
-              : (rawResponsePayload as NormalizedAgentRpcResponse),
-          rawResponsePayload,
-          chunkPayloads,
-          completePayload,
-          rawChunkFrames: [],
-          metrics: buildMetrics(),
-        });
-      } catch (error: unknown) {
-        cleanup();
-        reject(error);
-      }
+      })();
     };
 
     const handleAppError = (payload: unknown): void => {

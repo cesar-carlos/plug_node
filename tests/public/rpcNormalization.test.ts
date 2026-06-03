@@ -72,4 +72,31 @@ describe("toPlugErrorFromRpcItem", () => {
     });
     expect(error.description).toBe("Wait 2 second(s) before retrying this operation.");
   });
+
+  it("maps replay_detected responses to a clearer user message", () => {
+    const item: NormalizedRpcItem = {
+      id: "rpc-3",
+      success: false,
+      error: {
+        code: -32014,
+        message: "Replay detected",
+        data: {
+          reason: "replay_detected",
+          category: "transport",
+          retryable: false,
+          correlation_id: "corr-3",
+        },
+      },
+    };
+
+    const error = toPlugErrorFromRpcItem(item, {
+      agentId: "agent-1",
+      requestId: "request-3",
+    });
+
+    expect(error.message).toBe("This command was already sent recently.");
+    expect(error.description).toBe(
+      "Use a new JSON-RPC id for each intentional retry within about two minutes.",
+    );
+  });
 });

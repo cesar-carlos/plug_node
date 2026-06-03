@@ -226,6 +226,8 @@ const getFallbackRpcUserMessage = (
       return "The agent rejected the request payload.";
     case "rate_limited":
       return "The agent rate limited this operation.";
+    case "replay_detected":
+      return "This command was already sent recently.";
     case "invalid_signature":
       return "The agent rejected the signed payload.";
     default:
@@ -233,6 +235,8 @@ const getFallbackRpcUserMessage = (
   }
 
   switch (error.code) {
+    case -32014:
+      return "This command was already sent recently.";
     case -32013:
       return "The agent rate limited this operation.";
     case -32601:
@@ -259,6 +263,10 @@ const buildRpcDescription = (
 
   if (data.reason === "token_revoked") {
     return "Generate or approve a new Client Token for this client and agent.";
+  }
+
+  if (data.reason === "replay_detected") {
+    return "Use a new JSON-RPC id for each intentional retry within about two minutes.";
   }
 
   if (data.reason === "sql_validation_failed") {

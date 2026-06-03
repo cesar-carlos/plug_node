@@ -10,28 +10,62 @@ import { PlugError } from "../contracts/errors";
 import { ensureSuccessfulNormalizedResponse } from "./rpcNormalization";
 import { isRecord } from "../utils/json";
 
-const toMetadata = (result: PlugCommandTransportResult): JsonObject => ({
-  channel: result.channel,
-  agentId: result.agentId,
-  requestId: result.requestId,
-  ...(result.channel === "socket"
-    ? {
-        socketMode: result.socketMode,
-        ...("conversationId" in result && result.conversationId
-          ? { conversationId: result.conversationId }
-          : {}),
-        ...("accepted" in result && result.accepted
-          ? {
-              clientRequestId: result.accepted.clientRequestId,
-              deduplicated: result.accepted.deduplicated,
-              replayed: result.accepted.replayed,
-              inFlight: result.accepted.inFlight,
-            }
-          : {}),
-        ...(result.metrics ? { metrics: result.metrics } : {}),
-      }
-    : {}),
-});
+const readTransportExecutionMetrics = (
+  result: PlugCommandTransportResult,
+): JsonObject | undefined => {
+  if (result.notification) {
+    return undefined;
+  }
+
+  if (!("executionMetrics" in result) || !result.executionMetrics) {
+    return undefined;
+  }
+
+  const metrics = result.executionMetrics;
+  const transport: JsonObject = {};
+
+  if (typeof metrics.attemptCount === "number") {
+    transport.attemptCount = metrics.attemptCount;
+  }
+
+  if (typeof metrics.lastRetryDelayMs === "number") {
+    transport.lastRetryDelayMs = metrics.lastRetryDelayMs;
+  }
+
+  if (typeof metrics.connectedAfterMs === "number") {
+    transport.connectedAfterMs = metrics.connectedAfterMs;
+  }
+
+  return Object.keys(transport).length > 0 ? transport : undefined;
+};
+
+const toMetadata = (result: PlugCommandTransportResult): JsonObject => {
+  const transportMetrics = readTransportExecutionMetrics(result);
+
+  return {
+    channel: result.channel,
+    agentId: result.agentId,
+    requestId: result.requestId,
+    ...(transportMetrics ? { transport: transportMetrics } : {}),
+    ...(result.channel === "socket"
+      ? {
+          socketMode: result.socketMode,
+          ...("conversationId" in result && result.conversationId
+            ? { conversationId: result.conversationId }
+            : {}),
+          ...("accepted" in result && result.accepted
+            ? {
+                clientRequestId: result.accepted.clientRequestId,
+                deduplicated: result.accepted.deduplicated,
+                replayed: result.accepted.replayed,
+                inFlight: result.accepted.inFlight,
+              }
+            : {}),
+          ...(result.metrics ? { metrics: result.metrics } : {}),
+        }
+      : {}),
+  };
+};
 
 const aggregateSocketSqlStream = (
   response: NormalizedAgentRpcResponse,
@@ -102,17 +136,40 @@ const buildSingleSuccessItems = (
   response: NormalizedRpcSingleResponse,
   metadata: JsonObject,
   includeMetadata: boolean,
+  responseMode: PlugResponseMode,
 ): JsonObject[] => {
   const resultPayload = response.item.result;
 
-  if (isRecord(resultPayload) && Array.isArray(resultPayload.rows)) {
-    return resultPayload.rows.map((row, index) => ({
-      ...(isRecord(row) ? row : { value: row }),
-      ...withOptionalMetadata(includeMetadata, {
-        ...metadata,
-        rowIndex: index,
-      }),
-    }));
+  if (isRecord(resultPayload)) {
+    const rows = resultPayload.rows;
+    const hasRowsArray = Array.isArray(rows);
+    const explicitRowCount = resultPayload.row_count ?? resultPayload.rowCount;
+    const isEmptyAggregatedResult =
+      responseMode === "aggregatedJson" &&
+      ((hasRowsArray && rows.length === 0) || (!hasRowsArray && explicitRowCount === 0));
+
+    if (isEmptyAggregatedResult) {
+      return [
+        {
+          rowCount: 0,
+          rows: hasRowsArray ? rows : [],
+          ...withOptionalMetadata(includeMetadata, {
+            ...metadata,
+            emptyResult: true,
+          }),
+        },
+      ];
+    }
+
+    if (hasRowsArray) {
+      return rows.map((row, index) => ({
+        ...(isRecord(row) ? row : { value: row }),
+        ...withOptionalMetadata(includeMetadata, {
+          ...metadata,
+          rowIndex: index,
+        }),
+      }));
+    }
   }
 
   return [
@@ -195,6 +252,7 @@ export const buildNodeOutputItems = (
       successfulResponse,
       toMetadata(result),
       includeMetadata,
+      responseMode,
     );
   }
 

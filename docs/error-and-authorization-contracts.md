@@ -20,6 +20,43 @@ The node prefers the most user-friendly message available and keeps structured m
 - `Retry-After`
 - validation details
 
+## Agent offline (HTTP 200)
+
+When the hub knows the `agentId` but the agent socket is not connected, correlatable commands return HTTP **200** with a normalized RPC error (not HTTP 503):
+
+- `code: -32000`
+- `message: agent_offline`
+- `data.reason: agent_disconnected_at_dispatch` (or `agent_offline`)
+
+If the agent was never registered on the current hub worker, the REST bridge may return HTTP **404** instead.
+
+## Replay detected (`-32014`)
+
+Repeating the same JSON-RPC `command.id` for the same agent within the hub replay window (about two minutes) returns:
+
+- `code: -32014`
+- `data.reason: replay_detected`
+
+The node surfaces a dedicated user message. Use a new `id` for each intentional retry.
+
+## Empty SQL result sets
+
+A successful `sql.execute` may return `rows: []` with `row_count: 0`. That is valid hub behavior.
+
+With **Aggregated JSON**, the node emits one item:
+
+```json
+{
+  "rowCount": 0,
+  "rows": [],
+  "__plug": {
+    "emptyResult": true
+  }
+}
+```
+
+See [Hub contract alignment](./hub-contract-alignment.md).
+
 ## Agent JSON-RPC errors
 
 Agent command failures may arrive inside an HTTP `200` response with an RPC error payload.

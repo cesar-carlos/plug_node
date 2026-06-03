@@ -7,8 +7,10 @@ Thanks for contributing to the Plug Database workspace.
 1. Work from the current branch unless a branch change is explicitly requested.
 2. Run `npm ci`.
 3. Run `npm run verify`.
-4. Run `npm run test:e2e` when your change affects transport, authentication, or output behavior.
+4. Run `npm run test:e2e` when your change affects transport, authentication, or output behavior (requires `.env`; see [tests/e2e/README.md](tests/e2e/README.md)).
 5. Add a changeset with `npm run changeset` when package behavior changes.
+
+Hub contract notes for maintainers: [docs/hub-contract-alignment.md](docs/hub-contract-alignment.md).
 
 ## Scope checklist
 

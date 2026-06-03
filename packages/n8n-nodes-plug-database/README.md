@@ -109,19 +109,38 @@ The package uses the fixed API base URL:
 For named parameters, use SQL placeholders and `Named Params JSON`:
 
 ```sql
-SELECT *
+SELECT TOP 10 *
 FROM Cliente
-WHERE id = :id
-LIMIT 10;
+WHERE CodCliente = :codCliente;
 ```
 
 ```json
 {
-  "id": "{{$json.id}}"
+  "codCliente": "{{$json.CodCliente}}"
 }
 ```
 
 Guided SQL and guided batch commands reject unreplaced template markers, missing named parameters, and `UPDATE` or `DELETE` statements without a `WHERE` clause. Turn off `Require WHERE for UPDATE/DELETE` only for workflows that intentionally perform a global mutation. Advanced JSON-RPC mode does not apply these guided-mode checks.
+
+### Choosing SQL operations
+
+| n8n operation       | Hub method         | When to use                                                                       |
+| ------------------- | ------------------ | --------------------------------------------------------------------------------- |
+| **Execute SQL**     | `sql.execute`      | One statement (or several result sets with **Multi Result** on the same SQL text) |
+| **Execute Batch**   | `sql.executeBatch` | Several independent commands in one RPC (`commands[]` array)                      |
+| **Bulk Insert SQL** | `sql.bulkInsert`   | High-volume inserts with column schema + row matrix (mutating)                    |
+
+Do not confuse **Multi Result** (`sql.execute` + `options.multi_result`) with **Execute Batch** (`sql.executeBatch`). They use different hub contracts.
+
+**Bulk Insert SQL** sends `sql.bulkInsert` with JSON column definitions and row arrays (mutating). Use a dedicated staging table and idempotency keys in production.
+
+**Prefer DB Streaming** (SQL options) sets `options.prefer_db_streaming` for eligible `SELECT` statements when using Socket.
+
+**Empty results:** with **Aggregated JSON**, zero SQL rows produce one item with `rowCount: 0` and `__plug.emptyResult: true` so workflows can continue. See [Hub contract alignment](../../docs/hub-contract-alignment.md).
+
+## Performance and reliability
+
+See [Performance and reliability](../../docs/performance-and-reliability.md) for channel choice, ERP keys (`CodCliente` / `CodVendedor`), socket buffering, automatic transient retries, and optional **Coalesce Input Items** on Execute Batch.
 
 `Plura.ai Automations API` asks for:
 

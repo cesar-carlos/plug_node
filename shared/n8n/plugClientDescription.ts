@@ -27,6 +27,11 @@ const operationOptions = [
     description: "Runs a single sql.executeBatch command.",
   },
   {
+    name: "Bulk Insert SQL",
+    value: "bulkInsertSql",
+    description: "Runs sql.bulkInsert with a table, column schema, and row matrix.",
+  },
+  {
     name: "Cancel SQL",
     value: "cancelSql",
     description: "Cancels a running SQL command by execution ID or request ID.",
@@ -51,6 +56,7 @@ const operationOptions = [
 const operationsWithInputMode = [
   "executeSql",
   "executeBatch",
+  "bulkInsertSql",
   "cancelSql",
   "discoverRpc",
   "getAgentProfile",
@@ -66,7 +72,11 @@ const socketEligibleOperationsV1 = [
   "getClientTokenPolicy",
 ];
 
-const socketEligibleOperationsV2 = [...socketEligibleOperationsV1, "executeBatch"];
+const socketEligibleOperationsV2 = [
+  ...socketEligibleOperationsV1,
+  "executeBatch",
+  "bulkInsertSql",
+];
 
 const buildResponseModeProperty = (supportsSocket: boolean): INodeProperties => ({
   displayName: "Response Mode",
@@ -185,6 +195,14 @@ const sqlAdvancedOptions: INodeProperties = {
       description: "Enable multi_result for drivers that support it.",
     },
     {
+      displayName: "Prefer DB Streaming",
+      name: "preferDbStreaming",
+      type: "boolean",
+      default: false,
+      description:
+        "Sets options.prefer_db_streaming for eligible SELECT statements. Use with Channel = Socket for large reads.",
+    },
+    {
       displayName: "Page",
       name: "page",
       type: "number",
@@ -260,6 +278,14 @@ const batchAdvancedOptions: INodeProperties = {
       description: "Runs the batch inside a transaction when supported by the agent.",
     },
     {
+      displayName: "Max Parallel Read-Only Items",
+      name: "maxParallelReadOnlyBatchItems",
+      type: "number",
+      default: 0,
+      description:
+        "Optional max_parallel_read_only_batch_items for the batch. Use 0 to omit.",
+    },
+    {
       displayName: "Database",
       name: "database",
       type: "string",
@@ -281,7 +307,30 @@ const batchAdvancedOptions: INodeProperties = {
       description:
         "Whether to block UPDATE and DELETE statements in the batch that do not include a WHERE clause before sending them to Plug.",
     },
+    {
+      displayName: "Coalesce Input Items",
+      name: "coalesceInputItems",
+      type: "boolean",
+      default: false,
+      description:
+        "Merge Batch Commands JSON from all input items into one sql.executeBatch call. Additional Options must match on every item. The node returns one output item.",
+    },
   ],
+};
+
+const bulkInsertAdvancedOptions: INodeProperties = {
+  displayName: "Additional Options",
+  name: "bulkInsertOptions",
+  type: "collection",
+  placeholder: "Add option",
+  default: {},
+  displayOptions: {
+    show: {
+      operation: ["bulkInsertSql"],
+      inputMode: ["guided"],
+    },
+  },
+  options: [...commonAdvancedOptions],
 };
 
 const cancelAdvancedOptions: INodeProperties = {
@@ -520,7 +569,7 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
       typeOptions: {
         rows: 8,
       },
-      placeholder: "SELECT *\nFROM {{substitua_pela_tabela}}\nWHERE id = :id\nLIMIT 10;",
+      placeholder: "SELECT TOP 10 *\nFROM Cliente\nWHERE CodCliente = :codCliente;",
       description:
         "SQL to execute. Replace template markers before running and use :name placeholders with Named Params JSON for dynamic values.",
       displayOptions: {
@@ -538,7 +587,7 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
       typeOptions: {
         rows: 4,
       },
-      placeholder: '{\n  "id": "{{$json.id}}"\n}',
+      placeholder: '{\n  "codCliente": "{{$json.CodCliente}}"\n}',
       description:
         "Optional JSON object for :name SQL parameters. Values can use n8n expressions such as {{$json.id}}.",
       displayOptions: {
@@ -553,7 +602,7 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
       name: "batchCommandsJson",
       type: "string",
       default:
-        '[\n  {\n    "sql": "SELECT * FROM {{substitua_pela_tabela}} WHERE id = :id",\n    "params": {\n      "id": "{{$json.id}}"\n    }\n  }\n]',
+        '[\n  { "sql": "SELECT TOP 1 * FROM Cliente" },\n  { "sql": "SELECT TOP 1 * FROM Vendedor" }\n]',
       required: true,
       typeOptions: {
         rows: 10,
@@ -563,6 +612,57 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
       displayOptions: {
         show: {
           operation: ["executeBatch"],
+          inputMode: ["guided"],
+        },
+      },
+    },
+    {
+      displayName: "Table",
+      name: "bulkInsertTable",
+      type: "string",
+      default: "",
+      required: true,
+      description: "Target table name for sql.bulkInsert (for example dbo.MyTable).",
+      displayOptions: {
+        show: {
+          operation: ["bulkInsertSql"],
+          inputMode: ["guided"],
+        },
+      },
+    },
+    {
+      displayName: "Columns JSON",
+      name: "bulkInsertColumnsJson",
+      type: "string",
+      default:
+        '[\n  { "name": "id", "type": "i64" },\n  { "name": "name", "type": "text" }\n]',
+      required: true,
+      typeOptions: {
+        rows: 6,
+      },
+      description:
+        "JSON array of column definitions (name, type, optional nullable, max_len).",
+      displayOptions: {
+        show: {
+          operation: ["bulkInsertSql"],
+          inputMode: ["guided"],
+        },
+      },
+    },
+    {
+      displayName: "Rows JSON",
+      name: "bulkInsertRowsJson",
+      type: "string",
+      default: '[\n  [1, "example"]\n]',
+      required: true,
+      typeOptions: {
+        rows: 6,
+      },
+      description:
+        "JSON array of row arrays. Each row length must match the columns array.",
+      displayOptions: {
+        show: {
+          operation: ["bulkInsertSql"],
           inputMode: ["guided"],
         },
       },
@@ -633,6 +733,7 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
     },
     sqlAdvancedOptions,
     batchAdvancedOptions,
+    bulkInsertAdvancedOptions,
     cancelAdvancedOptions,
     discoverAdvancedOptions,
     profileAdvancedOptions,

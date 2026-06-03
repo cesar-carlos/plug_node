@@ -31,6 +31,7 @@ The API base URL is fixed in code.
 
 - `Execute SQL`
   - returns one item per row when possible
+  - when **Aggregated JSON** receives `rows: []`, returns **one** item with `rowCount: 0` and `__plug.emptyResult: true` so n8n does not stop the workflow with “no output data”
 - `Raw JSON-RPC`
   - available for debugging and advanced workflows
 - `Include Plug Metadata`

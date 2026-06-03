@@ -6,6 +6,7 @@ import { executePlugClientNode } from "../../packages/n8n-nodes-plug-database/ge
 import { buildPlugClientNodeDescription } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugClientDescription";
 import type { PlugCredentials } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 import { createMockExecuteContext } from "../helpers/mockExecuteFunctions";
+import * as plugTransientRetry from "../../shared/n8n/plugTransientRetry";
 
 const credentials: PlugCredentials = {
   user: "client@example.com",
@@ -27,6 +28,8 @@ const loadFixture = <T>(name: string): T =>
   ) as T;
 
 describe("executePlugClientNode", () => {
+  vi.spyOn(plugTransientRetry, "sleepMs").mockResolvedValue(undefined);
+
   it("routes the consolidated node to client access operations", async () => {
     const context = createMockExecuteContext({
       credentials,
@@ -419,8 +422,8 @@ describe("executePlugClientNode", () => {
         inputMode: "guided",
         responseMode: "aggregatedJson",
         includePlugMetadata: true,
-        sql: "SELECT * FROM Cliente WHERE id = :id",
-        namedParamsJson: '{"id":"{{$json.id}}"}',
+        sql: "SELECT TOP 10 * FROM Cliente WHERE CodCliente = :codCliente",
+        namedParamsJson: '{"codCliente":"{{$json.CodCliente}}"}',
         sqlOptions: {},
       },
       inputData: [{ json: { id: 123 } }],
@@ -461,10 +464,75 @@ describe("executePlugClientNode", () => {
       command: {
         method: "sql.execute",
         params: {
-          sql: "SELECT * FROM Cliente WHERE id = :id",
+          sql: "SELECT TOP 10 * FROM Cliente WHERE CodCliente = :codCliente",
           params: {
-            id: "{{$json.id}}",
+            codCliente: "{{$json.CodCliente}}",
           },
+        },
+      },
+    });
+  });
+
+  it("retries executeSql after HTTP 429 then succeeds", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeSql",
+        inputMode: "guided",
+        responseMode: "aggregatedJson",
+        includePlugMetadata: true,
+        sql: "SELECT TOP 1 * FROM Cliente",
+        sqlOptions: {},
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        {
+          statusCode: 429,
+          headers: { "retry-after": "0" },
+          body: {
+            code: "RATE_LIMITED",
+            message: "rate limited",
+          },
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-1",
+            requestId: "request-retry",
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: "rpc-retry",
+                success: true,
+                result: {
+                  rows: [{ CodCliente: 1 }],
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const result = await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(context.httpRequestMock).toHaveBeenCalledTimes(3);
+    expect(result[0]).toHaveLength(1);
+    expect(result[0][0].json).toMatchObject({
+      CodCliente: 1,
+      __plug: {
+        transport: {
+          attemptCount: 2,
+          lastRetryDelayMs: 250,
         },
       },
     });
@@ -502,7 +570,7 @@ describe("executePlugClientNode", () => {
         inputMode: "guided",
         responseMode: "aggregatedJson",
         includePlugMetadata: true,
-        sql: "SELECT * FROM Cliente WHERE id = :id",
+        sql: "SELECT TOP 10 * FROM Cliente WHERE CodCliente = :codCliente",
         namedParamsJson: "",
         sqlOptions: {},
       },
@@ -514,7 +582,7 @@ describe("executePlugClientNode", () => {
         supportsSocket: false,
       }),
     ).rejects.toThrow(
-      'SQL uses :id, but Named Params JSON does not contain the key "id".',
+      'SQL uses :codCliente, but Named Params JSON does not contain the key "codCliente".',
     );
   });
 
@@ -608,7 +676,7 @@ describe("executePlugClientNode", () => {
         responseMode: "aggregatedJson",
         includePlugMetadata: true,
         batchCommandsJson:
-          '[{"sql":"SELECT * FROM Cliente WHERE id = :id","params":{"id":1}},{"sql":"DELETE FROM Cliente"}]',
+          '[{"sql":"SELECT TOP 1 * FROM Cliente WHERE CodCliente = :codCliente","params":{"codCliente":1}},{"sql":"DELETE FROM Cliente"}]',
         batchOptions: {},
       },
       responses: [],
@@ -703,8 +771,8 @@ describe("executePlugClientNode", () => {
         ? sqlOptions.options?.map((option) => option.name)
         : [];
 
-    expect(sqlProperty?.placeholder).toContain("{{substitua_pela_tabela}}");
-    expect(namedParamsProperty?.placeholder).toContain("{{$json.id}}");
+    expect(sqlProperty?.placeholder).toContain("CodCliente");
+    expect(namedParamsProperty?.placeholder).toContain("{{$json.CodCliente}}");
     expect(optionNames).toContain("requireWhereForUpdateDelete");
     expect(JSON.stringify([sqlProperty, namedParamsProperty, sqlOptions])).not.toContain(
       "client-token",

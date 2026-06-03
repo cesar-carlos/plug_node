@@ -16,23 +16,80 @@ Use `Plug Database` with:
 - SQL:
 
 ```sql
-SELECT *
+SELECT TOP 10 *
 FROM Cliente
-WHERE id = :id
-LIMIT 10;
+WHERE CodCliente = :codCliente;
 ```
 
 - Named Params JSON:
 
 ```json
 {
-  "id": "{{$json.id}}"
+  "codCliente": "{{$json.CodCliente}}"
 }
 ```
 
 - response mode: `Aggregated JSON`
 
 Expected result: one n8n item per returned row.
+
+## Zero rows (Aggregated JSON)
+
+Use `Execute SQL` with **Aggregated JSON** when the query may return no rows (for example a filter that matches nothing):
+
+```sql
+SELECT *
+FROM Vendedor
+WHERE ISNULL(Customizado_BotWhatsapp_Permitido, 'N') = 'S'
+  AND TRIM(ISNULL(Customizado_BotWhatsapp_Numero, '')) <> '';
+```
+
+Expected result: **one** output item:
+
+```json
+{
+  "rowCount": 0,
+  "rows": [],
+  "__plug": { "emptyResult": true }
+}
+```
+
+Branch downstream with `IF` on `$json.__plug?.emptyResult` or `$json.rowCount === 0` instead of relying on zero items (which stops the workflow by default).
+
+For large result sets, prefer `Channel = Socket`, enable **Prefer DB Streaming** when available, and use **Chunk Items** response mode. See [Socket SQL](./socket/sql-socket.md).
+
+## Execute Batch (read-only smoke)
+
+Use **Execute Batch** when the hub should run **multiple commands** in one `sql.executeBatch` RPC (not the same as **Multi Result** on a single SQL string).
+
+- operation: `Execute Batch`
+- Batch Commands JSON:
+
+```json
+[{ "sql": "SELECT TOP 5 * FROM Cliente" }, { "sql": "SELECT TOP 5 * FROM Vendedor" }]
+```
+
+- response mode: `Raw JSON-RPC` for debugging, or `Aggregated JSON` when the agent returns a single summarized payload
+
+Use read-only `SELECT` statements in examples and staging. For mutating batches, enable transaction options only when the agent profile supports them.
+
+## Execute Batch with coalesced input items
+
+When several upstream items each carry a small batch payload, enable **Coalesce Input Items** under batch **Additional Options** so the node issues one `sql.executeBatch` call.
+
+- Item 0 `Batch Commands JSON`:
+
+```json
+[{ "sql": "SELECT TOP 1 * FROM Cliente" }]
+```
+
+- Item 1 `Batch Commands JSON`:
+
+```json
+[{ "sql": "SELECT TOP 1 * FROM Vendedor" }]
+```
+
+Use the same **Additional Options** on every item. The node returns one output item with `__plug.coalescedItemCount` when metadata is enabled.
 
 ## Query rows with page-based pagination
 
@@ -45,7 +102,7 @@ Use `Plug Database` with:
 SELECT *
 FROM Cliente
 WHERE cidade = :cidade
-ORDER BY id;
+ORDER BY CodCliente;
 ```
 
 - Named Params JSON:
@@ -95,19 +152,44 @@ Use `Plug Database` with:
 ```sql
 UPDATE Cliente
 SET email = :email
-WHERE id = :id;
+WHERE CodCliente = :codCliente;
 ```
 
 - Named Params JSON:
 
 ```json
 {
-  "id": "{{$json.id}}",
+  "codCliente": "{{$json.CodCliente}}",
   "email": "{{$json.email}}"
 }
 ```
 
 `Require WHERE for UPDATE/DELETE` is enabled by default and blocks updates without a `WHERE` clause.
+
+## Bulk insert rows
+
+Use `Bulk Insert SQL` for high-volume inserts via `sql.bulkInsert` (mutating — use a staging table).
+
+- Table: `dbo.MyStagingTable`
+- Columns JSON:
+
+```json
+[
+  { "name": "id", "type": "i64" },
+  { "name": "name", "type": "text" }
+]
+```
+
+- Rows JSON:
+
+```json
+[
+  [1, "Alpha"],
+  [2, "Beta"]
+]
+```
+
+Prefer idempotency keys in Additional Options when retrying workflows.
 
 ## Delete a row safely
 
@@ -118,14 +200,14 @@ Use `Plug Database` with:
 
 ```sql
 DELETE FROM Cliente
-WHERE id = :id;
+WHERE CodCliente = :codCliente;
 ```
 
 - Named Params JSON:
 
 ```json
 {
-  "id": "{{$json.id}}"
+  "codCliente": "{{$json.CodCliente}}"
 }
 ```
 
@@ -141,16 +223,16 @@ Use `Plug Database` with:
 ```json
 [
   {
-    "sql": "UPDATE Cliente SET email = :email WHERE id = :id",
+    "sql": "UPDATE Cliente SET email = :email WHERE CodCliente = :codCliente",
     "params": {
-      "id": "{{$json.id}}",
+      "codCliente": "{{$json.CodCliente}}",
       "email": "{{$json.email}}"
     }
   },
   {
-    "sql": "SELECT * FROM Cliente WHERE id = :id",
+    "sql": "SELECT TOP 10 * FROM Cliente WHERE CodCliente = :codCliente",
     "params": {
-      "id": "{{$json.id}}"
+      "codCliente": "{{$json.CodCliente}}"
     }
   }
 ]

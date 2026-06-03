@@ -93,8 +93,26 @@ const extractAgentOfflineReason = (value: unknown): string | undefined => {
   return undefined;
 };
 
+const extractTimeoutOrAbortReason = (message: string): string | undefined => {
+  if (
+    message.includes("operation was aborted") ||
+    message.includes("Timed out while waiting for relay RPC completion") ||
+    message.includes("Timed out while waiting for agents:command completion") ||
+    message.includes("Timed out while waiting for agents:stream_pull_response")
+  ) {
+    return "Query or socket operation exceeded PLUG_E2E_TIMEOUT_MS. Use TOP N smoke queries in .env or raise the timeout.";
+  }
+
+  return undefined;
+};
+
 export const getInfrastructureSkipReason = (value: unknown): string | undefined => {
   if (value instanceof Error) {
+    const timeoutMatch = extractTimeoutOrAbortReason(value.message);
+    if (timeoutMatch) {
+      return timeoutMatch;
+    }
+
     const transientHubMatch = extractTransientHubReason(value);
     if (transientHubMatch) {
       return transientHubMatch;
@@ -107,11 +125,17 @@ export const getInfrastructureSkipReason = (value: unknown): string | undefined 
 
     try {
       const parsed = JSON.parse(value.message) as unknown;
-      return extractTransientHubReason(parsed) ?? extractAgentOfflineReason(parsed);
+      return (
+        extractTransientHubReason(parsed) ??
+        extractAgentOfflineReason(parsed) ??
+        extractTimeoutOrAbortReason(value.message)
+      );
     } catch {
-      return value.message.includes("agent_offline")
-        ? "Plug agent is offline in the target environment."
-        : undefined;
+      if (value.message.includes("agent_offline")) {
+        return "Plug agent is offline in the target environment.";
+      }
+
+      return extractTimeoutOrAbortReason(value.message);
     }
   }
 

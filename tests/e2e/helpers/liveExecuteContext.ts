@@ -12,16 +12,18 @@ export interface LiveExecuteContextOptions {
   readonly parameters: Record<string, unknown>;
   readonly inputData?: INodeExecutionData[];
   readonly continueOnFail?: boolean;
+  readonly typeVersion?: number;
+  readonly requestTimeoutMs?: number;
 }
 
-const defaultNode: INode = {
+const defaultNode = (typeVersion: number): INode => ({
   id: "plug-database-e2e-node",
   name: "Plug Database E2E",
   type: "plugDatabase",
-  typeVersion: 1,
+  typeVersion,
   position: [0, 0],
   parameters: {},
-};
+});
 
 const toResponseHeaders = (headers: Headers): Record<string, string> => {
   const normalized: Record<string, string> = {};
@@ -73,7 +75,10 @@ export const createLiveExecuteContext = (
     helpers: {
       httpRequest: async (request: IHttpRequestOptions): Promise<unknown> => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), request.timeout ?? 30_000);
+        const timer = setTimeout(
+          () => controller.abort(),
+          request.timeout ?? options.requestTimeoutMs ?? 30_000,
+        );
 
         try {
           const response = await fetch(request.url, {
@@ -102,7 +107,7 @@ export const createLiveExecuteContext = (
     continueOnFail: () => options.continueOnFail ?? false,
     getInputData: () => options.inputData ?? [],
     getCredentials: async () => options.credentials,
-    getNode: () => defaultNode,
+    getNode: () => defaultNode(options.typeVersion ?? 2),
     getNodeParameter: (
       name: string,
       _itemIndex: number,

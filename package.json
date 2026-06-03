@@ -48,6 +48,9 @@
     "test:e2e": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts",
     "test:e2e:rest": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/rest.e2e.test.ts",
     "test:e2e:socket": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/socket.e2e.test.ts",
+    "test:e2e:auth": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/auth.e2e.test.ts",
+    "test:e2e:stress": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/stress.e2e.test.ts",
+    "test:e2e:hub": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/rest.e2e.test.ts tests/e2e/socket.e2e.test.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
     "verify": "npm run format:check && npm run verify:surface && npm run verify:doc-links && npm run migrate:workflows:check-examples && npm run lint && npm run typecheck && npm test && npm run build"

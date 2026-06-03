@@ -11,12 +11,12 @@ The official publish path is GitHub Actions.
 5. Merge to `main`.
 6. The `Release` workflow creates or updates the version PR.
 7. Merge the version PR to publish packages to npm.
-8. The `Release` workflow publishes packages, verifies the npm version, and creates the package tag.
+8. The `Release` workflow publishes packages, verifies the npm version, creates the package tag, and deletes the stale `changeset-release/main` branch.
 9. The `Release` workflow dispatches `Scan Public Package` only when it detects a newly published npm version. The scan can also run manually or from a package tag fallback.
 
 ## Version PR validation
 
-The version PR is created by `changesets/action` with the default GitHub token. GitHub may not trigger pull request checks for commits created by that token, so the version PR can appear without checks even when the `main` branch is green. The CI workflow includes `changeset-release/main` for direct branch validation when GitHub emits a push event, but local validation remains the reliable fallback.
+The version PR is created by `changesets/action` with the default GitHub token. GitHub may not trigger pull request checks for commits created by that token, so the version PR can appear without checks even when the `main` branch is green. The CI workflow includes `changeset-release/main` for direct branch validation when GitHub emits a push event, but local validation remains the reliable fallback. After npm publish succeeds, the `Release` workflow removes `changeset-release/main` automatically; the branch is recreated the next time a version PR is opened.
 
 Before merging the version PR:
 

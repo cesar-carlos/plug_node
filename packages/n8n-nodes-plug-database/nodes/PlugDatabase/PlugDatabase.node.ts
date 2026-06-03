@@ -11,7 +11,7 @@ import { serializeErrorForContinueOnFail } from "../../generated/shared/output/e
 import { waitForCustomSocketEventWithSocketIo } from "./customSocketEventListener";
 import { publishCustomSocketEventWithSocketIo } from "./customSocketEventPublisher";
 import { createSocketCommandExecutor } from "./socketCommandExecutor";
-import { executeSocketCommand as executeLegacySocketCommand } from "./socketRelayExecutor";
+import { createRelaySocketExecutorForNode } from "./socketRelayExecutor";
 
 export class PlugDatabase implements INodeType {
   description: INodeTypeDescription = {
@@ -40,7 +40,10 @@ export class PlugDatabase implements INodeType {
   };
 
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-    const socketCommandExecutor = createSocketCommandExecutor(executeLegacySocketCommand);
+    const relaySocketExecutor = createRelaySocketExecutorForNode();
+    const socketCommandExecutor = createSocketCommandExecutor(
+      relaySocketExecutor.execute,
+    );
 
     try {
       return await executePlugClientNode(this, {
@@ -48,7 +51,7 @@ export class PlugDatabase implements INodeType {
         credentialName: "plugDatabaseAccountApi",
         nodeDisplayName: "Plug Database",
         socketExecutor: socketCommandExecutor.execute,
-        legacySocketExecutor: executeLegacySocketCommand,
+        legacySocketExecutor: relaySocketExecutor.execute,
         toolSocketEventPublisher: publishCustomSocketEventWithSocketIo,
         socketEventListener: waitForCustomSocketEventWithSocketIo,
       });
@@ -71,6 +74,7 @@ export class PlugDatabase implements INodeType {
       throw error;
     } finally {
       socketCommandExecutor.close();
+      relaySocketExecutor.close();
     }
   }
 }

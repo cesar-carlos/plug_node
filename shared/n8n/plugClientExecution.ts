@@ -13,8 +13,8 @@ import type {
   PlugResolvedExecutionContext,
   PlugResponseMode,
   PlugSocketImplementation,
+  PlugTransportExecutionMetrics,
   RpcSingleCommand,
-  SqlExecuteBatchCommandItem,
 } from "../contracts/api";
 import { PlugError, PlugValidationError } from "../contracts/errors";
 import {
@@ -32,7 +32,29 @@ import { buildN8nHttpRequester } from "./httpRequester";
 import { serializeErrorForContinueOnFail } from "../output/errorOutput";
 import { buildNodeOutputItems } from "../output/nodeOutput";
 import { executeRestCommand } from "../rest/client";
-import { isRecord, parseOptionalJsonArray, parseOptionalJsonObject } from "../utils/json";
+import { isRecord, parseOptionalJsonObject } from "../utils/json";
+import { applyCommandDefaults } from "./plugCommandDefaults";
+import {
+  toCollection,
+  toOptionalPositiveNumber,
+  toOptionalString,
+} from "./plugExecutionParameters";
+import {
+  buildGuidedBatchCommand,
+  buildGuidedBulkInsertCommand,
+  buildGuidedCancelCommand,
+  buildGuidedSqlCommand,
+} from "./plugSqlGuidedCommands";
+import {
+  buildCoalescedBatchRequest,
+  shouldCoalesceBatchInputItems,
+} from "./plugBatchCoalesce";
+import {
+  computeRetryDelayMs,
+  MAX_TRANSIENT_RETRIES,
+  shouldRetryPlugOperation,
+  sleepMs,
+} from "./plugTransientRetry";
 
 export interface PlugSocketExecutor {
   (input: {
@@ -65,47 +87,15 @@ export interface PlugClientNodeExecutionConfig {
   readonly socketEventListener?: PlugToolsSocketEventListener;
 }
 
-const retryableOperations = new Set([
-  "validateContext",
-  "discoverRpc",
-  "getAgentProfile",
-  "getClientTokenPolicy",
-]);
-
 const operationMethodMap: Record<string, RpcSingleCommand["method"]> = {
   executeSql: "sql.execute",
   executeBatch: "sql.executeBatch",
+  bulkInsertSql: "sql.bulkInsert",
   cancelSql: "sql.cancel",
   discoverRpc: "rpc.discover",
   getAgentProfile: "agent.getProfile",
   getClientTokenPolicy: "client_token.getPolicy",
 };
-
-const toOptionalString = (value: unknown): string | undefined => {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-};
-
-const toOptionalPositiveNumber = (value: unknown): number | undefined => {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return undefined;
-  }
-
-  return value;
-};
-
-const toOptionalBoolean = (value: unknown): boolean | undefined =>
-  typeof value === "boolean" ? value : undefined;
-
-const toCollection = (
-  context: IExecuteFunctions,
-  parameterName: string,
-  itemIndex: number,
-): IDataObject => context.getNodeParameter(parameterName, itemIndex, {}) as IDataObject;
 
 const getResponseMode = (
   context: IExecuteFunctions,
@@ -134,19 +124,10 @@ const operationsRequiringClientToken = new Set([
   "validateContext",
   "executeSql",
   "executeBatch",
+  "bulkInsertSql",
   "getAgentProfile",
   "getClientTokenPolicy",
 ]);
-
-const sqlTemplateMarkers = [
-  "{{substitua_pela_tabela}}",
-  "example_table",
-  "sua_tabela",
-  "TODO",
-  "CHANGE_ME",
-] as const;
-
-const sqlNamedParameterPattern = /(?<!:):([A-Za-z_][A-Za-z0-9_]*)/g;
 
 const resolveSocketImplementation = (
   context: IExecuteFunctions,
@@ -170,55 +151,6 @@ const readCredentials = async (
     payloadSigningKeyId: toOptionalString(rawCredentials.payloadSigningKeyId),
     baseUrl: DEFAULT_BASE_URL,
   };
-};
-
-const applyCommandDefaults = (
-  command: RpcSingleCommand,
-  executionContext: PlugResolvedExecutionContext,
-  apiVersion?: string,
-  meta?: JsonObject,
-): RpcSingleCommand => {
-  const nextCommand: RpcSingleCommand = {
-    ...command,
-    jsonrpc: "2.0",
-    api_version: apiVersion ?? command.api_version ?? DEFAULT_API_VERSION,
-    ...(meta ? { meta: meta } : command.meta ? { meta: command.meta } : {}),
-  } as RpcSingleCommand;
-
-  if (nextCommand.method === "sql.execute") {
-    return {
-      ...nextCommand,
-      params: {
-        ...nextCommand.params,
-        client_token: executionContext.resolvedClientToken,
-      },
-    };
-  }
-
-  if (nextCommand.method === "sql.executeBatch") {
-    return {
-      ...nextCommand,
-      params: {
-        ...nextCommand.params,
-        client_token: executionContext.resolvedClientToken,
-      },
-    };
-  }
-
-  if (
-    nextCommand.method === "agent.getProfile" ||
-    nextCommand.method === "client_token.getPolicy"
-  ) {
-    return {
-      ...nextCommand,
-      params: {
-        ...(nextCommand.params ?? {}),
-        client_token: executionContext.resolvedClientToken,
-      },
-    };
-  }
-
-  return nextCommand;
 };
 
 const resolveExecutionContext = (
@@ -254,316 +186,6 @@ const resolveExecutionContext = (
     baseUrl: credentialDefaults.baseUrl,
     resolvedAgentId,
     ...(resolvedClientToken ? { resolvedClientToken } : {}),
-  };
-};
-
-const stripSqlCommentsAndStrings = (sql: string): string =>
-  sql
-    .replace(/'([^']|'')*'/g, "''")
-    .replace(/"([^"]|"")*"/g, '""')
-    .replace(/--.*$/gm, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "");
-
-const findTemplateMarker = (sql: string): string | undefined => {
-  const normalizedSql = sql.toLowerCase();
-
-  return sqlTemplateMarkers.find((marker) =>
-    normalizedSql.includes(marker.toLowerCase()),
-  );
-};
-
-const findNamedSqlParameters = (sql: string): string[] => {
-  const cleanSql = stripSqlCommentsAndStrings(sql);
-  const parameters = new Set<string>();
-
-  for (const match of cleanSql.matchAll(sqlNamedParameterPattern)) {
-    parameters.add(match[1]);
-  }
-
-  return [...parameters];
-};
-
-const validateNamedSqlParameters = (
-  sql: string,
-  params: JsonObject | undefined,
-  fieldLabel: string,
-): void => {
-  const parameterNames = findNamedSqlParameters(sql);
-  if (parameterNames.length === 0) {
-    return;
-  }
-
-  const missingParameter = parameterNames.find(
-    (parameterName) => !params || !(parameterName in params),
-  );
-  if (!missingParameter) {
-    return;
-  }
-
-  throw new PlugValidationError(
-    `${fieldLabel} uses :${missingParameter}, but Named Params JSON does not contain the key "${missingParameter}".`,
-  );
-};
-
-const validateSafeMutationSql = (sql: string, fieldLabel: string): void => {
-  const cleanStatements = stripSqlCommentsAndStrings(sql)
-    .split(";")
-    .map((statement) => statement.trim())
-    .filter((statement) => statement !== "");
-
-  const unsafeStatement = cleanStatements.find((statement) => {
-    const normalizedStatement = statement.replace(/\s+/g, " ").toLowerCase();
-    return (
-      /(^|\s)(update|delete)\s/.test(normalizedStatement) &&
-      !/(^|\s)where\s/.test(normalizedStatement)
-    );
-  });
-
-  if (!unsafeStatement) {
-    return;
-  }
-
-  throw new PlugValidationError(
-    `${fieldLabel} contains UPDATE/DELETE without WHERE. Add a WHERE clause or turn off Require WHERE for UPDATE/DELETE in Additional Options.`,
-  );
-};
-
-const validateGuidedSql = (
-  sql: string,
-  params: JsonObject | undefined,
-  options: {
-    readonly fieldLabel: string;
-    readonly requireWhereForUpdateDelete: boolean;
-  },
-): void => {
-  const marker = findTemplateMarker(sql);
-  if (marker) {
-    throw new PlugValidationError(
-      `${options.fieldLabel} still contains ${marker}; replace it before running the node.`,
-    );
-  }
-
-  validateNamedSqlParameters(sql, params, options.fieldLabel);
-
-  if (options.requireWhereForUpdateDelete) {
-    validateSafeMutationSql(sql, options.fieldLabel);
-  }
-};
-
-const buildGuidedSqlCommand = (
-  context: IExecuteFunctions,
-  itemIndex: number,
-  executionContext: PlugResolvedExecutionContext,
-): BuiltCommandRequest => {
-  const sql = context.getNodeParameter("sql", itemIndex) as string;
-  const namedParamsJson = context.getNodeParameter(
-    "namedParamsJson",
-    itemIndex,
-    "",
-  ) as string;
-  const options = toCollection(context, "sqlOptions", itemIndex);
-  const params = parseOptionalJsonObject(namedParamsJson, "Named Params JSON");
-  const timeoutMs = toOptionalPositiveNumber(options.timeoutMs);
-  const maxRows = toOptionalPositiveNumber(options.maxRows);
-  const executionMode =
-    options.executionMode === "managed" || options.executionMode === "preserve"
-      ? options.executionMode
-      : undefined;
-  const multiResult = toOptionalBoolean(options.multiResult);
-  const page = toOptionalPositiveNumber(options.page);
-  const pageSize = toOptionalPositiveNumber(options.pageSize);
-  const cursor = toOptionalString(options.cursor);
-  const database = toOptionalString(options.database);
-  const idempotencyKey = toOptionalString(options.idempotencyKey);
-  const apiVersion = toOptionalString(options.apiVersion) ?? DEFAULT_API_VERSION;
-  const meta = parseOptionalJsonObject(String(options.metaJson ?? ""), "RPC Meta JSON");
-  const requireWhereForUpdateDelete =
-    toOptionalBoolean(options.requireWhereForUpdateDelete) ?? true;
-
-  if (
-    (page !== undefined && pageSize === undefined) ||
-    (page === undefined && pageSize !== undefined)
-  ) {
-    throw new PlugValidationError("Page and Page Size must be used together");
-  }
-
-  if (cursor && (page !== undefined || pageSize !== undefined)) {
-    throw new PlugValidationError("Cursor cannot be combined with Page or Page Size");
-  }
-
-  if (
-    executionMode === "preserve" &&
-    (page !== undefined || pageSize !== undefined || cursor)
-  ) {
-    throw new PlugValidationError(
-      "Execution Mode Preserve cannot be combined with Page, Page Size, or Cursor",
-    );
-  }
-
-  if (multiResult === true && params !== undefined) {
-    throw new PlugValidationError(
-      "Multi Result cannot be combined with Named Params JSON",
-    );
-  }
-
-  validateGuidedSql(sql, params, {
-    fieldLabel: "SQL",
-    requireWhereForUpdateDelete,
-  });
-
-  const command = applyCommandDefaults(
-    {
-      method: "sql.execute",
-      params: {
-        sql,
-        ...(params ? { params } : {}),
-        ...(database ? { database } : {}),
-        ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
-        options: {
-          ...(timeoutMs ? { timeout_ms: timeoutMs } : {}),
-          ...(maxRows ? { max_rows: maxRows } : {}),
-          ...(executionMode ? { execution_mode: executionMode } : {}),
-          ...(multiResult !== undefined ? { multi_result: multiResult } : {}),
-          ...(page ? { page } : {}),
-          ...(pageSize ? { page_size: pageSize } : {}),
-          ...(cursor ? { cursor } : {}),
-        },
-      },
-    },
-    executionContext,
-    apiVersion,
-    meta,
-  );
-
-  return {
-    operation: "executeSql",
-    agentId: executionContext.resolvedAgentId,
-    channel: "rest",
-    responseMode: "aggregatedJson",
-    command,
-    timeoutMs,
-  };
-};
-
-const buildGuidedBatchCommand = (
-  context: IExecuteFunctions,
-  itemIndex: number,
-  executionContext: PlugResolvedExecutionContext,
-): BuiltCommandRequest => {
-  const batchCommandsJson = context.getNodeParameter(
-    "batchCommandsJson",
-    itemIndex,
-  ) as string;
-  const options = toCollection(context, "batchOptions", itemIndex);
-  const commands = parseOptionalJsonArray(batchCommandsJson, "Batch Commands JSON");
-  if (!commands || commands.length === 0) {
-    throw new PlugValidationError(
-      "Batch Commands JSON must contain at least one command",
-    );
-  }
-
-  const timeoutMs = toOptionalPositiveNumber(options.timeoutMs);
-  const maxRows = toOptionalPositiveNumber(options.maxRows);
-  const transaction = toOptionalBoolean(options.transaction);
-  const database = toOptionalString(options.database);
-  const idempotencyKey = toOptionalString(options.idempotencyKey);
-  const apiVersion = toOptionalString(options.apiVersion) ?? DEFAULT_API_VERSION;
-  const meta = parseOptionalJsonObject(String(options.metaJson ?? ""), "RPC Meta JSON");
-  const requireWhereForUpdateDelete =
-    toOptionalBoolean(options.requireWhereForUpdateDelete) ?? true;
-
-  const batchItems = commands.map((item, index) => {
-    if (!isRecord(item)) {
-      throw new PlugValidationError(`Batch command at index ${index} must be an object`);
-    }
-    if (typeof item.sql !== "string" || item.sql.trim() === "") {
-      throw new PlugValidationError(`Batch command at index ${index} must include sql`);
-    }
-
-    const params = isRecord(item.params) ? item.params : undefined;
-    validateGuidedSql(item.sql, params, {
-      fieldLabel: `Batch command at index ${index}`,
-      requireWhereForUpdateDelete,
-    });
-
-    return {
-      sql: item.sql,
-      ...(params ? { params } : {}),
-      ...(typeof item.execution_order === "number"
-        ? { execution_order: item.execution_order }
-        : {}),
-    } as SqlExecuteBatchCommandItem;
-  });
-
-  const command = applyCommandDefaults(
-    {
-      method: "sql.executeBatch",
-      params: {
-        commands: batchItems,
-        ...(database ? { database } : {}),
-        ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
-        options: {
-          ...(timeoutMs ? { timeout_ms: timeoutMs } : {}),
-          ...(maxRows ? { max_rows: maxRows } : {}),
-          ...(transaction !== undefined ? { transaction } : {}),
-        },
-      },
-    },
-    executionContext,
-    apiVersion,
-    meta,
-  );
-
-  return {
-    operation: "executeBatch",
-    agentId: executionContext.resolvedAgentId,
-    channel: "rest",
-    responseMode: "aggregatedJson",
-    command,
-    timeoutMs,
-  };
-};
-
-const buildGuidedCancelCommand = (
-  context: IExecuteFunctions,
-  itemIndex: number,
-  executionContext: PlugResolvedExecutionContext,
-): BuiltCommandRequest => {
-  const executionId = toOptionalString(
-    context.getNodeParameter("cancelExecutionId", itemIndex, ""),
-  );
-  const requestId = toOptionalString(
-    context.getNodeParameter("cancelRequestId", itemIndex, ""),
-  );
-  if (!executionId && !requestId) {
-    throw new PlugValidationError(
-      "Execution ID or Request ID must be provided for Cancel SQL",
-    );
-  }
-
-  const options = toCollection(context, "cancelOptions", itemIndex);
-  const timeoutMs = toOptionalPositiveNumber(options.timeoutMs);
-  const apiVersion = toOptionalString(options.apiVersion) ?? DEFAULT_API_VERSION;
-  const meta = parseOptionalJsonObject(String(options.metaJson ?? ""), "RPC Meta JSON");
-
-  return {
-    operation: "cancelSql",
-    channel: "rest",
-    responseMode: "aggregatedJson",
-    command: applyCommandDefaults(
-      {
-        method: "sql.cancel",
-        params: {
-          ...(executionId ? { execution_id: executionId } : {}),
-          ...(requestId ? { request_id: requestId } : {}),
-        },
-      },
-      executionContext,
-      apiVersion,
-      meta,
-    ),
-    agentId: executionContext.resolvedAgentId,
-    timeoutMs,
   };
 };
 
@@ -678,6 +300,7 @@ const buildAdvancedCommand = (
   const operationOptionsCollectionMap: Record<string, string> = {
     executeSql: "sqlOptions",
     executeBatch: "batchOptions",
+    bulkInsertSql: "bulkInsertOptions",
     cancelSql: "cancelOptions",
     discoverRpc: "discoverOptions",
   };
@@ -722,9 +345,6 @@ const buildBuiltCommandRequest = (
     credentialDefaults,
     operation,
   );
-  const channel = config.supportsSocket
-    ? (context.getNodeParameter("channel", itemIndex, "rest") as PlugChannel)
-    : "rest";
   const inputMode =
     operation === "validateContext"
       ? "guided"
@@ -739,16 +359,34 @@ const buildBuiltCommandRequest = (
           ? buildGuidedSqlCommand(context, itemIndex, executionContext)
           : operation === "executeBatch"
             ? buildGuidedBatchCommand(context, itemIndex, executionContext)
-            : operation === "cancelSql"
-              ? buildGuidedCancelCommand(context, itemIndex, executionContext)
-              : operation === "discoverRpc"
-                ? buildGuidedDiscoverCommand(context, itemIndex, executionContext)
-                : buildGuidedProfileCommand(
-                    context,
-                    itemIndex,
-                    executionContext,
-                    operation as "getAgentProfile" | "getClientTokenPolicy",
-                  );
+            : operation === "bulkInsertSql"
+              ? buildGuidedBulkInsertCommand(context, itemIndex, executionContext)
+              : operation === "cancelSql"
+                ? buildGuidedCancelCommand(context, itemIndex, executionContext)
+                : operation === "discoverRpc"
+                  ? buildGuidedDiscoverCommand(context, itemIndex, executionContext)
+                  : buildGuidedProfileCommand(
+                      context,
+                      itemIndex,
+                      executionContext,
+                      operation as "getAgentProfile" | "getClientTokenPolicy",
+                    );
+
+  return finalizeBuiltCommandRequest(builtRequest, context, itemIndex, config, operation);
+};
+
+const finalizeBuiltCommandRequest = (
+  builtRequest: BuiltCommandRequest,
+  context: IExecuteFunctions,
+  itemIndex: number,
+  config: PlugClientNodeExecutionConfig,
+  operation?: string,
+): BuiltCommandRequest => {
+  const resolvedOperation =
+    operation ?? (context.getNodeParameter("operation", itemIndex) as string);
+  const channel = config.supportsSocket
+    ? (context.getNodeParameter("channel", itemIndex, "rest") as PlugChannel)
+    : "rest";
 
   return {
     ...builtRequest,
@@ -762,7 +400,7 @@ const buildBuiltCommandRequest = (
         }
       : {}),
     responseMode:
-      operation === "validateContext"
+      resolvedOperation === "validateContext"
         ? "aggregatedJson"
         : getResponseMode(context, itemIndex),
   };
@@ -860,24 +498,138 @@ const executeBuiltRequest = async (
     return executeRestCommand(requester, session, builtRequest);
   });
 
-const shouldRetryBuiltRequest = (
-  builtRequest: BuiltCommandRequest,
-  error: unknown,
-  attemptNumber: number,
-): error is PlugError => {
-  if (attemptNumber > 0) {
-    return false;
-  }
-
-  if (!(error instanceof PlugError) || !error.retryable) {
-    return false;
-  }
-
-  return retryableOperations.has(builtRequest.operation);
-};
-
 const toNodeItems = (jsonItems: JsonObject[]): INodeExecutionData[] =>
   jsonItems.map((json) => ({ json: json as IDataObject }));
+
+const attachTransportExecutionMetrics = (
+  transportResult: PlugCommandTransportResult,
+  executionMetrics: PlugTransportExecutionMetrics,
+): PlugCommandTransportResult => {
+  if (transportResult.notification) {
+    return transportResult;
+  }
+
+  if (transportResult.channel === "rest") {
+    return {
+      ...transportResult,
+      executionMetrics: {
+        ...transportResult.executionMetrics,
+        ...executionMetrics,
+      },
+    };
+  }
+
+  return {
+    ...transportResult,
+    executionMetrics: {
+      ...transportResult.executionMetrics,
+      ...executionMetrics,
+      connectedAfterMs:
+        transportResult.executionMetrics?.connectedAfterMs ??
+        executionMetrics.connectedAfterMs,
+    },
+  };
+};
+
+const executeBuiltCommandWithRetry = async (input: {
+  readonly builtRequest: BuiltCommandRequest;
+  readonly requester: import("../contracts/api").PlugHttpRequester;
+  readonly sessionRunner: PlugExecutionSessionRunner<PlugCredentialDefaults>;
+  readonly config: PlugClientNodeExecutionConfig;
+  readonly includeMetadata: boolean;
+}): Promise<{
+  readonly transportResult: PlugCommandTransportResult;
+  readonly jsonItems: JsonObject[];
+  readonly attemptCount: number;
+  readonly lastRetryDelayMs?: number;
+}> => {
+  let lastRetryDelayMs: number | undefined;
+
+  for (
+    let attemptNumber = 0;
+    attemptNumber <= MAX_TRANSIENT_RETRIES;
+    attemptNumber += 1
+  ) {
+    try {
+      const transportResult = await executeBuiltRequest(
+        input.requester,
+        input.sessionRunner,
+        input.builtRequest,
+        input.config,
+      );
+      const executionMetrics: PlugTransportExecutionMetrics = {
+        attemptCount: attemptNumber + 1,
+        lastRetryDelayMs,
+        connectedAfterMs:
+          transportResult.channel === "socket" && !transportResult.notification
+            ? transportResult.executionMetrics?.connectedAfterMs
+            : undefined,
+      };
+      const transportWithMetrics = attachTransportExecutionMetrics(
+        transportResult,
+        executionMetrics,
+      );
+      const jsonItems = buildNodeOutputItems(
+        transportWithMetrics,
+        input.builtRequest.responseMode,
+        input.includeMetadata,
+      );
+
+      return {
+        transportResult: transportWithMetrics,
+        jsonItems,
+        attemptCount: attemptNumber + 1,
+        lastRetryDelayMs,
+      };
+    } catch (error: unknown) {
+      if (
+        !shouldRetryPlugOperation({
+          operation: input.builtRequest.operation,
+          error,
+          attemptNumber,
+        })
+      ) {
+        throw error;
+      }
+
+      const delayMs =
+        error instanceof PlugError
+          ? computeRetryDelayMs(error, attemptNumber)
+          : computeRetryDelayMs(
+              new PlugError("Plug request timed out before completion.", {
+                code: "PLUG_TIMEOUT",
+                retryable: true,
+              }),
+              attemptNumber,
+            );
+      lastRetryDelayMs = delayMs;
+      await sleepMs(delayMs);
+    }
+  }
+
+  throw new PlugValidationError("Plug request finished without a successful attempt");
+};
+
+const attachCoalescedItemCount = (
+  jsonItems: JsonObject[],
+  includeMetadata: boolean,
+  coalescedItemCount: number,
+): JsonObject[] => {
+  if (!includeMetadata) {
+    return jsonItems;
+  }
+
+  return jsonItems.map((json) => {
+    const plugMeta = isRecord(json.__plug) ? json.__plug : {};
+    return {
+      ...json,
+      __plug: {
+        ...plugMeta,
+        coalescedItemCount,
+      },
+    };
+  });
+};
 
 const executePlugSqlNode = async (
   context: IExecuteFunctions,
@@ -891,6 +643,30 @@ const executePlugSqlNode = async (
   const sessionRunner = createExecutionSessionRunner(requester, credentials);
   const outputItems: INodeExecutionData[] = [];
 
+  if (shouldCoalesceBatchInputItems(context, 0)) {
+    const includeMetadata = getIncludeMetadata(context, 0);
+    const { builtRequest, coalescedItemCount } = buildCoalescedBatchRequest({
+      context,
+      credentialDefaults: credentials,
+      config,
+      resolveExecutionContext,
+      finalizeBuiltRequest: finalizeBuiltCommandRequest,
+    });
+    const { jsonItems } = await executeBuiltCommandWithRetry({
+      builtRequest,
+      requester,
+      sessionRunner,
+      config,
+      includeMetadata,
+    });
+
+    return [
+      toNodeItems(
+        attachCoalescedItemCount(jsonItems, includeMetadata, coalescedItemCount),
+      ),
+    ];
+  }
+
   for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
     try {
       const builtRequest = buildBuiltCommandRequest(
@@ -899,33 +675,13 @@ const executePlugSqlNode = async (
         credentials,
         config,
       );
-      let transportResult: PlugCommandTransportResult | undefined;
-
-      for (let attemptNumber = 0; attemptNumber < 2; attemptNumber += 1) {
-        try {
-          transportResult = await executeBuiltRequest(
-            requester,
-            sessionRunner,
-            builtRequest,
-            config,
-          );
-          break;
-        } catch (error: unknown) {
-          if (!shouldRetryBuiltRequest(builtRequest, error, attemptNumber)) {
-            throw error;
-          }
-        }
-      }
-
-      if (!transportResult) {
-        throw new PlugValidationError("Plug request finished without a transport result");
-      }
-
-      const jsonItems = buildNodeOutputItems(
-        transportResult,
-        builtRequest.responseMode,
-        getIncludeMetadata(context, itemIndex),
-      );
+      const { jsonItems } = await executeBuiltCommandWithRetry({
+        builtRequest,
+        requester,
+        sessionRunner,
+        config,
+        includeMetadata: getIncludeMetadata(context, itemIndex),
+      });
       outputItems.push(...toNodeItems(jsonItems));
     } catch (error: unknown) {
       if (context.continueOnFail()) {

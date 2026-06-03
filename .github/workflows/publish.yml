@@ -131,6 +131,23 @@ jobs:
           echo "::error::Expected n8n-nodes-plug-database@${expected_version} on npm, but latest is '${actual_version:-not found}'."
           exit 1
 
+      - name: Delete changeset release branch
+        if: steps.release_mode.outputs.mode == 'publish'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BRANCH: changeset-release/main
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          encoded_ref="heads/${RELEASE_BRANCH//\//%2F}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/${encoded_ref}" >/dev/null 2>&1; then
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/${encoded_ref}"
+            echo "Deleted ${RELEASE_BRANCH} after successful publish."
+          else
+            echo "${RELEASE_BRANCH} is already absent; skipping cleanup."
+          fi
+
       - name: Trigger public package scan
         if: steps.release_mode.outputs.mode == 'publish' && steps.release_mode.outputs.npm_version_before != steps.release_mode.outputs.local_version
         env:

@@ -58,6 +58,102 @@ describe("buildNodeOutputItems", () => {
     });
   });
 
+  it("returns one synthetic item when aggregated JSON receives row_count 0 without a rows array", () => {
+    const result: PlugCommandTransportResult = {
+      channel: "rest",
+      agentId: "agent-1",
+      requestId: "request-1",
+      notification: false,
+      response: {
+        type: "single",
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            row_count: 0,
+          },
+        },
+      },
+      raw: {
+        mode: "bridge",
+        agentId: "agent-1",
+        requestId: "request-1",
+        response: {
+          type: "single",
+          success: true,
+          item: {
+            id: "rpc-1",
+            success: true,
+            result: {
+              row_count: 0,
+            },
+          },
+        },
+      },
+    };
+
+    const items = buildNodeOutputItems(result, "aggregatedJson");
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      rowCount: 0,
+      rows: [],
+      __plug: {
+        emptyResult: true,
+      },
+    });
+  });
+
+  it("returns one synthetic item when aggregated JSON receives zero SQL rows", () => {
+    const result: PlugCommandTransportResult = {
+      channel: "rest",
+      agentId: "agent-1",
+      requestId: "request-1",
+      notification: false,
+      response: {
+        type: "single",
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            rows: [],
+            row_count: 0,
+          },
+        },
+      },
+      raw: {
+        mode: "bridge",
+        agentId: "agent-1",
+        requestId: "request-1",
+        response: {
+          type: "single",
+          success: true,
+          item: {
+            id: "rpc-1",
+            success: true,
+            result: {
+              rows: [],
+            },
+          },
+        },
+      },
+    };
+
+    const items = buildNodeOutputItems(result, "aggregatedJson");
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      rowCount: 0,
+      rows: [],
+      __plug: {
+        emptyResult: true,
+        agentId: "agent-1",
+      },
+    });
+  });
+
   it("can omit __plug metadata when requested", () => {
     const result: PlugCommandTransportResult = {
       channel: "rest",
@@ -299,5 +395,54 @@ describe("buildNodeOutputItems", () => {
         },
       },
     ]);
+  });
+
+  it("includes transport execution metrics in __plug when metadata is enabled", () => {
+    const result: PlugCommandTransportResult = {
+      channel: "rest",
+      agentId: "agent-1",
+      requestId: "request-1",
+      notification: false,
+      executionMetrics: {
+        attemptCount: 2,
+        lastRetryDelayMs: 250,
+      },
+      response: {
+        type: "single",
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            rows: [{ CodCliente: 1 }],
+          },
+        },
+      },
+      raw: {
+        mode: "bridge",
+        agentId: "agent-1",
+        requestId: "request-1",
+        response: {
+          type: "single",
+          success: true,
+          item: {
+            id: "rpc-1",
+            success: true,
+            result: {
+              rows: [{ CodCliente: 1 }],
+            },
+          },
+        },
+      },
+    };
+
+    const items = buildNodeOutputItems(result, "aggregatedJson", true);
+
+    expect(items[0].__plug).toMatchObject({
+      transport: {
+        attemptCount: 2,
+        lastRetryDelayMs: 250,
+      },
+    });
   });
 });

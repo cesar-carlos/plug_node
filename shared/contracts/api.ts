@@ -13,6 +13,7 @@ export type PlugOperation =
   | "validateContext"
   | "executeSql"
   | "executeBatch"
+  | "bulkInsertSql"
   | "cancelSql"
   | "discoverRpc"
   | "getAgentProfile"
@@ -21,6 +22,7 @@ export type PlugOperation =
 export type PlugCommandMethod =
   | "sql.execute"
   | "sql.executeBatch"
+  | "sql.bulkInsert"
   | "sql.cancel"
   | "rpc.discover"
   | "agent.getProfile"
@@ -147,6 +149,7 @@ export interface SqlExecuteOptions extends JsonObject {
   readonly execution_mode?: "managed" | "preserve";
   readonly preserve_sql?: boolean;
   readonly multi_result?: boolean;
+  readonly prefer_db_streaming?: boolean;
 }
 
 export interface SqlExecuteParams extends JsonObject {
@@ -182,12 +185,41 @@ export interface SqlExecuteBatchParams extends JsonObject {
     readonly timeout_ms?: number;
     readonly max_rows?: number;
     readonly transaction?: boolean;
+    readonly max_parallel_read_only_batch_items?: number;
   };
 }
 
 export interface SqlExecuteBatchCommand extends RpcCommandBase {
   readonly method: "sql.executeBatch";
   readonly params: SqlExecuteBatchParams;
+}
+
+export interface SqlBulkInsertColumn extends JsonObject {
+  readonly name: string;
+  readonly type: string;
+  readonly nullable?: boolean;
+  readonly max_len?: number;
+}
+
+export interface SqlBulkInsertOptions extends JsonObject {
+  readonly timeout_ms?: number;
+}
+
+export interface SqlBulkInsertParams extends JsonObject {
+  readonly table: string;
+  readonly columns: readonly SqlBulkInsertColumn[];
+  readonly rows: readonly (readonly unknown[])[];
+  readonly client_token?: string;
+  readonly clientToken?: string;
+  readonly auth?: string;
+  readonly idempotency_key?: string;
+  readonly database?: string;
+  readonly options?: SqlBulkInsertOptions;
+}
+
+export interface SqlBulkInsertCommand extends RpcCommandBase {
+  readonly method: "sql.bulkInsert";
+  readonly params: SqlBulkInsertParams;
 }
 
 export interface SqlCancelCommand extends RpcCommandBase {
@@ -222,6 +254,7 @@ export interface ClientTokenGetPolicyCommand extends RpcCommandBase {
 export type RpcSingleCommand =
   | SqlExecuteCommand
   | SqlExecuteBatchCommand
+  | SqlBulkInsertCommand
   | SqlCancelCommand
   | RpcDiscoverCommand
   | AgentGetProfileCommand
@@ -457,6 +490,7 @@ export interface RestTransportResult {
   readonly notification: false;
   readonly response: NormalizedAgentRpcResponse;
   readonly raw: RestBridgeCommandResponse;
+  readonly executionMetrics?: PlugTransportExecutionMetrics;
 }
 
 export interface RestTransportNotificationResult {
@@ -490,6 +524,12 @@ export interface SocketCommandRuntimeMetrics extends JsonObject {
   readonly bufferedRows: number;
 }
 
+export interface PlugTransportExecutionMetrics {
+  readonly attemptCount?: number;
+  readonly lastRetryDelayMs?: number;
+  readonly connectedAfterMs?: number;
+}
+
 export interface SocketTransportResult {
   readonly channel: "socket";
   readonly socketMode: PlugSocketImplementation;
@@ -507,6 +547,7 @@ export interface SocketTransportResult {
   readonly rawChunkFrames: unknown[];
   readonly rawCompleteFrame?: unknown;
   readonly metrics?: SocketCommandRuntimeMetrics;
+  readonly executionMetrics?: PlugTransportExecutionMetrics;
 }
 
 export type PlugCommandTransportResult =
