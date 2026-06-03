@@ -1,5 +1,16 @@
 # n8n-nodes-plug-database
 
+## 3.1.0
+
+### Minor Changes
+
+- 27f9527: Align the Plug Database node with hub contracts: emit one synthetic Aggregated JSON item when SQL returns zero rows, add guided `sql.bulkInsert`, expose `prefer_db_streaming` and batch parallel read options, map `replay_detected` (-32014) errors clearly, and decode PayloadFrame-wrapped `agents:command` socket responses for typeVersion 2.
+
+### Patch Changes
+
+- 27f9527: Add transient hub retries for SQL and metadata operations, reuse relay socket connections across items, optional Execute Batch input coalescing, and transport metrics in Plug metadata.
+- 27f9527: Extract guided SQL command builders into shared modules, add unit tests for hub SQL options and batch/bulk/cancel payloads, and extend live E2E suites for `sql.executeBatch`, hub options, and gated `sql.cancel`.
+
 ## 3.0.1
 
 ### Patch Changes
