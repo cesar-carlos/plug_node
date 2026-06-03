@@ -20,6 +20,9 @@ permissions:
   pull-requests: write
   id-token: write
 
+env:
+  CHANGESET_RELEASE_BRANCH: changeset-release/main
+
 jobs:
   publish:
     if: |
@@ -108,7 +111,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Validate version PR branch
+        if: steps.release_mode.outputs.mode == 'version-pr'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch origin "${CHANGESET_RELEASE_BRANCH}"
+          git checkout "${CHANGESET_RELEASE_BRANCH}"
+          npm run verify
+          npm run pack:check
+
       - name: Verify npm published version
+        id: verify_npm
         if: steps.release_mode.outputs.mode == 'publish'
         shell: bash
         run: |
@@ -132,20 +147,33 @@ jobs:
           exit 1
 
       - name: Delete changeset release branch
-        if: steps.release_mode.outputs.mode == 'publish'
+        if: steps.release_mode.outputs.mode == 'publish' && steps.verify_npm.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_BRANCH: changeset-release/main
         shell: bash
         run: |
           set -euo pipefail
 
-          encoded_ref="heads/${RELEASE_BRANCH//\//%2F}"
+          mapfile -t pr_numbers < <(
+            gh pr list \
+              --head "${CHANGESET_RELEASE_BRANCH}" \
+              --state open \
+              --json number \
+              --jq '.[].number'
+          )
+
+          for pr_number in "${pr_numbers[@]}"; do
+            gh pr close "${pr_number}" \
+              --comment "Closed automatically after successful npm publish."
+            echo "Closed version pull request #${pr_number}."
+          done
+
+          encoded_ref="heads/${CHANGESET_RELEASE_BRANCH//\//%2F}"
           if gh api "repos/${GITHUB_REPOSITORY}/git/ref/${encoded_ref}" >/dev/null 2>&1; then
             gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/${encoded_ref}"
-            echo "Deleted ${RELEASE_BRANCH} after successful publish."
+            echo "Deleted ${CHANGESET_RELEASE_BRANCH} after successful publish."
           else
-            echo "${RELEASE_BRANCH} is already absent; skipping cleanup."
+            echo "${CHANGESET_RELEASE_BRANCH} is already absent; skipping cleanup."
           fi
 
       - name: Trigger public package scan

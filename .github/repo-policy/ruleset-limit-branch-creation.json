@@ -1,0 +1,16 @@
+{
+  "name": "Limit branch creation",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["~ALL"],
+      "exclude": ["refs/heads/main", "refs/heads/changeset-release/main"]
+    }
+  },
+  "rules": [
+    {
+      "type": "creation"
+    }
+  ]
+}

@@ -18,12 +18,23 @@ The official publish path is GitHub Actions.
 
 The version PR is created by `changesets/action` with the default GitHub token. GitHub may not trigger pull request checks for commits created by that token, so the version PR can appear without checks even when the `main` branch is green. The CI workflow includes `changeset-release/main` for direct branch validation when GitHub emits a push event, but local validation remains the reliable fallback. After npm publish succeeds, the `Release` workflow removes `changeset-release/main` automatically; the branch is recreated the next time a version PR is opened.
 
+When the `Release` workflow opens or updates a version PR, it also runs `npm run verify` and `npm run pack:check` directly on `changeset-release/main` so the version branch is validated even when GitHub does not attach PR checks.
+
 Before merging the version PR:
 
 1. Confirm the latest `main` `CI` and `Release` workflow runs are successful.
 2. Run `npm run verify` and `npm run pack:check` locally, or manually run the `CI` workflow against the `changeset-release/main` branch from GitHub Actions.
 3. Confirm the version bump and changelog match `npm run changeset:status`.
 4. For any credential or published-node hard break, confirm the version PR is cutting the next major release for `n8n-nodes-plug-database`.
+
+## Branch hygiene
+
+Repository policy keeps `main` as the only permanent branch:
+
+- GitHub deletes the head branch automatically when a pull request is merged (`delete_branch_on_merge`).
+- The `Release` workflow closes any open version PR and deletes `changeset-release/main` after a successful npm publish.
+- The weekly `Branch Cleanup` workflow removes merged remote branches older than seven days, except `main` and `changeset-release/main`.
+- A repository ruleset blocks creation of new branches outside `main` and `changeset-release/main`.
 
 ## Packages
 
@@ -41,3 +52,4 @@ Before merging the version PR:
 - `Scan Public Package` is triggered by a `package-published` repository dispatch after npm version verification; `n8n-nodes-plug-database@*` tags remain a fallback
 - `npm run pack:check` now includes a real tarball installation smoke test, so run it only after a successful build/verify path
 - after the unified major release, deprecate `n8n-nodes-plug-database-advanced` on npm and direct users to `n8n-nodes-plug-database`
+- Dependabot opens weekly pull requests for GitHub Actions updates

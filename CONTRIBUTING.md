@@ -33,3 +33,10 @@ Hub contract notes for maintainers: [docs/hub-contract-alignment.md](docs/hub-co
 ## Release-related changes
 
 Use GitHub Actions as the official publish path. Do not publish packages manually from a local machine for the verified package flow.
+
+## Branch policy
+
+- `main` is the only permanent branch in this repository.
+- `changeset-release/main` is created temporarily by the Changesets release workflow and removed automatically after publish.
+- Do not create long-lived feature branches in this repository unless a maintainer explicitly requests one for a coordinated change.
+- Merged pull request branches are deleted automatically by GitHub and by the weekly branch cleanup workflow.

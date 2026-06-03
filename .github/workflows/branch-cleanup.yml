@@ -1,0 +1,83 @@
+name: Branch Cleanup
+
+on:
+  schedule:
+    - cron: 0 6 * * 0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  CHANGESET_RELEASE_BRANCH: changeset-release/main
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Delete merged stale remote branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STALE_DAYS: 7
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          protected_branches=("main" "${CHANGESET_RELEASE_BRANCH}")
+          cutoff_epoch="$(date -u -d "${STALE_DAYS} days ago" +%s)"
+
+          is_protected() {
+            local branch="$1"
+            for protected in "${protected_branches[@]}"; do
+              if [ "${branch}" = "${protected}" ]; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          delete_branch_ref() {
+            local branch="$1"
+            local encoded_ref="heads/${branch//\//%2F}"
+
+            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/${encoded_ref}" >/dev/null 2>&1; then
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/${encoded_ref}"
+              echo "Deleted stale merged branch: ${branch}"
+            fi
+          }
+
+          git fetch origin main
+
+          while IFS= read -r branch; do
+            [ -z "${branch}" ] && continue
+            is_protected "${branch}" && continue
+
+            open_prs="$(gh pr list --head "${branch}" --state open --json number --jq 'length')"
+            if [ "${open_prs}" != "0" ]; then
+              echo "Skipping ${branch}; open pull request still exists."
+              continue
+            fi
+
+            if ! git merge-base --is-ancestor "origin/${branch}" origin/main 2>/dev/null; then
+              echo "Skipping ${branch}; not fully merged into main."
+              continue
+            fi
+
+            last_commit_date="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${branch//\//%2F}" --jq '.commit.committer.date')"
+            last_commit_epoch="$(date -u -d "${last_commit_date}" +%s)"
+            if [ "${last_commit_epoch}" -gt "${cutoff_epoch}" ]; then
+              echo "Skipping ${branch}; last commit is newer than ${STALE_DAYS} days."
+              continue
+            fi
+
+            delete_branch_ref "${branch}"
+          done < <(gh api "repos/${GITHUB_REPOSITORY}/branches" --paginate --jq '.[].name')

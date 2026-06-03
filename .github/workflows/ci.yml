@@ -9,6 +9,9 @@ on:
       - changeset-release/main
   pull_request:
 
+env:
+  CHANGESET_RELEASE_BRANCH: changeset-release/main
+
 jobs:
   socket-protocol:
     runs-on: ubuntu-latest
