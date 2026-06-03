@@ -142,8 +142,13 @@ export const validateJsonSchema = (
     throw new PlugValidationError("JSON Schema must be a JSON object or boolean schema");
   }
 
+  // Governance exception: JSON Schema validation in tools requires draft features (boolean schemas, formats).
   const ajv = new Ajv({ allErrors: true, strict: false });
-  (addFormats as unknown as (instance: Ajv) => void)(ajv);
+  const registerFormats =
+    typeof addFormats === "function"
+      ? addFormats
+      : (addFormats as { default: (instance: Ajv) => void }).default;
+  registerFormats(ajv);
   const validate = ajv.compile(schema);
   const valid = Boolean(validate(data));
   return {

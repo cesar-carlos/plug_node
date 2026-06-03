@@ -1,10 +1,17 @@
-import {
-  addBusinessDays as addBusinessDaysFns,
-  format as formatDateFns,
-  parseISO,
-} from "date-fns";
-
 import { PlugValidationError } from "../contracts/errors";
+
+const ISO_DATE_PREFIX =
+  /^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+
+const parseIsoLikeDate = (value: string): Date | undefined => {
+  const trimmed = value.trim();
+  if (!ISO_DATE_PREFIX.test(trimmed)) {
+    return undefined;
+  }
+
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.valueOf()) ? undefined : parsed;
+};
 
 const toDate = (value: unknown): Date => {
   if (value instanceof Date) {
@@ -16,10 +23,11 @@ const toDate = (value: unknown): Date => {
   }
 
   if (typeof value === "string" && value.trim() !== "") {
-    const parsed = parseISO(value);
-    if (!Number.isNaN(parsed.valueOf())) {
-      return parsed;
+    const isoParsed = parseIsoLikeDate(value);
+    if (isoParsed) {
+      return isoParsed;
     }
+
     const fallback = new Date(value);
     if (!Number.isNaN(fallback.valueOf())) {
       return fallback;
@@ -40,12 +48,61 @@ const toNumber = (value: unknown, label: string): number => {
   return numberValue;
 };
 
+const pad2 = (value: number): string => String(value).padStart(2, "0");
+
+const formatWithPattern = (date: Date, pattern: string): string => {
+  const replacements: Array<{ readonly token: string; readonly value: string }> = [
+    { token: "yyyy", value: String(date.getUTCFullYear()) },
+    { token: "yy", value: String(date.getUTCFullYear()).slice(-2) },
+    { token: "MM", value: pad2(date.getUTCMonth() + 1) },
+    { token: "M", value: String(date.getUTCMonth() + 1) },
+    { token: "dd", value: pad2(date.getUTCDate()) },
+    { token: "d", value: String(date.getUTCDate()) },
+    { token: "HH", value: pad2(date.getUTCHours()) },
+    { token: "H", value: String(date.getUTCHours()) },
+    { token: "mm", value: pad2(date.getUTCMinutes()) },
+    { token: "m", value: String(date.getUTCMinutes()) },
+    { token: "ss", value: pad2(date.getUTCSeconds()) },
+    { token: "s", value: String(date.getUTCSeconds()) },
+  ];
+
+  let formatted = pattern;
+  for (const { token, value } of replacements) {
+    formatted = formatted.split(token).join(value);
+  }
+
+  return formatted;
+};
+
+const addBusinessDays = (date: Date, amount: number): Date => {
+  const normalizedAmount = Math.trunc(amount);
+  if (normalizedAmount === 0) {
+    return new Date(date);
+  }
+
+  const result = new Date(date);
+  const direction = normalizedAmount > 0 ? 1 : -1;
+  let remaining = Math.abs(normalizedAmount);
+
+  while (remaining > 0) {
+    result.setUTCDate(result.getUTCDate() + direction);
+    const weekday = result.getUTCDay();
+    if (weekday !== 0 && weekday !== 6) {
+      remaining -= 1;
+    }
+  }
+
+  return result;
+};
+
 export const formatDateValue = (value: unknown, pattern: unknown): string => {
   const date = toDate(value);
   const formatPattern = typeof pattern === "string" && pattern.trim() ? pattern : "iso";
-  return formatPattern === "iso"
-    ? date.toISOString()
-    : formatDateFns(date, formatPattern);
+  if (formatPattern === "iso") {
+    return date.toISOString();
+  }
+
+  return formatWithPattern(date, formatPattern);
 };
 
 export const parseDateValue = (value: unknown): { iso: string; timestampMs: number } => {
@@ -57,10 +114,7 @@ export const parseDateValue = (value: unknown): { iso: string; timestampMs: numb
 };
 
 export const addBusinessDaysValue = (value: unknown, amount: unknown): string =>
-  addBusinessDaysFns(
-    toDate(value),
-    Math.trunc(toNumber(amount, "Business Days")),
-  ).toISOString();
+  addBusinessDays(toDate(value), toNumber(amount, "Business Days")).toISOString();
 
 export const formatCurrencyValue = (
   value: unknown,

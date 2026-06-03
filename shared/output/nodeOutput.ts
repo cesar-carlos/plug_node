@@ -208,13 +208,15 @@ export const buildNodeOutputItems = (
   }
 
   const response =
-    result.channel === "socket"
+    result.channel === "socket" && responseMode !== "chunkItems"
       ? aggregateSocketSqlStream(
           result.response,
           result.chunkPayloads,
           result.completePayload,
         )
-      : result.response;
+      : result.channel === "socket"
+        ? result.response
+        : result.response;
 
   if (responseMode === "rawJsonRpc") {
     return [

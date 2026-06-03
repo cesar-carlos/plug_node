@@ -335,6 +335,35 @@ describe("Plug tools execution", () => {
     });
   });
 
+  it("accepts the legacy publishEvent operation alias for socket publish", async () => {
+    const context = createToolContext({
+      parameters: {
+        resource: "tools",
+        operation: "publishEvent",
+        publishChannel: "rest",
+        eventName: "client:custom.status.changed",
+        payloadJson: '{"status":"ready"}',
+        payloadFrameCompression: "default",
+        idempotencyKey: "publish-legacy",
+        timeoutMs: 15000,
+        includePlugMetadata: true,
+        attachments: {},
+      },
+    });
+
+    const output = await executePlugClientNode(context, {
+      supportsSocket: true,
+      credentialName: "plugDatabaseAccountApi",
+      nodeDisplayName: "Plug Database",
+    });
+
+    expect(output[0][0].json).toMatchObject({
+      success: true,
+      eventId: "event-1",
+    });
+    expect(context.requests[1].url).toContain("/client/me/socket-events");
+  });
+
   it("publishes Socket Event through Plug Database Tools over REST", async () => {
     const context = createToolContext({
       parameters: {

@@ -12,7 +12,7 @@ Guidance for running the Plug Database n8n node efficiently and safely against t
 | Several result sets in one SQL text    | **Execute SQL** + **Multi Result** (not batch)                                                        |
 | Large lists without loading everything | Pagination (`page` + `pageSize`) with stable **`ORDER BY`** (for example `CodCliente`, `CodVendedor`) |
 
-Socket typeVersion 2 reuses the consumer transport for all items in one node execution. Relay fallback (legacy hubs) reuses the relay transport the same way after this package version.
+Socket typeVersion 2 reuses the consumer transport for all items in one node execution. Relay fallback reuses the relay transport the same way (conversation per command; socket stays connected when healthy).
 
 ## SQL conventions (ERP)
 
@@ -27,6 +27,13 @@ Defaults (per item): 512 chunks, 50,000 rows, 8 MB. Tune under **Socket Options*
 
 `streamPullWindowSize` (1–1000, default 32) controls how many chunks are requested per pull window.
 
+## Socket timeouts
+
+- **Connect timeout** (default **10s**): waiting for `connection:ready` after opening `/consumers`.
+- **Command idle timeout** (default **15s**, same as Request Timeout): resets on each `agents:command` response, stream chunk, stream complete, or stream pull window. A long stream stays alive while data arrives.
+
+Tune Request Timeout under node options; connect timeout is capped by that value.
+
 ## Transient retries
 
 The node automatically retries **up to three attempts** (initial + 2 retries) for:
@@ -35,6 +42,8 @@ The node automatically retries **up to three attempts** (initial + 2 retries) fo
 - `validateContext`, `discoverRpc`, `getAgentProfile`, `getClientTokenPolicy`
 
 Retries apply to rate limits (`429`, RPC `-32013`), temporary unavailability (`503`), timeouts, and other `PlugError.retryable` cases. The node does **not** retry validation errors, auth failures, `replay_detected` (`-32014`), or `method_not_found`.
+
+On retry, the node issues a **fresh JSON-RPC `id`** (and fresh socket `client_request_id` on relay fallback) so the hub replay guard does not block the retry. Keep **Idempotency Key** set when workflows must dedupe agent-side work.
 
 When **Include Plug Metadata** is enabled, `__plug.transport` may include `attemptCount`, `lastRetryDelayMs`, and `connectedAfterMs` (socket).
 

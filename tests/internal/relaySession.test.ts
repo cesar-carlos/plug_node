@@ -1010,6 +1010,55 @@ describe("executeRelayCommand", () => {
     );
   });
 
+  it("returns relay runtime metrics and handles inFlight accepted payloads", async () => {
+    class InFlightRelayTransport extends MockRelayTransport {
+      override emit(event: string, payload?: unknown): void {
+        if (event === "relay:rpc.request") {
+          queueMicrotask(() => {
+            this.dispatch("relay:rpc.accepted", {
+              success: true,
+              conversationId: "conversation-1",
+              requestId: "relay-request-1",
+              clientRequestId: "client-request-1",
+              inFlight: true,
+            });
+            this.dispatch(
+              "relay:rpc.response",
+              encodePayloadFrame(
+                {
+                  jsonrpc: "2.0",
+                  id: "relay-request-1",
+                  result: { policy: "ok" },
+                },
+                { requestId: "relay-request-1", compression: "none" },
+              ),
+            );
+          });
+          return;
+        }
+
+        super.emit(event, payload);
+      }
+    }
+
+    const result = await executeRelayCommand({
+      transport: new InFlightRelayTransport(),
+      session,
+      command: {
+        jsonrpc: "2.0",
+        method: "client_token.getPolicy",
+        id: "client-request-1",
+        params: { client_token: "token" },
+      },
+      responseMode: "aggregatedJson",
+      timeoutMs: 5000,
+    });
+
+    expect(result.metrics?.ignoredCommandResponses).toBe(0);
+    expect(result.executionMetrics?.connectedAfterMs).toBeGreaterThanOrEqual(0);
+    expect(result.accepted?.inFlight).toBe(true);
+  });
+
   it("fails immediately when the relay socket disconnects during control events", async () => {
     const command: RpcSingleCommand = {
       jsonrpc: "2.0",

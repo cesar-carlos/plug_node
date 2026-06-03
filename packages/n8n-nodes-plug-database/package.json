@@ -87,7 +87,6 @@
     "@zxing/library": "^0.21.3",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
-    "date-fns": "^4.1.0",
     "jose": "^6.2.3",
     "jsonata": "^2.1.0",
     "marked": "^18.0.3",

@@ -125,6 +125,7 @@ export const executePlugToolsResource = async (
     case plugToolGenerateAccessRequestSummaryOperation:
       return executePlugToolsUtilityNode(context, config, operation);
     case plugToolPublishSocketEventOperation:
+    case "publishEvent":
     case plugToolWaitForSocketEventOperation:
       return executePlugToolsSocketEventNode(context, config);
     default:

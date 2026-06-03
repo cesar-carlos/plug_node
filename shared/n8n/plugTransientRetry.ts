@@ -35,6 +35,14 @@ export const getPlugOperationRetryKind = (
   return undefined;
 };
 
+export const isReplayDetectedPlugError = (error: unknown): boolean => {
+  if (!(error instanceof PlugError)) {
+    return false;
+  }
+
+  return isReplayDetectedError(error);
+};
+
 const isReplayDetectedError = (error: PlugError): boolean => {
   if (error.code === "RPC_-32014") {
     return true;
@@ -80,6 +88,58 @@ export const computeRetryDelayMs = (error: PlugError, attemptNumber: number): nu
   }
 
   return Math.min(5000, 250 * 2 ** attemptNumber);
+};
+
+/** Retries transient REST failures using the same policy as metadata hub calls. */
+export const executeWithPlugTransientRetry = async <T>(input: {
+  readonly execute: () => Promise<T>;
+  readonly attemptNumberOffset?: number;
+}): Promise<{
+  readonly value: T;
+  readonly attemptCount: number;
+  readonly lastRetryDelayMs?: number;
+}> => {
+  let lastRetryDelayMs: number | undefined;
+  const attemptNumberOffset = input.attemptNumberOffset ?? 0;
+
+  for (
+    let attemptNumber = 0;
+    attemptNumber <= MAX_TRANSIENT_RETRIES;
+    attemptNumber += 1
+  ) {
+    try {
+      return {
+        value: await input.execute(),
+        attemptCount: attemptNumber + 1 + attemptNumberOffset,
+        lastRetryDelayMs,
+      };
+    } catch (error: unknown) {
+      if (
+        !shouldRetryPlugOperation({
+          operation: "validateContext",
+          error,
+          attemptNumber,
+        })
+      ) {
+        throw error;
+      }
+
+      const delayMs =
+        error instanceof PlugError
+          ? computeRetryDelayMs(error, attemptNumber)
+          : computeRetryDelayMs(
+              new PlugError("Plug request timed out before completion.", {
+                code: "PLUG_TIMEOUT",
+                retryable: true,
+              }),
+              attemptNumber,
+            );
+      lastRetryDelayMs = delayMs;
+      await sleepMs(delayMs);
+    }
+  }
+
+  throw new PlugValidationError("Plug request finished without a successful attempt");
 };
 
 export const sleepMs = async (ms: number): Promise<void> => {

@@ -8,7 +8,7 @@ import type {
 } from "../contracts/api";
 import { PlugValidationError } from "../contracts/errors";
 import { parseOptionalJsonArray } from "../utils/json";
-import type { PlugClientNodeExecutionConfig } from "./plugClientExecution";
+import type { PlugClientNodeExecutionConfig } from "./plugClientExecutionTypes";
 import { toCollection, toOptionalBoolean } from "./plugExecutionParameters";
 import {
   buildGuidedBatchCommand,
@@ -62,6 +62,10 @@ export const buildCoalescedBatchRequest = (input: {
   const referenceOptions = stableSerialize(
     toCollection(input.context, "batchOptions", 0),
   );
+  const serializeBatchOptions = (itemIndex: number): string =>
+    itemIndex === 0
+      ? referenceOptions
+      : stableSerialize(toCollection(input.context, "batchOptions", itemIndex));
 
   const mergedCommands: SqlExecuteBatchCommandItem[] = [];
   const batchOptions = toCollection(input.context, "batchOptions", 0);
@@ -70,9 +74,7 @@ export const buildCoalescedBatchRequest = (input: {
 
   for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
     if (itemIndex > 0) {
-      const itemOptions = stableSerialize(
-        toCollection(input.context, "batchOptions", itemIndex),
-      );
+      const itemOptions = serializeBatchOptions(itemIndex);
       if (itemOptions !== referenceOptions) {
         throw new PlugValidationError(
           "Coalesce Input Items requires identical Additional Options on every input item. Use item 0 options for all items or disable coalescing.",

@@ -1,0 +1,86 @@
+import type { INodeProperties } from "n8n-workflow";
+import {
+  binaryInputProperty,
+  imageOptionsProperty,
+  imageOutputFormatOption,
+  imageQualityOption,
+  maxInputSizeProperty,
+  outputBinaryProperty,
+  plugToolAddImageWatermarkOperation,
+  plugToolCompressImageOperation,
+  plugToolConvertImageOperation,
+  plugToolCreateThumbnailOperation,
+  plugToolResizeImageOperation,
+} from "./plugToolsDescriptionCommon";
+
+export const buildPlugToolsImageProperties = (): INodeProperties[] => [
+  binaryInputProperty(plugToolResizeImageOperation),
+  maxInputSizeProperty(plugToolResizeImageOperation),
+  outputBinaryProperty(plugToolResizeImageOperation),
+  imageOptionsProperty(plugToolResizeImageOperation, [
+    {
+      displayName: "Width",
+      name: "width",
+      type: "number",
+      default: 0,
+      typeOptions: { minValue: 0 },
+    },
+    {
+      displayName: "Height",
+      name: "height",
+      type: "number",
+      default: 0,
+      typeOptions: { minValue: 0 },
+    },
+    imageOutputFormatOption,
+    imageQualityOption,
+  ]),
+  binaryInputProperty(plugToolConvertImageOperation),
+  maxInputSizeProperty(plugToolConvertImageOperation),
+  outputBinaryProperty(plugToolConvertImageOperation),
+  imageOptionsProperty(plugToolConvertImageOperation, [
+    imageOutputFormatOption,
+    imageQualityOption,
+  ]),
+  binaryInputProperty(plugToolCompressImageOperation),
+  maxInputSizeProperty(plugToolCompressImageOperation),
+  outputBinaryProperty(plugToolCompressImageOperation),
+  imageOptionsProperty(plugToolCompressImageOperation, [
+    imageOutputFormatOption,
+    imageQualityOption,
+  ]),
+  binaryInputProperty(plugToolAddImageWatermarkOperation),
+  maxInputSizeProperty(plugToolAddImageWatermarkOperation),
+  outputBinaryProperty(plugToolAddImageWatermarkOperation),
+  imageOptionsProperty(plugToolAddImageWatermarkOperation, [
+    {
+      displayName: "Watermark Text",
+      name: "watermarkText",
+      type: "string",
+      default: "Watermark",
+    },
+    {
+      displayName: "Watermark Opacity",
+      name: "watermarkOpacity",
+      type: "number",
+      default: 0.4,
+      typeOptions: { minValue: 0.01, maxValue: 1 },
+    },
+    imageOutputFormatOption,
+    imageQualityOption,
+  ]),
+  binaryInputProperty(plugToolCreateThumbnailOperation),
+  maxInputSizeProperty(plugToolCreateThumbnailOperation),
+  outputBinaryProperty(plugToolCreateThumbnailOperation),
+  imageOptionsProperty(plugToolCreateThumbnailOperation, [
+    {
+      displayName: "Size",
+      name: "size",
+      type: "number",
+      default: 256,
+      typeOptions: { minValue: 1 },
+    },
+    imageOutputFormatOption,
+    imageQualityOption,
+  ]),
+];

@@ -1,25 +1,14 @@
-import { Buffer } from "node:buffer";
-
-import { io, type Socket } from "socket.io-client";
+import { io } from "socket.io-client";
 import type {
-  IBinaryKeyData,
-  IDataObject,
-  INodeExecutionData,
   INodeType,
   INodeTypeDescription,
   ITriggerFunctions,
   ITriggerResponse,
 } from "n8n-workflow";
-import { NodeConnectionTypes } from "n8n-workflow";
 
-import {
-  DEFAULT_BASE_URL,
-  type PlugCredentialDefaults,
-} from "../../generated/shared/contracts/api";
 import { createExecutionSessionRunner } from "../../generated/shared/auth/session";
 import { PlugError } from "../../generated/shared/contracts/errors";
 import {
-  assertCustomSocketEventNames,
   clientAgentProfileUpdatedEventName,
   defaultBinaryPropertyPrefix,
   defaultMaxInflightSocketEvents,
@@ -28,8 +17,6 @@ import {
   defaultSocketEventAckTimeoutMs,
   defaultSocketEventDeduplicationTtlMs,
   type AgentProfileUpdatedPayload,
-  toAttachmentMetadata,
-  type CustomSocketEventFramePayload,
   type SocketEventOverflowPolicy,
   type SocketEventRuntimeMetadata,
 } from "../../generated/shared/contracts/custom-socket-events";
@@ -39,700 +26,43 @@ import {
   startAgentProfileUpdatedSession,
   startCustomSocketEventSession,
   type CustomSocketEventSession,
-  type CustomSocketEventTransport,
 } from "../../generated/shared/socket/customSocketEventSession";
 import { deriveSocketNamespaceUrl } from "../../generated/shared/utils/url";
+import { plugDatabaseSocketEventTriggerDescription } from "../../generated/shared/n8n/plugSocketEventTriggerDescription";
+import { SocketIoCustomEventTransport } from "./socketIoTransport";
+import {
+  createBackpressureQueue,
+  defaultBackpressureStatsLogIntervalMs,
+} from "./triggerBackpressureQueue";
+import {
+  buildAgentProfileUpdatedItem,
+  buildTriggerItem,
+  readTriggerCredentials,
+  resolveTriggerPayloadFrameSigning,
+} from "./triggerItemBuilders";
+import {
+  createReconnectCircuitOpenError,
+  defaultReconnectFailureWindowMs,
+  defaultReconnectInitialDelayMs,
+  defaultReconnectMaxDelayMs,
+  normalizeTriggerInteger,
+  readTriggerEventNames,
+  type PayloadSignatureRequirement,
+} from "./triggerHelpers";
 
-const credentialName = "plugDatabaseAccountApi";
-const defaultReconnectInitialDelayMs = 1000;
-const defaultReconnectMaxDelayMs = 30_000;
-const defaultReconnectFailureWindowMs = 300_000;
-const backpressureStatsLogIntervalMs = 30_000;
-
-type PayloadSignatureRequirement = "all" | "customEvents" | "agentProfileUpdated";
-
-interface BackpressureSnapshot {
-  readonly queuedCount: number;
-  readonly inflightCount: number;
-  readonly startedCount: number;
-  readonly processedCount: number;
-  readonly failedCount: number;
-  readonly droppedNewestCount: number;
-  readonly droppedOldestCount: number;
-  readonly averageQueueLatencyMs: number;
-  readonly averageProcessingMs: number;
-}
-
-interface SubscriptionRefreshSnapshot {
-  readonly refreshCount: number;
-  readonly lastRefreshedAt?: string;
-}
-
-class SocketIoCustomEventTransport implements CustomSocketEventTransport {
-  constructor(private readonly socket: Socket) {}
-
-  get id(): string | undefined {
-    return this.socket.id;
-  }
-
-  get connected(): boolean {
-    return this.socket.connected;
-  }
-
-  connect(): void {
-    this.socket.connect();
-  }
-
-  disconnect(): void {
-    this.socket.disconnect();
-  }
-
-  on(event: string, handler: (payload: unknown) => void): void {
-    this.socket.on(event, handler);
-  }
-
-  off(event: string, handler: (payload: unknown) => void): void {
-    this.socket.off(event, handler);
-  }
-
-  emit(event: string, payload?: unknown): void {
-    if (payload === undefined) {
-      this.socket.emit(event);
-      return;
-    }
-
-    this.socket.emit(event, payload);
-  }
-}
-
-const readCredentials = async (
-  context: ITriggerFunctions,
-): Promise<PlugCredentialDefaults> => {
-  const rawCredentials = await context.getCredentials(credentialName);
-  return {
-    user: String(rawCredentials.user ?? ""),
-    password: String(rawCredentials.password ?? ""),
-    baseUrl: String(rawCredentials.baseUrl ?? DEFAULT_BASE_URL),
-    agentId: String(rawCredentials.agentId ?? ""),
-    clientToken: String(rawCredentials.clientToken ?? ""),
-    payloadSigningKey: String(rawCredentials.payloadSigningKey ?? ""),
-    payloadSigningKeyId: String(rawCredentials.payloadSigningKeyId ?? ""),
-  };
-};
-
-const resolvePayloadFrameSigning = (
-  credentials: PlugCredentialDefaults,
-):
-  | {
-      readonly key?: string;
-      readonly keyId?: string;
-    }
-  | undefined => {
-  const key = credentials.payloadSigningKey?.trim();
-  const keyId = credentials.payloadSigningKeyId?.trim();
-  if (!key && !keyId) {
-    return undefined;
-  }
-
-  return {
-    ...(key ? { key } : {}),
-    ...(keyId ? { keyId } : {}),
-  };
-};
-
-const readEventNames = (context: ITriggerFunctions): string[] => {
-  const collection = context.getNodeParameter("eventNames", {}) as {
-    readonly values?: ReadonlyArray<{ readonly eventName?: unknown }>;
-  };
-
-  return assertCustomSocketEventNames(
-    (collection.values ?? []).map((row) => row.eventName),
-  );
-};
-
-const normalizeInteger = (value: unknown, fallback: number, min: number): number => {
-  const numeric =
-    typeof value === "number"
-      ? value
-      : typeof value === "string" && value.trim() !== ""
-        ? Number(value)
-        : Number.NaN;
-
-  if (!Number.isFinite(numeric)) {
-    return fallback;
-  }
-
-  return Math.max(min, Math.floor(numeric));
-};
-
-const createReconnectCircuitOpenError = (technicalMessage: string): PlugError =>
-  new PlugError("Plug socket reconnect circuit breaker opened.", {
-    code: "SOCKET_RECONNECT_CIRCUIT_OPEN",
-    description:
-      "Too many retryable socket failures happened inside the configured reconnect failure window.",
-    retryable: true,
-    technicalMessage,
-  });
-
-const buildTriggerItem = async (
-  context: ITriggerFunctions,
-  event: CustomSocketEventFramePayload,
-  binaryPropertyPrefix: string,
-  includeMetadata: boolean,
-  metadata: SocketEventRuntimeMetadata,
-  backpressure: BackpressureSnapshot,
-  subscriptionRefresh: SubscriptionRefreshSnapshot,
-): Promise<INodeExecutionData> => {
-  const binary: IBinaryKeyData = {};
-
-  for (let index = 0; index < event.attachments.length; index += 1) {
-    const attachment = event.attachments[index];
-    const propertyName = `${binaryPropertyPrefix}_${index}`;
-    binary[propertyName] = await context.helpers.prepareBinaryData(
-      Buffer.from(attachment.base64.trim(), "base64"),
-      attachment.originalName,
-      attachment.mimeType,
-    );
-  }
-
-  const json: IDataObject = {
-    eventId: event.eventId,
-    eventName: event.eventName,
-    emittedAt: event.emittedAt,
-    publisher: event.publisher,
-    payload: event.payload as IDataObject,
-    attachments: event.attachments.map(toAttachmentMetadata) as unknown as IDataObject[],
-    ...(includeMetadata
-      ? {
-          __plug: {
-            channel: "socket",
-            socketMode: "customEvent",
-            eventName: event.eventName,
-            eventId: event.eventId,
-            receivedAt: new Date().toISOString(),
-            socketId: metadata.socketId,
-            reconnectAttempt: metadata.reconnectAttempt,
-            subscriptionCount: metadata.subscriptionCount,
-            payloadFrameRequestId: metadata.payloadFrameRequestId,
-            subscriptionRefreshCount: subscriptionRefresh.refreshCount,
-            lastSubscriptionRefreshAt: subscriptionRefresh.lastRefreshedAt,
-            backpressure,
-          },
-        }
-      : {}),
-  };
-
-  return {
-    json,
-    ...(Object.keys(binary).length > 0 ? { binary } : {}),
-  };
-};
-
-const buildAgentProfileUpdatedItem = (
-  event: AgentProfileUpdatedPayload,
-  includeMetadata: boolean,
-  metadata: SocketEventRuntimeMetadata,
-  backpressure: BackpressureSnapshot,
-): INodeExecutionData => ({
-  json: {
-    eventName: clientAgentProfileUpdatedEventName,
-    payload: event as IDataObject,
-    ...(includeMetadata
-      ? {
-          __plug: {
-            channel: "socket",
-            socketMode: "agentProfileUpdated",
-            eventName: clientAgentProfileUpdatedEventName,
-            receivedAt: new Date().toISOString(),
-            socketId: metadata.socketId,
-            reconnectAttempt: metadata.reconnectAttempt,
-            subscriptionCount: metadata.subscriptionCount,
-            payloadFrameRequestId: metadata.payloadFrameRequestId,
-            backpressure,
-          },
-        }
-      : {}),
-  },
-});
-
-const createBackpressureQueue = (input: {
-  readonly maxInflightEvents: number;
-  readonly maxQueueSize: number;
-  readonly overflowPolicy: SocketEventOverflowPolicy;
-  readonly emitError: (error: PlugError) => void;
-  readonly statsLogIntervalMs?: number;
-  readonly onDrop?: (
-    reason: "dropNewest" | "dropOldest",
-    metadata: { readonly queueSize: number },
-  ) => void;
-  readonly onStats?: (
-    snapshot: BackpressureSnapshot,
-    metadata: { readonly reason: "drop" | "drain" },
-  ) => void;
-}) => {
-  const queue: Array<{
-    readonly task: () => Promise<void>;
-    readonly enqueuedAtMs: number;
-  }> = [];
-  let inflight = 0;
-  let closed = false;
-  let startedCount = 0;
-  let processedCount = 0;
-  let failedCount = 0;
-  let droppedNewestCount = 0;
-  let droppedOldestCount = 0;
-  let totalQueueLatencyMs = 0;
-  let totalProcessingMs = 0;
-  let lastStatsLoggedAtMs = 0;
-
-  const getStats = (): BackpressureSnapshot => {
-    const completedCount = processedCount + failedCount;
-    return {
-      queuedCount: queue.length,
-      inflightCount: inflight,
-      startedCount,
-      processedCount,
-      failedCount,
-      droppedNewestCount,
-      droppedOldestCount,
-      averageQueueLatencyMs:
-        startedCount > 0 ? Math.round(totalQueueLatencyMs / startedCount) : 0,
-      averageProcessingMs:
-        completedCount > 0 ? Math.round(totalProcessingMs / completedCount) : 0,
-    };
-  };
-
-  const maybeLogStats = (reason: "drop" | "drain"): void => {
-    if (!input.onStats) {
-      return;
-    }
-
-    const now = Date.now();
-    const intervalMs = input.statsLogIntervalMs ?? backpressureStatsLogIntervalMs;
-    if (reason !== "drop" && now - lastStatsLoggedAtMs < intervalMs) {
-      return;
-    }
-
-    lastStatsLoggedAtMs = now;
-    input.onStats(getStats(), { reason });
-  };
-
-  const drain = (): void => {
-    if (closed) {
-      return;
-    }
-
-    while (inflight < input.maxInflightEvents && queue.length > 0) {
-      const queuedTask = queue.shift();
-      if (!queuedTask) {
-        return;
-      }
-
-      const startedAtMs = Date.now();
-      startedCount += 1;
-      totalQueueLatencyMs += Math.max(0, startedAtMs - queuedTask.enqueuedAtMs);
-      inflight += 1;
-      queuedTask
-        .task()
-        .then(() => {
-          processedCount += 1;
-        })
-        .catch((error: unknown) => {
-          if (closed) {
-            return;
-          }
-
-          failedCount += 1;
-          input.emitError(
-            error instanceof PlugError
-              ? error
-              : new PlugError("Failed to emit Plug socket event item.", {
-                  code: "SOCKET_EVENT_EMIT_FAILED",
-                  technicalMessage: error instanceof Error ? error.message : undefined,
-                }),
-          );
-        })
-        .finally(() => {
-          totalProcessingMs += Math.max(0, Date.now() - startedAtMs);
-          inflight -= 1;
-          maybeLogStats("drain");
-          drain();
-        });
-    }
-  };
-
-  return {
-    enqueue(task: () => Promise<void>): void {
-      if (closed) {
-        return;
-      }
-      const queuedTask = { task, enqueuedAtMs: Date.now() };
-
-      if (inflight < input.maxInflightEvents && queue.length === 0) {
-        queue.push(queuedTask);
-        drain();
-        return;
-      }
-
-      if (queue.length >= input.maxQueueSize) {
-        if (input.overflowPolicy === "dropNewest") {
-          droppedNewestCount += 1;
-          input.onDrop?.("dropNewest", { queueSize: queue.length });
-          maybeLogStats("drop");
-          return;
-        }
-
-        if (input.overflowPolicy === "dropOldest") {
-          queue.shift();
-          droppedOldestCount += 1;
-          input.onDrop?.("dropOldest", { queueSize: queue.length });
-          maybeLogStats("drop");
-        } else {
-          input.emitError(
-            new PlugError("Plug socket event queue is full.", {
-              code: "SOCKET_EVENT_BACKPRESSURE_LIMIT",
-              description:
-                "Increase Max Queue Size or reduce event volume before retrying.",
-              retryable: true,
-            }),
-          );
-          return;
-        }
-      }
-
-      queue.push(queuedTask);
-      drain();
-    },
-    close(): void {
-      closed = true;
-      queue.length = 0;
-    },
-    getStats(): BackpressureSnapshot {
-      return getStats();
-    },
-  };
-};
-
-// eslint-disable-next-line @n8n/community-nodes/node-usable-as-tool -- Triggers are event sources, not AI-agent tools; n8n's type only supports truthy tool exposure.
+// eslint-disable-next-line @n8n/community-nodes/node-usable-as-tool -- Triggers are event sources, not AI-agent tools.
 export class PlugDatabaseSocketEventTrigger implements INodeType {
   description: INodeTypeDescription = {
-    displayName: "Plug Database Socket Event Trigger",
-    name: "plugDatabaseSocketEventTrigger",
+    ...plugDatabaseSocketEventTriggerDescription,
     icon: {
       light: "file:plugDatabaseV2.svg",
       dark: "file:plugDatabaseV2.dark.svg",
     },
-    group: ["trigger"],
-    version: 1,
     subtitle: '={{$parameter["eventNames"]?.values?.[0]?.eventName}}',
-    description: "Starts a workflow when a Plug Database socket event is received.",
-    eventTriggerDescription:
-      "Emits one item when a subscribed Plug Database socket event is received.",
-    activationMessage: "Listening for Plug Database socket events.",
-    triggerPanel: {
-      header: "Listen for Plug Database socket events",
-      executionsHelp: {
-        active: "Waiting for matching socket events.",
-        inactive: "Activate the workflow to keep the socket listener online.",
-      },
-      activationHint: {
-        active: "Socket listener is active.",
-        inactive: "Activate this workflow to start listening.",
-      },
-    },
-    defaults: {
-      name: "Plug Database Socket Event Trigger",
-    },
-    codex: {
-      alias: [
-        "Plug Database Advanced Trigger",
-        "Advanced Trigger",
-        "Plug Socket Event Trigger",
-        "Socket Event",
-      ],
-    },
-    inputs: [],
-    outputs: [NodeConnectionTypes.Main],
-    credentials: [
-      {
-        name: credentialName,
-        required: true,
-      },
-    ],
-    properties: [
-      {
-        displayName: "Event Source",
-        name: "eventSource",
-        type: "options",
-        default: "customEvents",
-        options: [
-          {
-            name: "Agent Profile Updated",
-            value: "agentProfileUpdated",
-            description: "Listen for client:agent.profile.updated push events",
-            action: "Listen for agent profile updates",
-          },
-          {
-            name: "Custom Events",
-            value: "customEvents",
-            description: "Subscribe to exact client:custom.* event names",
-            action: "Listen for custom events",
-          },
-        ],
-        description: "Type of Plug Socket event to listen for",
-      },
-      {
-        displayName: "Event Names",
-        name: "eventNames",
-        type: "fixedCollection",
-        placeholder: "Add event",
-        default: {
-          values: [{ eventName: "client:custom.status.changed" }],
-        },
-        displayOptions: {
-          show: {
-            eventSource: ["customEvents"],
-          },
-        },
-        typeOptions: {
-          multipleValues: true,
-        },
-        options: [
-          {
-            displayName: "Event",
-            name: "values",
-            values: [
-              {
-                displayName: "Event Name",
-                name: "eventName",
-                type: "string",
-                default: "client:custom.status.changed",
-                required: true,
-                description:
-                  "Exact custom event name to subscribe to. Wildcards are not supported by Plug.",
-              },
-            ],
-          },
-        ],
-      },
-      {
-        displayName: "Subscription ACK Timeout (MS)",
-        name: "ackTimeoutMs",
-        type: "number",
-        default: defaultSocketEventAckTimeoutMs,
-        typeOptions: {
-          minValue: 1,
-        },
-        description: "Time to wait for socket connection and control acknowledgements",
-      },
-      {
-        displayName: "Reconnect On Disconnect",
-        name: "reconnectOnDisconnect",
-        type: "boolean",
-        default: true,
-        description:
-          "Whether to reconnect and re-subscribe after retryable socket disconnects",
-      },
-      {
-        displayName: "Max Reconnect Attempts",
-        name: "maxReconnectAttempts",
-        type: "number",
-        default: 0,
-        typeOptions: {
-          minValue: 0,
-        },
-        displayOptions: {
-          show: {
-            reconnectOnDisconnect: [true],
-          },
-        },
-        description: "Maximum reconnect attempts. Set 0 for unlimited retries.",
-      },
-      {
-        displayName: "Reconnect Failure Window (MS)",
-        name: "reconnectFailureWindowMs",
-        type: "number",
-        default: defaultReconnectFailureWindowMs,
-        typeOptions: {
-          minValue: 1000,
-        },
-        displayOptions: {
-          show: {
-            reconnectOnDisconnect: [true],
-          },
-        },
-        description:
-          "Window used by the reconnect circuit breaker. Set Max Reconnect Failures in Window to 0 to disable the breaker.",
-      },
-      {
-        displayName: "Max Reconnect Failures in Window",
-        name: "maxReconnectFailuresInWindow",
-        type: "number",
-        default: 0,
-        typeOptions: {
-          minValue: 0,
-        },
-        displayOptions: {
-          show: {
-            reconnectOnDisconnect: [true],
-          },
-        },
-        description:
-          "Maximum retryable reconnect failures within the configured window. Set 0 to disable this circuit breaker.",
-      },
-      {
-        displayName: "Reconnect Initial Delay (MS)",
-        name: "reconnectInitialDelayMs",
-        type: "number",
-        default: defaultReconnectInitialDelayMs,
-        typeOptions: {
-          minValue: 100,
-        },
-        displayOptions: {
-          show: {
-            reconnectOnDisconnect: [true],
-          },
-        },
-        description: "Initial reconnect delay before jitter and exponential backoff",
-      },
-      {
-        displayName: "Reconnect Max Delay (MS)",
-        name: "reconnectMaxDelayMs",
-        type: "number",
-        default: defaultReconnectMaxDelayMs,
-        typeOptions: {
-          minValue: 100,
-        },
-        displayOptions: {
-          show: {
-            reconnectOnDisconnect: [true],
-          },
-        },
-        description: "Maximum reconnect delay before jitter",
-      },
-      {
-        displayName: "Max Inflight Events",
-        name: "maxInflightEvents",
-        type: "number",
-        default: defaultMaxInflightSocketEvents,
-        typeOptions: {
-          minValue: 1,
-        },
-        description: "Maximum custom socket events processed concurrently",
-      },
-      {
-        displayName: "Max Queue Size",
-        name: "maxQueueSize",
-        type: "number",
-        default: defaultMaxQueuedSocketEvents,
-        typeOptions: {
-          minValue: 0,
-        },
-        description: "Maximum custom socket events queued while processors are busy",
-      },
-      {
-        displayName: "Overflow Policy",
-        name: "overflowPolicy",
-        type: "options",
-        default: "fail",
-        options: [
-          { name: "Drop Newest", value: "dropNewest" },
-          { name: "Drop Oldest", value: "dropOldest" },
-          { name: "Fail", value: "fail" },
-        ],
-        description: "Behavior when the custom socket event queue is full",
-      },
-      {
-        displayName: "Require Payload Signature",
-        name: "requirePayloadSignature",
-        type: "boolean",
-        default: false,
-        description: "Whether inbound PayloadFrames must include a valid HMAC signature",
-      },
-      {
-        displayName: "Require Payload Signature For",
-        name: "requirePayloadSignatureFor",
-        type: "options",
-        default: "all",
-        options: [
-          { name: "Agent Profile Updated Only", value: "agentProfileUpdated" },
-          { name: "All Event Sources", value: "all" },
-          { name: "Custom Events Only", value: "customEvents" },
-        ],
-        displayOptions: {
-          show: {
-            requirePayloadSignature: [true],
-          },
-        },
-        description:
-          "Event sources that must include a PayloadFrame signature when signature enforcement is enabled",
-      },
-      {
-        displayName: "Deduplicate Events",
-        name: "deduplicateEvents",
-        type: "boolean",
-        default: false,
-        displayOptions: {
-          show: {
-            eventSource: ["customEvents"],
-          },
-        },
-        description:
-          "Whether to ignore duplicate custom events with the same eventId during the TTL window",
-      },
-      {
-        displayName: "Deduplication TTL (MS)",
-        name: "deduplicationTtlMs",
-        type: "number",
-        default: defaultSocketEventDeduplicationTtlMs,
-        typeOptions: {
-          minValue: 0,
-        },
-        displayOptions: {
-          show: {
-            eventSource: ["customEvents"],
-            deduplicateEvents: [true],
-          },
-        },
-        description:
-          "How long to remember emitted custom event IDs. Set 0 to disable deduplication.",
-      },
-      {
-        displayName: "Manual Listen Timeout (MS)",
-        name: "manualListenTimeoutMs",
-        type: "number",
-        default: defaultManualListenTimeoutMs,
-        typeOptions: {
-          minValue: 0,
-        },
-        description:
-          "In manual mode, close the socket after this time. Set 0 to keep listening until stopped.",
-      },
-      {
-        displayName: "Binary Property Prefix",
-        name: "binaryPropertyPrefix",
-        type: "string",
-        default: defaultBinaryPropertyPrefix,
-        displayOptions: {
-          show: {
-            eventSource: ["customEvents"],
-          },
-        },
-        description: "Prefix for binary properties created from inline event attachments",
-      },
-      {
-        displayName: "Include Plug Metadata",
-        name: "includePlugMetadata",
-        type: "boolean",
-        default: true,
-        description:
-          "Whether to include the __plug object with socket and event metadata in output items",
-      },
-    ],
   };
 
   async trigger(this: ITriggerFunctions): Promise<ITriggerResponse> {
-    const credentials = await readCredentials(this);
+    const credentials = await readTriggerCredentials(this);
     const requester = buildN8nHttpRequester(this);
     const sessionRunner = createExecutionSessionRunner(requester, credentials);
     const eventSource = this.getNodeParameter("eventSource", "customEvents") as
@@ -740,14 +70,14 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
       | "agentProfileUpdated";
     const eventNames =
       eventSource === "customEvents"
-        ? readEventNames(this)
+        ? readTriggerEventNames(this)
         : [clientAgentProfileUpdatedEventName];
-    const ackTimeoutMs = normalizeInteger(
+    const ackTimeoutMs = normalizeTriggerInteger(
       this.getNodeParameter("ackTimeoutMs", defaultSocketEventAckTimeoutMs),
       defaultSocketEventAckTimeoutMs,
       1,
     );
-    const manualListenTimeoutMs = normalizeInteger(
+    const manualListenTimeoutMs = normalizeTriggerInteger(
       this.getNodeParameter("manualListenTimeoutMs", defaultManualListenTimeoutMs),
       defaultManualListenTimeoutMs,
       0,
@@ -761,40 +91,40 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
       "reconnectOnDisconnect",
       true,
     ) as boolean;
-    const normalizedMaxReconnectAttempts = normalizeInteger(
+    const normalizedMaxReconnectAttempts = normalizeTriggerInteger(
       this.getNodeParameter("maxReconnectAttempts", 0),
       0,
       0,
     );
-    const reconnectInitialDelayMs = normalizeInteger(
+    const reconnectInitialDelayMs = normalizeTriggerInteger(
       this.getNodeParameter("reconnectInitialDelayMs", defaultReconnectInitialDelayMs),
       defaultReconnectInitialDelayMs,
       100,
     );
     const reconnectMaxDelayMs = Math.max(
       reconnectInitialDelayMs,
-      normalizeInteger(
+      normalizeTriggerInteger(
         this.getNodeParameter("reconnectMaxDelayMs", defaultReconnectMaxDelayMs),
         defaultReconnectMaxDelayMs,
         100,
       ),
     );
-    const reconnectFailureWindowMs = normalizeInteger(
+    const reconnectFailureWindowMs = normalizeTriggerInteger(
       this.getNodeParameter("reconnectFailureWindowMs", defaultReconnectFailureWindowMs),
       defaultReconnectFailureWindowMs,
       1000,
     );
-    const maxReconnectFailuresInWindow = normalizeInteger(
+    const maxReconnectFailuresInWindow = normalizeTriggerInteger(
       this.getNodeParameter("maxReconnectFailuresInWindow", 0),
       0,
       0,
     );
-    const maxInflightEvents = normalizeInteger(
+    const maxInflightEvents = normalizeTriggerInteger(
       this.getNodeParameter("maxInflightEvents", defaultMaxInflightSocketEvents),
       defaultMaxInflightSocketEvents,
       1,
     );
-    const maxQueueSize = normalizeInteger(
+    const maxQueueSize = normalizeTriggerInteger(
       this.getNodeParameter("maxQueueSize", defaultMaxQueuedSocketEvents),
       defaultMaxQueuedSocketEvents,
       0,
@@ -825,7 +155,7 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
     ].includes(requirePayloadSignatureForParameter)
       ? requirePayloadSignatureForParameter
       : "all";
-    const payloadFrameSigning = resolvePayloadFrameSigning(credentials);
+    const payloadFrameSigning = resolveTriggerPayloadFrameSigning(credentials);
     const requirePayloadSignatureForCustomEvents =
       requirePayloadSignature &&
       (requirePayloadSignatureFor === "all" ||
@@ -838,7 +168,7 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
       "deduplicateEvents",
       false,
     ) as boolean;
-    const deduplicationTtlMs = normalizeInteger(
+    const deduplicationTtlMs = normalizeTriggerInteger(
       this.getNodeParameter("deduplicationTtlMs", defaultSocketEventDeduplicationTtlMs),
       defaultSocketEventDeduplicationTtlMs,
       0,
@@ -875,7 +205,7 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
       emitError: (error) => {
         this.emitError(error);
       },
-      statsLogIntervalMs: backpressureStatsLogIntervalMs,
+      statsLogIntervalMs: defaultBackpressureStatsLogIntervalMs,
       onDrop: (reason, metadata) => {
         plugLogger.warn("transport.socket.custom_event_trigger.dropped", {
           reason,
@@ -1089,8 +419,10 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
       reconnecting = true;
       try {
         await customEventSession?.close({ unsubscribe: false });
-      } catch {
-        // The socket is already unhealthy; reconnect handling below is the recovery path.
+      } catch (closeError: unknown) {
+        plugLogger.debug("trigger.socket.close_failed_during_reconnect", {
+          message: closeError instanceof Error ? closeError.message : String(closeError),
+        });
       } finally {
         customEventSession = undefined;
       }

@@ -1,0 +1,72 @@
+import type { INodeProperties } from "n8n-workflow";
+import {
+  outputJsonProperty,
+  plugToolBuildSocketEventPayloadOperation,
+  plugToolBuildSqlRequestOperation,
+  plugToolGenerateAccessRequestSummaryOperation,
+  plugToolParseSqlRowsOperation,
+  plugToolValidateAgentContextOperation,
+  plugToolValidateClientTokenOperation,
+  toolTextField,
+} from "./plugToolsDescriptionCommon";
+
+export const buildPlugToolsPlugSpecificProperties = (): INodeProperties[] => [
+  toolTextField(
+    plugToolBuildSocketEventPayloadOperation,
+    "eventName",
+    "Event Name",
+    "client:custom.status.changed",
+    1,
+  ),
+  toolTextField(
+    plugToolBuildSocketEventPayloadOperation,
+    "payloadJson",
+    "Payload JSON",
+    "{}",
+    8,
+    "json",
+  ),
+  outputJsonProperty(plugToolBuildSocketEventPayloadOperation, "socketEventPayload"),
+  toolTextField(
+    plugToolValidateClientTokenOperation,
+    "clientToken",
+    "Client Token",
+    "",
+    1,
+  ),
+  outputJsonProperty(plugToolValidateClientTokenOperation, "clientTokenValidation"),
+  toolTextField(plugToolValidateAgentContextOperation, "agentId", "Agent ID", "", 1),
+  toolTextField(
+    plugToolValidateAgentContextOperation,
+    "clientToken",
+    "Client Token",
+    "",
+    1,
+  ),
+  outputJsonProperty(plugToolValidateAgentContextOperation, "agentContext"),
+  toolTextField(plugToolBuildSqlRequestOperation, "agentId", "Agent ID", "", 1),
+  toolTextField(plugToolBuildSqlRequestOperation, "sql", "SQL", "select 1", 4),
+  toolTextField(
+    plugToolBuildSqlRequestOperation,
+    "paramsJson",
+    "Params JSON",
+    "[]",
+    4,
+    "json",
+  ),
+  outputJsonProperty(plugToolBuildSqlRequestOperation, "sqlRequest"),
+  toolTextField(plugToolParseSqlRowsOperation, "rowsJson", "Rows JSON", "[]", 8, "json"),
+  outputJsonProperty(plugToolParseSqlRowsOperation, "sqlRows"),
+  toolTextField(
+    plugToolGenerateAccessRequestSummaryOperation,
+    "accessRequestJson",
+    "Access Request JSON",
+    "{}",
+    8,
+    "json",
+  ),
+  outputJsonProperty(
+    plugToolGenerateAccessRequestSummaryOperation,
+    "accessRequestSummary",
+  ),
+];

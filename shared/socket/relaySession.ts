@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import {
   DEFAULT_RELAY_PULL_WINDOW,
-  DEFAULT_REQUEST_TIMEOUT_MS,
   type JsonObject,
   type PayloadFrameCompression,
   type PlugCommandTransportResult,
@@ -14,6 +13,7 @@ import {
   type RelayRpcAcceptedSuccessPayload,
   type RelayStreamPullResponsePayload,
   type RpcSingleCommand,
+  type SocketCommandRuntimeMetrics,
 } from "../contracts/api";
 import type {
   PayloadFrameEnvelope,
@@ -25,6 +25,20 @@ import { normalizeRpcPayload } from "../output/rpcNormalization";
 import { decodePayloadFrameAsync, encodePayloadFrameAsync } from "./payloadFrameCodec";
 import { isRecord } from "../utils/json";
 import { createSocketApplicationError, createSocketConnectError } from "./socketErrors";
+import {
+  assertSocketBufferWithinLimits,
+  countResultRows,
+  countRows,
+  removeStreamMarkerFromRawRpcResponse,
+  resolveSocketBufferLimits,
+  tryMergeChunkRowsIntoRawRpcResponse,
+} from "./streamCommandSessionCommon";
+import {
+  attachIdleCommandTimer,
+  buildSocketCommandTimeoutError,
+  createSettleOnce,
+  resolveSocketCommandTimeouts,
+} from "./socketSessionLifecycle";
 
 const appErrorEvent = "app:error";
 const connectErrorEvent = "connect_error";
@@ -40,9 +54,6 @@ const rpcChunkEvent = "relay:rpc.chunk";
 const rpcCompleteEvent = "relay:rpc.complete";
 const rpcStreamPullEvent = "relay:rpc.stream.pull";
 const rpcStreamPullResponseEvent = "relay:rpc.stream.pull_response";
-const defaultMaxBufferedChunkItems = 512;
-const defaultMaxBufferedRows = 50_000;
-const defaultMaxBufferedBytes = 8 * 1024 * 1024;
 const maxStreamPullWindowSize = 1000;
 
 const isNonEmptyString = (value: unknown): value is string =>
@@ -192,6 +203,8 @@ export interface ExecuteRelayCommandInput {
     readonly maxBufferedBytes?: number;
   };
   readonly streamPullWindowSize?: number;
+  /** When true, the caller owns connect/disconnect; only conversation scope is closed per command. */
+  readonly managedTransport?: boolean;
 }
 
 const waitForSingleEvent = <TPayload>(
@@ -385,75 +398,6 @@ const ensureRelayCompatibleCommand = (command: RpcSingleCommand): RpcSingleComma
   };
 };
 
-const countRows = (value: unknown): number => (Array.isArray(value) ? value.length : 0);
-
-const countResultRows = (payload: unknown): number => {
-  if (!isRecord(payload) || !isRecord(payload.result)) {
-    return 0;
-  }
-
-  return countRows(payload.result.rows);
-};
-
-const isRpcSuccessWithRows = (
-  payload: unknown,
-): payload is {
-  readonly result: {
-    readonly rows: unknown[];
-    readonly stream_id?: string;
-    readonly [key: string]: unknown;
-  };
-  readonly [key: string]: unknown;
-} => isRecord(payload) && isRecord(payload.result) && Array.isArray(payload.result.rows);
-
-const tryMergeChunkRowsIntoResponse = (
-  response: unknown,
-  chunk: JsonObject,
-): unknown | undefined => {
-  if (!isRpcSuccessWithRows(response) || !Array.isArray(chunk.rows)) {
-    return undefined;
-  }
-
-  return {
-    ...response,
-    result: {
-      ...response.result,
-      rows: [...response.result.rows, ...chunk.rows],
-    },
-  };
-};
-
-const removeStreamMarkerFromResponse = (response: unknown): unknown => {
-  if (!isRpcSuccessWithRows(response)) {
-    return response;
-  }
-
-  const { stream_id: streamId, ...resultWithoutStreamId } = response.result;
-  void streamId;
-  return {
-    ...response,
-    result: {
-      ...resultWithoutStreamId,
-      rows: response.result.rows,
-    },
-  };
-};
-
-const buildSocketBufferError = (details: {
-  readonly maxBufferedBytes: number;
-  readonly maxBufferedRows: number;
-  readonly maxBufferedChunkItems: number;
-  readonly bufferedBytes: number;
-  readonly bufferedRows: number;
-  readonly chunkCount: number;
-}): PlugError =>
-  new PlugError("The socket response exceeded the local buffer safety limits.", {
-    code: "SOCKET_BUFFER_LIMIT",
-    description:
-      "Reduce Max Rows, paginate the query, or split the workflow into smaller requests before trying again.",
-    details,
-  });
-
 const getStreamIdFromNormalizedResponse = (payload: unknown): string | undefined => {
   if (!isRecord(payload) || !isRecord(payload.result)) {
     return undefined;
@@ -582,36 +526,37 @@ const requestRelayStreamPull = async (
 export const executeRelayCommand = async (
   input: ExecuteRelayCommandInput,
 ): Promise<PlugCommandTransportResult> => {
-  const timeoutMs = input.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
-  const limits = {
-    maxBufferedChunkItems:
-      input.bufferLimits?.maxBufferedChunkItems ?? defaultMaxBufferedChunkItems,
-    maxBufferedRows: input.bufferLimits?.maxBufferedRows ?? defaultMaxBufferedRows,
-    maxBufferedBytes: input.bufferLimits?.maxBufferedBytes ?? defaultMaxBufferedBytes,
-  };
+  const timeouts = resolveSocketCommandTimeouts({ timeoutMs: input.timeoutMs });
+  const limits = resolveSocketBufferLimits(input.bufferLimits);
   const command = ensureRelayCompatibleCommand(input.command);
   const clientRequestId = String(command.id);
   let activeRequestId = clientRequestId;
   let conversationId: string | undefined;
+  const managedTransport = input.managedTransport === true;
+  const commandStartMs = Date.now();
 
-  input.transport.connect();
+  if (!managedTransport || !input.transport.connected) {
+    input.transport.connect();
+  }
 
   try {
-    const connectionReady = await waitForSingleEvent(
-      input.transport,
-      connectionReadyEvent,
-      timeoutMs,
-      (payload) => normalizeConnectionReady(payload, input.payloadFrameSigning),
-    );
+    const connectionReady = input.transport.connected
+      ? undefined
+      : await waitForSingleEvent(
+          input.transport,
+          connectionReadyEvent,
+          timeouts.connectTimeoutMs,
+          (payload) => normalizeConnectionReady(payload, input.payloadFrameSigning),
+        );
     plugLogger.debug("transport.socket.connected", {
       agentId: input.agentId,
-      socketId: connectionReady.id,
+      ...(connectionReady ? { socketId: connectionReady.id } : { reused: true }),
     });
 
     const conversationPromise = waitForSingleEvent(
       input.transport,
       conversationStartedEvent,
-      timeoutMs,
+      timeouts.commandTimeoutMs,
       normalizeConversationStarted,
     );
     input.transport.emit(conversationStartEvent, {
@@ -641,7 +586,7 @@ export const executeRelayCommand = async (
     const acceptedPromise = waitForSingleEvent(
       input.transport,
       rpcAcceptedEvent,
-      timeoutMs,
+      timeouts.commandTimeoutMs,
       normalizeAcceptedPayload,
     );
     const acceptedStatePromise = acceptedPromise.then((payload) => {
@@ -659,21 +604,29 @@ export const executeRelayCommand = async (
     let bufferedBytes = 0;
     let bufferedRows = 0;
     let chunkCount = 0;
+    let pullCount = 0;
+    let ignoredResponses = 0;
+    let ignoredChunks = 0;
+    let ignoredCompletes = 0;
     const relayConversationId = conversationId;
 
+    const buildMetrics = (): SocketCommandRuntimeMetrics => ({
+      ignoredCommandResponses: ignoredResponses,
+      ignoredStreamChunks: ignoredChunks,
+      ignoredStreamCompletes: ignoredCompletes,
+      ignoredStreamPullResponses: 0,
+      streamPullRequests: pullCount,
+      streamChunks: chunkCount,
+      bufferedBytes,
+      bufferedRows,
+    });
+
     const assertBufferLimits = (): void => {
-      if (
-        bufferedBytes > limits.maxBufferedBytes ||
-        bufferedRows > limits.maxBufferedRows ||
-        chunkCount > limits.maxBufferedChunkItems
-      ) {
-        throw buildSocketBufferError({
-          ...limits,
-          bufferedBytes,
-          bufferedRows,
-          chunkCount,
-        });
-      }
+      assertSocketBufferWithinLimits(limits, {
+        bufferedBytes,
+        bufferedRows,
+        chunkCount,
+      });
     };
 
     const finalResponsePromise = new Promise<{
@@ -682,14 +635,23 @@ export const executeRelayCommand = async (
       readonly responsePayload: unknown;
       readonly completePayload?: JsonObject;
     }>((resolve, reject) => {
+      const settle = createSettleOnce();
       let activeStreamId: string | undefined;
       let streamCreditsRemaining = 0;
       let streamPullInFlight = false;
       let pendingChunksDuringPull = 0;
       let streamCompleted = false;
+      let chunkHandlerChain = Promise.resolve();
+
+      const enqueueChunkWork = (work: () => Promise<void>): void => {
+        chunkHandlerChain = chunkHandlerChain.then(work).catch((error: unknown) => {
+          cleanup();
+          settle.settleOnce(reject, error);
+        });
+      };
 
       const cleanup = (): void => {
-        clearTimeout(timer);
+        idleTimer.dispose();
         input.transport.off(rpcResponseEvent, responseListener);
         input.transport.off(rpcChunkEvent, chunkListener);
         input.transport.off(rpcCompleteEvent, completeListener);
@@ -698,22 +660,37 @@ export const executeRelayCommand = async (
         input.transport.off(disconnectEvent, handleDisconnect);
       };
 
-      const timer = setTimeout(() => {
+      const idleTimer = attachIdleCommandTimer(settle, timeouts, () => {
         cleanup();
-        reject(
-          new PlugTimeoutError("Timed out while waiting for relay RPC completion", {
-            timeoutMs,
-            requestId: activeRequestId,
-            conversationId: relayConversationId,
+        settle.settleOnce(
+          reject,
+          buildSocketCommandTimeoutError({
+            message: "Timed out while waiting for relay RPC completion",
+            timeoutMs: timeouts.commandTimeoutMs,
+            eventName: rpcResponseEvent,
+            details: {
+              requestId: activeRequestId,
+              conversationId: relayConversationId,
+            },
           }),
         );
-      }, timeoutMs);
+      });
+
+      const finishResolve = (value: {
+        readonly responseFrame: PayloadFrameEnvelope;
+        readonly completeFrame?: PayloadFrameEnvelope;
+        readonly responsePayload: unknown;
+        readonly completePayload?: JsonObject;
+      }): void => {
+        cleanup();
+        settle.settleOnce(resolve, value);
+      };
 
       const matchesRequestId = async (
         frameRequestId: string | null | undefined,
       ): Promise<boolean> => {
-        if (!frameRequestId) {
-          return true;
+        if (!frameRequestId || frameRequestId.trim() === "") {
+          return false;
         }
 
         if (frameRequestId === clientRequestId || frameRequestId === activeRequestId) {
@@ -739,13 +716,15 @@ export const executeRelayCommand = async (
         streamPullInFlight = true;
         let shouldRequestAdditionalWindow = false;
         try {
+          idleTimer.resetIdleTimer();
+          pullCount += 1;
           const accepted = await acceptedStatePromise;
           const nextWindowSize = await requestRelayStreamPull(
             input.transport,
             relayConversationId,
             accepted.requestId,
             activeStreamId,
-            timeoutMs,
+            timeouts.commandTimeoutMs,
             input.payloadFrameSigning,
             input.streamPullWindowSize ?? DEFAULT_RELAY_PULL_WINDOW,
           );
@@ -765,11 +744,17 @@ export const executeRelayCommand = async (
       };
 
       const handleResponse = async (payload: unknown): Promise<void> => {
+        if (settle.isSettled()) {
+          return;
+        }
+
         try {
+          idleTimer.resetIdleTimer();
           const decoded = await decodePayloadFrameAsync<unknown>(payload, {
             signing: input.payloadFrameSigning,
           });
           if (!(await matchesRequestId(decoded.frame.requestId))) {
+            ignoredResponses += 1;
             return;
           }
 
@@ -781,8 +766,7 @@ export const executeRelayCommand = async (
 
           const streamId = getStreamIdFromNormalizedResponse(decoded.data);
           if (!streamId) {
-            cleanup();
-            resolve({
+            finishResolve({
               responseFrame: decoded.frame,
               responsePayload: decoded.data,
             });
@@ -793,55 +777,66 @@ export const executeRelayCommand = async (
           await requestNextStreamWindow();
         } catch (error: unknown) {
           cleanup();
-          reject(error);
+          settle.settleOnce(reject, error);
         }
       };
 
       const handleChunk = async (payload: unknown): Promise<void> => {
-        try {
-          const decoded = await decodePayloadFrameAsync<JsonObject>(payload, {
-            signing: input.payloadFrameSigning,
+        if (settle.isSettled()) {
+          return;
+        }
+
+        idleTimer.resetIdleTimer();
+        const decoded = await decodePayloadFrameAsync<JsonObject>(payload, {
+          signing: input.payloadFrameSigning,
+        });
+        if (!(await matchesRequestId(decoded.frame.requestId))) {
+          ignoredChunks += 1;
+          return;
+        }
+
+        chunkCount += 1;
+        bufferedBytes += decoded.frame.originalSize;
+        bufferedRows += countRows(decoded.data.rows);
+        const mergedResponse =
+          input.responseMode === "aggregatedJson"
+            ? tryMergeChunkRowsIntoRawRpcResponse(rawResponsePayload, decoded.data)
+            : undefined;
+        if (mergedResponse !== undefined) {
+          rawResponsePayload = removeStreamMarkerFromRawRpcResponse(mergedResponse);
+        } else {
+          rawChunkFrames.push(decoded.frame);
+          chunkPayloads.push(decoded.data);
+        }
+        assertBufferLimits();
+
+        if (activeStreamId && streamPullInFlight) {
+          pendingChunksDuringPull += 1;
+        } else if (activeStreamId && streamCreditsRemaining > 0) {
+          streamCreditsRemaining -= 1;
+        }
+
+        if (activeStreamId && streamCreditsRemaining === 0) {
+          enqueueChunkWork(async () => {
+            if (!streamCompleted) {
+              await requestNextStreamWindow();
+            }
           });
-          if (!(await matchesRequestId(decoded.frame.requestId))) {
-            return;
-          }
-
-          chunkCount += 1;
-          bufferedBytes += decoded.frame.originalSize;
-          bufferedRows += countRows(decoded.data.rows);
-          const mergedResponse =
-            input.responseMode === "aggregatedJson"
-              ? tryMergeChunkRowsIntoResponse(rawResponsePayload, decoded.data)
-              : undefined;
-          if (mergedResponse !== undefined) {
-            rawResponsePayload = removeStreamMarkerFromResponse(mergedResponse);
-          } else {
-            rawChunkFrames.push(decoded.frame);
-            chunkPayloads.push(decoded.data);
-          }
-          assertBufferLimits();
-
-          if (activeStreamId && streamPullInFlight) {
-            pendingChunksDuringPull += 1;
-          } else if (activeStreamId && streamCreditsRemaining > 0) {
-            streamCreditsRemaining -= 1;
-          }
-
-          if (activeStreamId && streamCreditsRemaining === 0) {
-            await requestNextStreamWindow();
-          }
-        } catch (error: unknown) {
-          cleanup();
-          reject(error);
         }
       };
 
       const handleComplete = (payload: unknown): void => {
-        void (async () => {
+        enqueueChunkWork(async () => {
+          if (settle.isSettled()) {
+            return;
+          }
+
+          idleTimer.resetIdleTimer();
           const decoded = await decodePayloadFrameAsync<JsonObject>(payload, {
             signing: input.payloadFrameSigning,
           });
           if (!(await matchesRequestId(decoded.frame.requestId))) {
+            ignoredCompletes += 1;
             return;
           }
 
@@ -862,39 +857,35 @@ export const executeRelayCommand = async (
                 signing: input.payloadFrameSigning,
               },
             ));
-          cleanup();
-          resolve({
+          finishResolve({
             responseFrame,
             completeFrame: decoded.frame,
             responsePayload: rawResponsePayload,
             completePayload,
           });
-        })().catch((error: unknown) => {
-          cleanup();
-          reject(error);
         });
       };
 
       const handleAppError = (payload: unknown): void => {
         cleanup();
-        reject(createSocketAppError(payload));
+        settle.settleOnce(reject, createSocketAppError(payload));
       };
 
       const handleConnectError = (payload: unknown): void => {
         cleanup();
-        reject(createConnectError(payload));
+        settle.settleOnce(reject, createConnectError(payload));
       };
 
       const handleDisconnect = (payload: unknown): void => {
         cleanup();
-        reject(createDisconnectError(payload));
+        settle.settleOnce(reject, createDisconnectError(payload));
       };
 
       const responseListener = (payload: unknown): void => {
         void handleResponse(payload);
       };
       const chunkListener = (payload: unknown): void => {
-        void handleChunk(payload);
+        enqueueChunkWork(() => handleChunk(payload));
       };
       const completeListener = (payload: unknown): void => {
         handleComplete(payload);
@@ -907,7 +898,12 @@ export const executeRelayCommand = async (
       input.transport.on(connectErrorEvent, handleConnectError);
       input.transport.on(disconnectEvent, handleDisconnect);
     });
-    void finalResponsePromise.catch(() => undefined);
+    void finalResponsePromise.catch((error: unknown) => {
+      plugLogger.debug("transport.socket.relay_final_response_rejected", {
+        conversationId: relayConversationId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
 
     input.transport.emit(rpcRequestEvent, {
       conversationId,
@@ -918,6 +914,23 @@ export const executeRelayCommand = async (
     });
 
     const accepted = await acceptedStatePromise;
+    if (accepted.inFlight) {
+      plugLogger.info("transport.socket.request_accepted.in_flight", {
+        agentId: input.agentId,
+        conversationId,
+        requestId: accepted.requestId,
+        clientRequestId: accepted.clientRequestId,
+      });
+    }
+    if (accepted.deduplicated) {
+      plugLogger.info("transport.socket.request_accepted.deduplicated", {
+        agentId: input.agentId,
+        conversationId,
+        requestId: accepted.requestId,
+        clientRequestId: accepted.clientRequestId,
+        replayed: accepted.replayed,
+      });
+    }
     plugLogger.debug("transport.socket.request_accepted", {
       agentId: input.agentId,
       conversationId,
@@ -931,6 +944,7 @@ export const executeRelayCommand = async (
       bufferedRows,
     });
     const finalResponse = await finalResponsePromise;
+    const connectedAfterMs = Date.now() - commandStartMs;
 
     return {
       channel: "socket",
@@ -940,19 +954,25 @@ export const executeRelayCommand = async (
       notification: false,
       conversationId,
       accepted,
-      connectionReady,
+      ...(connectionReady ? { connectionReady } : {}),
       response: normalizeRpcPayload(finalResponse.responsePayload),
       rawResponsePayload: finalResponse.responsePayload,
       chunkPayloads,
       completePayload: finalResponse.completePayload,
       rawResponseFrame: finalResponse.responseFrame,
       rawChunkFrames,
-      rawCompleteFrame,
+      rawCompleteFrame: rawCompleteFrame ?? finalResponse.completeFrame,
+      metrics: buildMetrics(),
+      executionMetrics: {
+        connectedAfterMs,
+      },
     };
   } finally {
     if (conversationId) {
       input.transport.emit(conversationEndEvent, { conversationId });
     }
-    input.transport.disconnect();
+    if (!managedTransport) {
+      input.transport.disconnect();
+    }
   }
 };

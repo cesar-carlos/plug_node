@@ -1,6 +1,8 @@
 export const DEFAULT_BASE_URL = "https://plug-server.se7esistemassinop.com.br/api/v1";
 export const DEFAULT_API_VERSION = "2.8";
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+/** Max wait for socket `connection:ready` before failing the command (separate from idle command timeout). */
+export const DEFAULT_SOCKET_CONNECT_TIMEOUT_MS = 10_000;
 export const DEFAULT_RELAY_PULL_WINDOW = 32;
 export const DEFAULT_CONSUMER_SOCKET_PULL_WINDOW = 32;
 export const SOCKET_PROTOCOL_VERSION = "2026-05-14";
@@ -511,6 +513,7 @@ export interface SocketTransportNotificationResult {
   readonly acceptedCommands: number;
   readonly connectionReady?: RelayConnectionReadyPayload;
   readonly metrics?: SocketCommandRuntimeMetrics;
+  readonly executionMetrics?: PlugTransportExecutionMetrics;
 }
 
 export interface SocketCommandRuntimeMetrics extends JsonObject {

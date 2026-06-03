@@ -21,6 +21,7 @@ Hub contract notes for maintainers: [docs/hub-contract-alignment.md](docs/hub-co
 
 ## Rules
 
+- shared imports stay within `shared/`; package code must not reach into sibling package paths (enforced by review; `import/no-restricted-paths` may be added later)
 - keep all public documentation in English
 - do not commit `dist/`, `generated/`, `.env`, or credential material
 - keep runtime dependencies scoped to the package features that require them

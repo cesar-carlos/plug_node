@@ -1144,4 +1144,130 @@ describe("executeConsumerCommand", () => {
       retryAfterSeconds: 3,
     });
   });
+
+  it("includes connectedAfterMs on notification completions", async () => {
+    const result = await executeConsumerCommand({
+      transport: new NotificationConsumerTransport(),
+      session,
+      agentId: "agent-1",
+      command: {
+        jsonrpc: "2.0",
+        method: "sql.executeBatch",
+        id: null,
+        params: {
+          commands: [],
+        },
+      },
+      responseMode: "aggregatedJson",
+      timeoutMs: 5000,
+      payloadFrameCompression: "default",
+    });
+
+    expect(result.notification).toBe(true);
+    expect(result.executionMetrics?.connectedAfterMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("does not resolve twice when a late stale response arrives after success", async () => {
+    const transport = new SimpleConsumerTransport(true);
+    const result = await executeConsumerCommand({
+      transport,
+      session,
+      agentId: "agent-1",
+      command: {
+        jsonrpc: "2.0",
+        method: "client_token.getPolicy",
+        id: "request-1",
+        params: {
+          client_token: "client-token",
+        },
+      },
+      responseMode: "aggregatedJson",
+      timeoutMs: 5000,
+      payloadFrameCompression: "default",
+    });
+
+    expect(result.notification).toBe(false);
+    if (result.notification) {
+      return;
+    }
+
+    expect(result.requestId).toBe("request-1");
+    expect(result.metrics?.ignoredCommandResponses).toBeGreaterThanOrEqual(1);
+  });
+
+  it("fails clearly when the socket disconnects before the command completes", async () => {
+    class DisconnectMidCommandTransport implements ConsumerSocketTransport {
+      connected = false;
+
+      private readonly handlers = new Map<string, Set<(payload: unknown) => void>>();
+
+      connect(): void {
+        this.connected = true;
+        queueMicrotask(() => {
+          this.dispatch(
+            "connection:ready",
+            encodePayloadFrame(
+              {
+                id: "socket-1",
+                message: "Consumer socket connected successfully",
+                user: { sub: "client-1", role: "client" },
+              } as RelayConnectionReadyPayload,
+              { requestId: "handshake", compression: "none" },
+            ),
+          );
+        });
+      }
+
+      disconnect(): void {
+        this.connected = false;
+      }
+
+      on(event: string, handler: (payload: unknown) => void): void {
+        const eventHandlers = this.handlers.get(event) ?? new Set();
+        eventHandlers.add(handler);
+        this.handlers.set(event, eventHandlers);
+      }
+
+      off(event: string, handler: (payload: unknown) => void): void {
+        this.handlers.get(event)?.delete(handler);
+      }
+
+      emit(event: string, payload?: unknown): void {
+        if (event === "agents:command") {
+          this.connected = false;
+          queueMicrotask(() => {
+            this.dispatch("disconnect", "transport closed");
+          });
+        }
+      }
+
+      private dispatch(event: string, payload: unknown): void {
+        for (const handler of this.handlers.get(event) ?? []) {
+          handler(payload);
+        }
+      }
+    }
+
+    await expect(
+      executeConsumerCommand({
+        transport: new DisconnectMidCommandTransport(),
+        session,
+        agentId: "agent-1",
+        command: {
+          jsonrpc: "2.0",
+          method: "client_token.getPolicy",
+          id: "request-1",
+          params: {
+            client_token: "client-token",
+          },
+        },
+        responseMode: "aggregatedJson",
+        timeoutMs: 5000,
+        payloadFrameCompression: "default",
+      }),
+    ).rejects.toMatchObject({
+      code: "SOCKET_DISCONNECTED",
+      retryable: true,
+    });
+  });
 });

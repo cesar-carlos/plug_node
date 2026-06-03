@@ -16,6 +16,7 @@ import { PlugValidationError } from "../contracts/errors";
 import { createUserExecutionSessionRunner } from "../auth/session";
 import { serializeErrorForContinueOnFail } from "../output/errorOutput";
 import { buildUserAccessOutputItems } from "../output/userAccessOutput";
+import { executeWithPlugTransientRetry } from "./plugTransientRetry";
 import { collectAllPages } from "../rest/resourceClient";
 import {
   approveAccessRequest,
@@ -284,12 +285,9 @@ export const executePlugUserAccessNode = async (
 
   for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
     try {
-      const executionResult = await buildExecutionResult(
-        requester,
-        sessionRunner,
-        context,
-        itemIndex,
-      );
+      const { value: executionResult } = await executeWithPlugTransientRetry({
+        execute: () => buildExecutionResult(requester, sessionRunner, context, itemIndex),
+      });
       const jsonItems = buildUserAccessOutputItems(
         executionResult,
         getIncludeMetadata(context, itemIndex),

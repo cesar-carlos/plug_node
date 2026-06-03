@@ -1,6 +1,8 @@
 import type { IDataObject, IExecuteFunctions, INodeExecutionData } from "n8n-workflow";
 import { NodeOperationError } from "n8n-workflow";
 
+import { toNodeFacingError } from "../output/errorOutput";
+
 import { PlugValidationError } from "../contracts/errors";
 export { serializeErrorForContinueOnFail } from "../output/errorOutput";
 import type {
@@ -15,7 +17,7 @@ import type {
   SocketEventRuntimeMetadata,
 } from "../contracts/custom-socket-events";
 import type { HtmlToPdfRenderer } from "../tools/pdf";
-import { isRecord, parseJsonText } from "../utils/json";
+import { parseJsonText } from "../utils/json";
 
 export interface PlugToolsPdfExecutionConfig {
   readonly nodeDisplayName: string;
@@ -166,12 +168,7 @@ export const toNodeOperationError = (
   nodeDisplayName: string,
   itemIndex: number,
 ): NodeOperationError => {
-  const nodeError =
-    error instanceof Error || typeof error === "string"
-      ? error
-      : isRecord(error)
-        ? JSON.stringify(error)
-        : new Error(`Unknown ${nodeDisplayName} error`);
-
-  return new NodeOperationError(context.getNode(), nodeError, { itemIndex });
+  return new NodeOperationError(context.getNode(), toNodeFacingError(error), {
+    itemIndex,
+  });
 };

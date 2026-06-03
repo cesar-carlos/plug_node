@@ -1,0 +1,11 @@
+export const consumerSocketAppErrorEvent = "app:error";
+export const consumerSocketConnectErrorEvent = "connect_error";
+export const consumerSocketDisconnectEvent = "disconnect";
+export const consumerSocketConnectionReadyEvent = "connection:ready";
+export const consumerSocketCommandEvent = "agents:command";
+export const consumerSocketCommandResponseEvent = "agents:command_response";
+export const consumerSocketCommandStreamChunkEvent = "agents:command_stream_chunk";
+export const consumerSocketCommandStreamCompleteEvent = "agents:command_stream_complete";
+export const consumerSocketStreamPullEvent = "agents:stream_pull";
+export const consumerSocketStreamPullResponseEvent = "agents:stream_pull_response";
+export const maxConsumerStreamPullWindowSize = 1000;

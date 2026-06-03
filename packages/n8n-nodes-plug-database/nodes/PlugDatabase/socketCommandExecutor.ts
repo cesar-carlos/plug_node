@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { PlugSocketExecutor } from "../../generated/shared/n8n/plugClientExecution";
 import {
   DEFAULT_REQUEST_TIMEOUT_MS,
@@ -33,6 +35,22 @@ const sleep = async (ms: number): Promise<void> =>
 const nextProbeBackoffMs = (): number =>
   capabilityProbeBackoffMinMs +
   Math.floor(Math.random() * capabilityProbeBackoffJitterMs);
+
+const buildRelayFallbackInput = (
+  input: Parameters<PlugSocketExecutor>[0],
+): Parameters<PlugSocketExecutor>[0] => {
+  if (Array.isArray(input.command)) {
+    return input;
+  }
+
+  return {
+    ...input,
+    command: {
+      ...input.command,
+      id: randomUUID(),
+    },
+  };
+};
 
 export class ConsumerSocketExecutionManager {
   private transport?: SocketIoTransportLike;
@@ -176,19 +194,20 @@ export class ConsumerSocketExecutionManager {
           return true;
         } catch (error: unknown) {
           if (error instanceof PlugTimeoutError) {
-            await sleep(nextProbeBackoffMs());
             if (Array.isArray(input.command)) {
               this.stale = true;
               this.transport?.disconnect();
-              plugLogger.warn("transport.socket.capability_probe.try_direct_batch", {
+              plugLogger.warn("transport.socket.capability_probe.batch_timeout", {
                 socketMode: "agentsCommand",
                 agentId: input.agentId,
                 durationMs: Date.now() - probeStartedAt,
-                fallbackReason: "probe_timeout",
               });
-              return true;
+              throw new PlugValidationError(
+                "Execute Batch over Socket requires a Plug server that returns correlated agents:command responses. Use REST or upgrade the server.",
+              );
             }
 
+            await sleep(nextProbeBackoffMs());
             this.capability = "unsupported";
             this.capabilityCacheKey = capabilityKey;
             this.capabilityCheckedAtMs = Date.now();
@@ -257,7 +276,7 @@ export class ConsumerSocketExecutionManager {
         socketMode: "relay",
         agentId: input.agentId,
       });
-      return options.fallbackExecutor(input);
+      return options.fallbackExecutor(buildRelayFallbackInput(input));
     }
 
     const transport = this.ensureTransport(
@@ -304,7 +323,7 @@ export class ConsumerSocketExecutionManager {
           socketMode: "relay",
           agentId: input.agentId,
         });
-        return options.fallbackExecutor(input);
+        return options.fallbackExecutor(buildRelayFallbackInput(input));
       }
 
       if (error instanceof PlugTimeoutError && Array.isArray(input.command)) {

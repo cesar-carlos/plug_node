@@ -1324,6 +1324,74 @@ describe("executePlugClientNode", () => {
     expect(legacySocketExecutor).toHaveBeenCalledTimes(1);
   });
 
+  it("coalesces multiple input items into one executeBatch with coalescedItemCount metadata", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeBatch",
+        inputMode: "guided",
+        responseMode: "aggregatedJson",
+        includePlugMetadata: true,
+        batchCommandsJson: [
+          '[{"sql":"SELECT TOP 1 * FROM Cliente"}]',
+          '[{"sql":"SELECT TOP 1 * FROM Vendedor"}]',
+        ],
+        batchOptions: { coalesceInputItems: true },
+      },
+      inputData: [{ json: { a: 1 } }, { json: { b: 2 } }],
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-1",
+            requestId: "request-1",
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: "rpc-1",
+                success: true,
+                result: {
+                  rows: [{ batch: "ok" }],
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const result = await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(result[0]).toHaveLength(1);
+    expect(result[0][0].json).toMatchObject({
+      batch: "ok",
+      __plug: {
+        coalescedItemCount: 2,
+      },
+    });
+    expect(context.httpRequestMock.mock.calls[1][0].body).toMatchObject({
+      command: {
+        method: "sql.executeBatch",
+        params: {
+          commands: [
+            { sql: "SELECT TOP 1 * FROM Cliente" },
+            { sql: "SELECT TOP 1 * FROM Vendedor" },
+          ],
+        },
+      },
+    });
+  });
+
   it("allows executeBatch over the version 2 socket transport", async () => {
     const socketExecutor = vi.fn(async (input) => ({
       channel: "socket" as const,

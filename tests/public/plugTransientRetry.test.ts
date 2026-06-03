@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { PlugError, PlugValidationError } from "../../shared/contracts/errors";
+import {
+  PlugError,
+  PlugTimeoutError,
+  PlugValidationError,
+} from "../../shared/contracts/errors";
 import {
   computeRetryDelayMs,
+  executeWithPlugTransientRetry,
   getPlugOperationRetryKind,
+  isReplayDetectedPlugError,
   MAX_TRANSIENT_RETRIES,
   shouldRetryPlugOperation,
   sleepMs,
@@ -66,6 +72,55 @@ describe("plugTransientRetry", () => {
     ).toBe(false);
   });
 
+  it("does not retry method_not_found errors", () => {
+    const error = new PlugError("method missing", {
+      code: "RPC_-32601",
+      retryable: true,
+      details: { reason: "method_not_found" },
+    });
+
+    expect(
+      shouldRetryPlugOperation({
+        operation: "executeSql",
+        error,
+        attemptNumber: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not retry auth-related errors", () => {
+    const error = new PlugError("unauthorized", {
+      code: "UNAUTHORIZED",
+      retryable: true,
+      authRelated: true,
+    });
+
+    expect(
+      shouldRetryPlugOperation({
+        operation: "getAgentProfile",
+        error,
+        attemptNumber: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("retries PlugTimeoutError for SQL operations", () => {
+    expect(
+      shouldRetryPlugOperation({
+        operation: "executeSql",
+        error: new PlugTimeoutError("timed out"),
+        attemptNumber: 0,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRetryPlugOperation({
+        operation: "executeSql",
+        error: new PlugTimeoutError("timed out"),
+        attemptNumber: MAX_TRANSIENT_RETRIES,
+      }),
+    ).toBe(false);
+  });
+
   it("uses retryAfterSeconds for delay when present", () => {
     const error = new PlugError("rate limited", {
       code: "RATE_LIMITED",
@@ -86,6 +141,36 @@ describe("plugTransientRetry", () => {
 
     expect(computeRetryDelayMs(error, 0)).toBe(250);
     expect(computeRetryDelayMs(error, 1)).toBe(500);
+  });
+
+  it("detects replay_detected errors", () => {
+    const error = new PlugError("replay", {
+      code: "RPC_-32014",
+      details: { reason: "replay_detected" },
+    });
+    expect(isReplayDetectedPlugError(error)).toBe(true);
+    expect(isReplayDetectedPlugError(new Error("other"))).toBe(false);
+  });
+
+  it("retries REST access calls with metadata policy", async () => {
+    let attempts = 0;
+    const { value, attemptCount } = await executeWithPlugTransientRetry({
+      execute: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new PlugError("unavailable", {
+            code: "SERVICE_UNAVAILABLE",
+            statusCode: 503,
+            retryable: true,
+          });
+        }
+
+        return "ok";
+      },
+    });
+
+    expect(value).toBe("ok");
+    expect(attemptCount).toBe(2);
   });
 
   it("sleepMs resolves after the requested delay", async () => {

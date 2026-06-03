@@ -96,6 +96,7 @@ export class RelaySocketExecutionManager {
         responseMode: input.responseMode,
         bufferLimits: input.bufferLimits,
         streamPullWindowSize: input.streamPullWindowSize,
+        managedTransport: true,
       });
     } catch (error: unknown) {
       this.stale = true;

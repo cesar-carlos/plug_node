@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { PlugError } from "../../shared/contracts/errors";
+import {
+  serializeErrorForContinueOnFail,
+  toNodeFacingError,
+} from "../../shared/output/errorOutput";
 import { buildNodeOutputItems } from "../../packages/n8n-nodes-plug-database/generated/shared/output/nodeOutput";
 import type { PlugCommandTransportResult } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 
@@ -443,6 +448,39 @@ describe("buildNodeOutputItems", () => {
         attemptCount: 2,
         lastRetryDelayMs: 250,
       },
+    });
+  });
+});
+
+describe("error output helpers", () => {
+  it("strips technicalMessage and details from node-facing Plug errors", () => {
+    const sanitized = toNodeFacingError(
+      new PlugError("Operator-safe message", {
+        code: "RPC_-32000",
+        technicalMessage: "internal stack trace",
+        details: { sqlState: "42000" },
+      }),
+    );
+
+    expect(sanitized).toBeInstanceOf(PlugError);
+    expect((sanitized as PlugError).message).toBe("Operator-safe message");
+    expect((sanitized as PlugError).technicalMessage).toBeUndefined();
+    expect((sanitized as PlugError).details).toBeUndefined();
+  });
+
+  it("keeps continue-on-fail serialization compact", () => {
+    expect(
+      serializeErrorForContinueOnFail(
+        new PlugError("failed", {
+          code: "PLUG_ERROR",
+          technicalMessage: "hidden",
+          details: { secret: true },
+        }),
+      ),
+    ).toEqual({
+      message: "failed",
+      code: "PLUG_ERROR",
+      retryable: false,
     });
   });
 });
