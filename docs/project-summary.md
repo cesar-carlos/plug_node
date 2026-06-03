@@ -62,4 +62,4 @@ The package includes PDF and barcode tool runtime dependencies plus `socket.io-c
 
 ## Versioning
 
-This workspace follows [Semantic Versioning](./versioning-strategy.md). The current major release is `3.0.0`; see the [package CHANGELOG](../packages/n8n-nodes-plug-database/CHANGELOG.md) for the breaking changes that were introduced and the [release process](./release-process.md) for the publish flow.
+This workspace follows [Semantic Versioning](./versioning-strategy.md). The current published release is `3.1.0`; see the [package CHANGELOG](../packages/n8n-nodes-plug-database/CHANGELOG.md), [UX decisions for 3.1.0](./ux-decisions.md#310-workflow-visible-changes), and [3.0.0 breaking changes](./ux-decisions.md#300-breaking-changes). See the [release process](./release-process.md) for the publish flow.

@@ -7,8 +7,10 @@
 ## Installation
 
 ```bash
-npm install n8n-nodes-plug-database
+npm install n8n-nodes-plug-database@3.1.0
 ```
+
+Latest: **3.1.0** — see [CHANGELOG](./CHANGELOG.md) and [UX decisions for 3.1.0](../../docs/ux-decisions.md#310-workflow-visible-changes).
 
 ## What This Package Does
 

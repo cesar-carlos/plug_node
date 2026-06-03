@@ -51,6 +51,22 @@ The API base URL is fixed in code.
 - prefer user-facing API messages
 - hide low-level technical errors from the primary message
 - preserve correlation and retry metadata for debugging
+- thrown `NodeOperationError` paths map `PlugError` through `toNodeFacingError()` so `technicalMessage` and `details` are not exposed on the primary error object (continue-on-fail JSON output is unchanged)
+
+## 3.1.0 workflow-visible changes
+
+Several reliability and performance changes shipped in `n8n-nodes-plug-database@3.1.0`. Most workflows benefit without edits; tune timeouts or options when a workflow relied on the previous edge behavior:
+
+- **Separate connect timeout (default 10s).** Slow `connection:ready` on `/consumers` can fail before the SQL command starts, even when Request Timeout is higher. Increase **Request Timeout** under node options if handshakes are slow.
+- **Command idle timeout resets during streaming.** Long reports stay alive while chunks or pull windows arrive; a hung stream still fails after the idle period. Workflows that assumed a single wall-clock timeout for the entire command may run longer when the hub keeps sending data.
+- **Transient retries issue a fresh JSON-RPC `id`.** Retries avoid `replay_detected` (`-32014`). Workflows that depended on a fixed `id` in advanced JSON-RPC without **Idempotency Key** should set idempotency for mutations or accept a new id per attempt.
+- **Execute Batch capability probe timeout no longer auto-runs consumer batch.** After probe timeout, the node returns a clear validation error instead of attempting batch on an unconfirmed hub. Use REST batch, upgrade the hub, or fix connectivity before batch socket runs.
+- **Relay fallback uses a new command id** when consumer times out and relay runs, reducing duplicate in-flight commands on the hub.
+- **Chunk Items skips full Aggregated JSON aggregation** in the output builder, so large streams do not build a full in-memory aggregate before chunking.
+- **Legacy tools operation `publishEvent`** is routed again to socket event publish (workflows saved with that operation name keep working).
+- **Socket Event Trigger backpressure** still drops events silently for `dropNewest` / `dropOldest` by default. A `reportDropAsError` hook exists in the queue helper for future node UI; until then, use `fail` overflow policy or monitor logs when the queue is saturated.
+
+Hub SQL alignment in the same release (zero-row synthetic item, `sql.bulkInsert`, `prefer_db_streaming`, coalesce batch, transport metrics) is documented in [Hub contract alignment](./hub-contract-alignment.md) and [Performance and reliability](./performance-and-reliability.md).
 
 ## 3.0.0 breaking changes
 
