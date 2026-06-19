@@ -1,5 +1,13 @@
 # n8n-nodes-plug-database
 
+## 3.2.0
+
+### Minor Changes
+
+- 39d77bf: Add bounded parallelism for safe read-only SQL input items via `executePerInputItem`, with `Max Parallel Input Items` node option, Auto Performance Hints, and hub inflight caps.
+- 39d77bf: Improve socket performance defaults: adaptive stream pull window (`0` omits explicit override), honor configured pull window above agent recommendation, relay fast path default on typeVersion 1, omit traceId on relay command frames, and sample-based bulk insert size validation.
+- 921e1fd: Add Auto Performance Hints (default on) for Socket SQL streaming and read-only batch parallelism, validate bulk insert against hub row/size limits before dispatch, and align relay stream pull window fallback to 256.
+
 ## 3.1.0
 
 ### Minor Changes
