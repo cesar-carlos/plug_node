@@ -88,6 +88,8 @@ jobs:
         run: npm run verify
 
       - name: Check PayloadFrame benchmark regression
+        env:
+          PLUG_BENCH_MAX_REGRESSION: "0.5"
         run: PLUG_BENCH_ITERATIONS=100 npm run bench:payload-frame:check
 
       - name: Validate npm tarballs

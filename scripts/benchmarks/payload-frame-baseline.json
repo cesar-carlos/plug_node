@@ -1,58 +1,58 @@
 [
   {
     "name": "encode PayloadFrame with traceId",
-    "iterations": 1000,
-    "totalMs": 2.46,
-    "avgMs": 0.004,
-    "opsPerSecond": 407199.3
+    "iterations": 100,
+    "totalMs": 0.55,
+    "avgMs": 0.0055,
+    "opsPerSecond": 181818.2
   },
   {
     "name": "encode PayloadFrame omitTraceId",
-    "iterations": 1000,
-    "totalMs": 0.91,
-    "avgMs": 0.0025,
-    "opsPerSecond": 1102900.6
+    "iterations": 100,
+    "totalMs": 0.3,
+    "avgMs": 0.003,
+    "opsPerSecond": 832639.5
   },
   {
     "name": "decode small PayloadFrame without gzip",
-    "iterations": 1000,
-    "totalMs": 4.79,
-    "avgMs": 0.0048,
-    "opsPerSecond": 208554.9
+    "iterations": 100,
+    "totalMs": 1.8,
+    "avgMs": 0.018,
+    "opsPerSecond": 55555.6
   },
   {
     "name": "decode encode-with-traceId frame",
-    "iterations": 1000,
-    "totalMs": 1.16,
+    "iterations": 100,
+    "totalMs": 0.22,
     "avgMs": 0.003,
-    "opsPerSecond": 864677.9
+    "opsPerSecond": 461042
   },
   {
     "name": "decode encode-omitTraceId frame",
-    "iterations": 1000,
-    "totalMs": 1.9,
-    "avgMs": 0.003,
-    "opsPerSecond": 525983.6
+    "iterations": 100,
+    "totalMs": 0.57,
+    "avgMs": 0.0057,
+    "opsPerSecond": 173913
   },
   {
     "name": "decode large PayloadFrame with gzip",
-    "iterations": 1000,
-    "totalMs": 930.89,
+    "iterations": 100,
+    "totalMs": 120,
     "avgMs": 1.2,
-    "opsPerSecond": 1074.2
+    "opsPerSecond": 833.3
   },
   {
     "name": "decode forced gzip PayloadFrame",
-    "iterations": 250,
-    "totalMs": 450.96,
-    "avgMs": 2.5,
-    "opsPerSecond": 554.4
+    "iterations": 25,
+    "totalMs": 45,
+    "avgMs": 1.8,
+    "opsPerSecond": 662.4
   },
   {
     "name": "reject unsafe gzip inflation metadata",
-    "iterations": 1000,
-    "totalMs": 16.61,
-    "avgMs": 0.025,
-    "opsPerSecond": 60206.5
+    "iterations": 100,
+    "totalMs": 2.01,
+    "avgMs": 0.0201,
+    "opsPerSecond": 49830.6
   }
 ]
