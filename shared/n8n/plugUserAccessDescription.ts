@@ -50,6 +50,48 @@ const operationOptions = [
   },
 ] as const;
 
+const buildManagedAccessRequestPaginationProperties = (): INodeProperties[] => [
+  {
+    displayName: "Return All",
+    name: "returnAll",
+    type: "boolean",
+    default: false,
+    description:
+      "Whether to request every page of access requests before returning items.",
+    displayOptions: {
+      show: {
+        operation: ["listManagedAccessRequests"],
+      },
+    },
+  },
+  {
+    displayName: "Page",
+    name: "page",
+    type: "number",
+    default: 1,
+    description: "Access request page to request from Plug.",
+    displayOptions: {
+      show: {
+        operation: ["listManagedAccessRequests"],
+        returnAll: [false],
+      },
+    },
+  },
+  {
+    displayName: "Page Size",
+    name: "pageSize",
+    type: "number",
+    default: 50,
+    description: "Access request page size to request from Plug.",
+    displayOptions: {
+      show: {
+        operation: ["listManagedAccessRequests"],
+        returnAll: [false],
+      },
+    },
+  },
+];
+
 const buildCatalogPaginationProperties = (): INodeProperties[] => [
   {
     displayName: "Agent Status",
@@ -141,6 +183,7 @@ export const buildPlugUserAccessProperties = (): INodeProperties[] => [
       "Whether to include the __plug object with operation and pagination metadata.",
   },
   ...buildCatalogPaginationProperties(),
+  ...buildManagedAccessRequestPaginationProperties(),
   {
     displayName: "Request ID",
     name: "requestId",

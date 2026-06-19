@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { PlugError } from "../../shared/contracts/errors";
+import { PlugError } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
 import {
   serializeErrorForContinueOnFail,
   toNodeFacingError,
-} from "../../shared/output/errorOutput";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/output/errorOutput";
 import { buildNodeOutputItems } from "../../packages/n8n-nodes-plug-database/generated/shared/output/nodeOutput";
 import type { PlugCommandTransportResult } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 
@@ -468,13 +468,28 @@ describe("error output helpers", () => {
     expect((sanitized as PlugError).details).toBeUndefined();
   });
 
-  it("keeps continue-on-fail serialization compact", () => {
+  it("keeps continue-on-fail serialization compact and includes technicalMessage when present", () => {
     expect(
       serializeErrorForContinueOnFail(
         new PlugError("failed", {
           code: "PLUG_ERROR",
           technicalMessage: "hidden",
           details: { secret: true },
+        }),
+      ),
+    ).toEqual({
+      message: "failed",
+      code: "PLUG_ERROR",
+      retryable: false,
+      technicalMessage: "hidden",
+    });
+  });
+
+  it("omits technicalMessage from continue-on-fail output when absent", () => {
+    expect(
+      serializeErrorForContinueOnFail(
+        new PlugError("failed", {
+          code: "PLUG_ERROR",
         }),
       ),
     ).toEqual({

@@ -8,27 +8,23 @@ import {
 } from "../tools/barcode";
 import { plugToolGenerateBarcodeOperation } from "./plugToolsDescription";
 import {
-  emptyInputItem,
   normalizeOutputBinaryProperty,
   normalizeOutputJsonProperty,
   now,
   parseAdvancedOptions,
-  serializeErrorForContinueOnFail,
   toCollection,
   toNodeOperationError,
   type PlugToolsBarcodeExecutionConfig,
 } from "./plugToolsCommon";
+import { executePerInputItem } from "./plugItemExecution";
 
 export const executePlugToolsBarcodeNode = async (
   context: IExecuteFunctions,
   config: PlugToolsBarcodeExecutionConfig,
-): Promise<INodeExecutionData[][]> => {
-  const sourceItems = context.getInputData();
-  const items = sourceItems.length > 0 ? sourceItems : [emptyInputItem];
-  const outputItems: INodeExecutionData[] = [];
-
-  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-    try {
+): Promise<INodeExecutionData[][]> =>
+  executePerInputItem(
+    context,
+    async (itemIndex, item) => {
       const renderOptions = toCollection(context, "renderOptions", itemIndex);
       const barcode = resolveBarcodeRenderInput({
         text: context.getNodeParameter("text", itemIndex),
@@ -95,9 +91,9 @@ export const executePlugToolsBarcodeNode = async (
         generated.mimeType,
       );
 
-      outputItems.push({
+      return {
         json: {
-          ...items[itemIndex].json,
+          ...item.json,
           ...(includeMetadata
             ? {
                 [metadataProperty ?? "__plugTools"]: {
@@ -120,30 +116,16 @@ export const executePlugToolsBarcodeNode = async (
             : {}),
         },
         binary: {
-          ...(items[itemIndex].binary ?? {}),
+          ...(item.binary ?? {}),
           [outputBinaryProperty]: binaryData,
         },
         pairedItem: {
           item: itemIndex,
         },
-      });
-    } catch (error: unknown) {
-      if (context.continueOnFail()) {
-        outputItems.push({
-          json: {
-            ...items[itemIndex].json,
-            error: serializeErrorForContinueOnFail(error),
-          },
-          pairedItem: {
-            item: itemIndex,
-          },
-        });
-        continue;
-      }
-
-      throw toNodeOperationError(context, error, config.nodeDisplayName, itemIndex);
-    }
-  }
-
-  return [outputItems];
-};
+      };
+    },
+    {
+      onError: (error, itemIndex) =>
+        toNodeOperationError(context, error, config.nodeDisplayName, itemIndex),
+    },
+  );

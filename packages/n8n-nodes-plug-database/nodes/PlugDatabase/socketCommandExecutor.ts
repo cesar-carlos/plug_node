@@ -17,11 +17,12 @@ import {
   type ConsumerSocketTransport,
 } from "../../generated/shared/socket/consumerCommandSession";
 import { deriveSocketNamespaceUrl } from "../../generated/shared/utils/url";
-import { createSocketIoTransport, type SocketIoTransportLike } from "./socketIoTransport";
+import {
+  extractMaxStreamPullWindowSize,
+  extractRecommendedStreamPullWindowSize,
+} from "../../generated/shared/socket/streamPullWindowPolicy";
+import { createManagedSocketIoTransport } from "./managedSocketIoTransport";
 
-const appErrorEvent = "app:error";
-const connectErrorEvent = "connect_error";
-const disconnectEvent = "disconnect";
 const defaultCapabilityProbeTimeoutMs = 1_500;
 const capabilityTtlMs = 60_000;
 const capabilityProbeBackoffMinMs = 50;
@@ -52,14 +53,48 @@ const buildRelayFallbackInput = (
   };
 };
 
+const readSingleCommandId = (
+  command: Parameters<PlugSocketExecutor>[0]["command"],
+): string | undefined => {
+  if (Array.isArray(command)) {
+    return undefined;
+  }
+
+  const commandId = command.id;
+  return typeof commandId === "string" && commandId.trim() !== "" ? commandId : undefined;
+};
+
+const logRelayFallback = (
+  input: Parameters<PlugSocketExecutor>[0],
+  relayInput: Parameters<PlugSocketExecutor>[0],
+  fallbackReason: "probe_timeout" | "agents_command_timeout",
+): void => {
+  plugLogger.warn("transport.socket.manager.relay_fallback", {
+    socketMode: "relay",
+    agentId: input.agentId,
+    fallbackReason,
+    originalCommandId: readSingleCommandId(input.command),
+    relayCommandId: readSingleCommandId(relayInput.command),
+    doubleExecutionRisk:
+      fallbackReason === "agents_command_timeout"
+        ? "The original agents:command may still have completed on the server. Relay retry uses a new command ID; prefer idempotent operations or verify server state before retrying side effects."
+        : undefined,
+  });
+};
+
 export class ConsumerSocketExecutionManager {
-  private transport?: SocketIoTransportLike;
-
-  private namespaceUrl?: string;
-
-  private accessToken?: string;
-
-  private stale = false;
+  private readonly managedTransport = createManagedSocketIoTransport({
+    socketMode: "agentsCommand",
+    logEventKey: "manager",
+    onDispose: () => {
+      this.capability = "unknown";
+      this.capabilityProbeInFlight = undefined;
+      this.capabilityCacheKey = undefined;
+      this.capabilityCheckedAtMs = 0;
+      this.agentRecommendedStreamPullWindowSize = undefined;
+      this.agentMaxStreamPullWindowSize = undefined;
+    },
+  });
 
   private capability: "unknown" | "supported" | "unsupported" = "unknown";
 
@@ -69,62 +104,26 @@ export class ConsumerSocketExecutionManager {
 
   private capabilityCheckedAtMs = 0;
 
-  private readonly handleTerminalEvent = (): void => {
-    this.stale = true;
-  };
+  private agentRecommendedStreamPullWindowSize?: number;
 
-  private disposeSocket(): void {
-    if (this.transport) {
-      this.transport.off(appErrorEvent, this.handleTerminalEvent);
-      this.transport.off(connectErrorEvent, this.handleTerminalEvent);
-      this.transport.off(disconnectEvent, this.handleTerminalEvent);
-      this.transport.disconnect();
-    }
-
-    this.transport = undefined;
-    this.namespaceUrl = undefined;
-    this.accessToken = undefined;
-    this.capability = "unknown";
-    this.capabilityProbeInFlight = undefined;
-    this.capabilityCacheKey = undefined;
-    this.capabilityCheckedAtMs = 0;
-  }
+  private agentMaxStreamPullWindowSize?: number;
 
   private ensureTransport(baseUrl: string, accessToken: string): ConsumerSocketTransport {
+    const transport = this.managedTransport.ensureTransport(baseUrl, accessToken);
     const namespaceUrl = deriveSocketNamespaceUrl(baseUrl, "/consumers");
-    const shouldRecreate =
-      this.transport === undefined ||
-      this.stale ||
-      this.namespaceUrl !== namespaceUrl ||
-      this.accessToken !== accessToken;
 
-    if (shouldRecreate) {
-      this.disposeSocket();
-
-      const transport = createSocketIoTransport({ baseUrl, accessToken });
-      transport.on(appErrorEvent, this.handleTerminalEvent);
-      transport.on(connectErrorEvent, this.handleTerminalEvent);
-      transport.on(disconnectEvent, this.handleTerminalEvent);
-
-      this.transport = transport;
-      this.namespaceUrl = namespaceUrl;
-      this.accessToken = accessToken;
-      this.stale = false;
+    if (
+      this.capabilityCacheKey === undefined ||
+      this.capabilityCacheKey !== `${namespaceUrl}:${accessToken}`
+    ) {
       this.capability = "unknown";
       this.capabilityCacheKey = `${namespaceUrl}:${accessToken}`;
       this.capabilityCheckedAtMs = 0;
-      plugLogger.debug("transport.socket.manager.created", {
-        socketMode: "agentsCommand",
-        namespaceUrl,
-      });
-    } else {
-      plugLogger.debug("transport.socket.manager.reused", {
-        socketMode: "agentsCommand",
-        namespaceUrl,
-      });
+      this.agentRecommendedStreamPullWindowSize = undefined;
+      this.agentMaxStreamPullWindowSize = undefined;
     }
 
-    return this.transport as ConsumerSocketTransport;
+    return transport as ConsumerSocketTransport;
   }
 
   private async probeAgentsCommandCapability(
@@ -167,7 +166,7 @@ export class ConsumerSocketExecutionManager {
 
       this.capabilityProbeInFlight = (async () => {
         try {
-          await executeConsumerCommand({
+          const probeResult = await executeConsumerCommand({
             transport,
             session: input.session,
             agentId: input.agentId,
@@ -181,7 +180,20 @@ export class ConsumerSocketExecutionManager {
               maxBufferedChunkItems: 4,
               maxBufferedRows: 128,
             },
+            requestServerTimings: input.requestServerTimings,
           });
+
+          this.agentRecommendedStreamPullWindowSize =
+            extractRecommendedStreamPullWindowSize(
+              probeResult.channel === "socket" && !probeResult.notification
+                ? probeResult.rawResponsePayload
+                : undefined,
+            );
+          this.agentMaxStreamPullWindowSize = extractMaxStreamPullWindowSize(
+            probeResult.channel === "socket" && !probeResult.notification
+              ? probeResult.rawResponsePayload
+              : undefined,
+          );
 
           this.capability = "supported";
           plugLogger.info("transport.socket.capability_probe.supported", {
@@ -195,8 +207,8 @@ export class ConsumerSocketExecutionManager {
         } catch (error: unknown) {
           if (error instanceof PlugTimeoutError) {
             if (Array.isArray(input.command)) {
-              this.stale = true;
-              this.transport?.disconnect();
+              this.managedTransport.markStale();
+              this.managedTransport.dispose();
               plugLogger.warn("transport.socket.capability_probe.batch_timeout", {
                 socketMode: "agentsCommand",
                 agentId: input.agentId,
@@ -211,8 +223,8 @@ export class ConsumerSocketExecutionManager {
             this.capability = "unsupported";
             this.capabilityCacheKey = capabilityKey;
             this.capabilityCheckedAtMs = Date.now();
-            this.stale = true;
-            this.transport?.disconnect();
+            this.managedTransport.markStale();
+            this.managedTransport.dispose();
             plugLogger.warn("transport.socket.capability_probe.fallback", {
               socketMode: "agentsCommand",
               agentId: input.agentId,
@@ -276,7 +288,10 @@ export class ConsumerSocketExecutionManager {
         socketMode: "relay",
         agentId: input.agentId,
       });
-      return options.fallbackExecutor(buildRelayFallbackInput(input));
+      const relayInput = buildRelayFallbackInput(input);
+      logRelayFallback(input, relayInput, "probe_timeout");
+      this.managedTransport.dispose();
+      return options.fallbackExecutor(relayInput);
     }
 
     const transport = this.ensureTransport(
@@ -297,6 +312,9 @@ export class ConsumerSocketExecutionManager {
         responseMode: input.responseMode,
         bufferLimits: input.bufferLimits,
         streamPullWindowSize: input.streamPullWindowSize,
+        requestServerTimings: input.requestServerTimings,
+        agentRecommendedStreamPullWindowSize: this.agentRecommendedStreamPullWindowSize,
+        agentMaxStreamPullWindowSize: this.agentMaxStreamPullWindowSize,
       });
       plugLogger.info("transport.socket.manager.completed", {
         socketMode: "agentsCommand",
@@ -306,7 +324,7 @@ export class ConsumerSocketExecutionManager {
       });
       return result;
     } catch (error: unknown) {
-      this.stale = true;
+      this.managedTransport.markStale();
       plugLogger.warn("transport.socket.manager.failed", {
         socketMode: "agentsCommand",
         agentId: input.agentId,
@@ -319,11 +337,10 @@ export class ConsumerSocketExecutionManager {
         !Array.isArray(input.command) &&
         options?.fallbackExecutor
       ) {
-        plugLogger.warn("transport.socket.manager.timeout_using_relay", {
-          socketMode: "relay",
-          agentId: input.agentId,
-        });
-        return options.fallbackExecutor(buildRelayFallbackInput(input));
+        const relayInput = buildRelayFallbackInput(input);
+        logRelayFallback(input, relayInput, "agents_command_timeout");
+        this.managedTransport.dispose();
+        return options.fallbackExecutor(relayInput);
       }
 
       if (error instanceof PlugTimeoutError && Array.isArray(input.command)) {
@@ -337,8 +354,7 @@ export class ConsumerSocketExecutionManager {
   }
 
   close(): void {
-    this.disposeSocket();
-    this.stale = false;
+    this.managedTransport.close();
   }
 }
 

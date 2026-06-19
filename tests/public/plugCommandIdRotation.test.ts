@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { BuiltCommandRequest } from "../../shared/contracts/api";
-import { rotateBuiltRequestCommandIdsForRetry } from "../../shared/n8n/plugCommandIdRotation";
+import type { BuiltCommandRequest } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
+import { rotateBuiltRequestCommandIdsForRetry } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugCommandIdRotation";
 
 const baseRequest = (): BuiltCommandRequest => ({
   operation: "executeSql",

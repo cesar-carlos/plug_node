@@ -8,7 +8,8 @@ import type {
 import type {
   PlugToolsSocketEventListener,
   PlugToolsSocketEventPublisher,
-} from "./plugToolsExecution";
+} from "./plugToolsCommon";
+import type { PayloadFrameSigningOptions } from "../contracts/payload-frame";
 
 export interface PlugSocketExecutor {
   (input: {
@@ -17,10 +18,7 @@ export interface PlugSocketExecutor {
     readonly command: BridgeCommand;
     readonly timeoutMs?: number;
     readonly payloadFrameCompression?: PayloadFrameCompression;
-    readonly payloadFrameSigning?: {
-      readonly key?: string;
-      readonly keyId?: string;
-    };
+    readonly payloadFrameSigning?: PayloadFrameSigningOptions;
     readonly responseMode: PlugResponseMode;
     readonly bufferLimits?: {
       readonly maxBufferedChunkItems?: number;
@@ -28,6 +26,12 @@ export interface PlugSocketExecutor {
       readonly maxBufferedBytes?: number;
     };
     readonly streamPullWindowSize?: number;
+    readonly fastPath?: boolean;
+    readonly requestServerTimings?: boolean;
+    readonly agentRecommendedStreamPullWindowSize?: number;
+    readonly agentMaxStreamPullWindowSize?: number;
+    readonly reusedConversationId?: string;
+    readonly skipConversationEnd?: boolean;
   }): Promise<PlugCommandTransportResult>;
 }
 

@@ -20,12 +20,40 @@ npm run test:e2e:socket
 npm run test:e2e:auth
 npm run test:e2e:stress
 npm run test:e2e:hub
+npm run test:e2e:ci
 npm run test:socket
 ```
 
 `test:e2e:hub` runs only REST and Socket E2E files (batch, hub SQL options, cancel suites are registered there).
 
+`test:e2e:ci` runs the CI smoke subset: live auth/session checks plus mocked custom socket event tests. It does not require `PLUG_E2E_DENIED_RESOURCE`.
+
 E2E is **not** part of `npm run verify`. The suite runs sequentially (`fileParallelism: false`).
+
+## CI / staging
+
+GitHub Actions exposes an optional `e2e-staging` job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). It runs on **workflow_dispatch** only and uses repository secrets:
+
+| Secret                  | Purpose                               |
+| ----------------------- | ------------------------------------- |
+| `PLUG_E2E_USER`         | Client login email                    |
+| `PLUG_E2E_PASSWORD`     | Client login password                 |
+| `PLUG_E2E_AGENT_ID`     | Default agent UUID                    |
+| `PLUG_E2E_CLIENT_TOKEN` | Client token for SQL smoke            |
+| `PLUG_E2E_BASE_URL`     | Hub base URL (e.g. staging `/api/v1`) |
+
+Optional repository variable: `PLUG_E2E_TIMEOUT_MS` (defaults to `30000` in CI).
+
+Owner governance smoke (`tests/e2e/user-access.e2e.test.ts`) uses optional owner credentials:
+
+| Variable                  | Purpose                                   |
+| ------------------------- | ----------------------------------------- |
+| `PLUG_E2E_OWNER_USER`     | Owner login email for `/me/clients` smoke |
+| `PLUG_E2E_OWNER_PASSWORD` | Owner login password                      |
+
+When unset, the owner E2E test is skipped. `PLUG_E2E_BASE_URL` is shared with other live suites.
+
+The job runs `npm run test:e2e:ci` and is marked `continue-on-error: true` so missing secrets do not block merges. For full hub coverage against staging, run `npm run test:e2e:hub` locally or extend the workflow once `PLUG_E2E_DENIED_RESOURCE` and optional cancel/bulk env vars are configured in secrets.
 
 ## Scope
 

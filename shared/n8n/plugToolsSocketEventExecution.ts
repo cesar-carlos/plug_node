@@ -12,7 +12,6 @@ import type {
 import { NodeOperationError } from "n8n-workflow";
 
 import {
-  DEFAULT_BASE_URL,
   DEFAULT_REQUEST_TIMEOUT_MS,
   type PayloadFrameCompression,
   type PlugCredentialDefaults,
@@ -20,6 +19,7 @@ import {
 } from "../contracts/api";
 import {
   assertPublishCustomSocketEventInput,
+  assertPublishCustomSocketEventInputWithinLimits,
   assertPublishCustomSocketEventResponse,
   defaultBinaryPropertyPrefix,
   defaultCustomSocketEventFileMaxBytes,
@@ -43,18 +43,17 @@ import {
 } from "../auth/session";
 import { publishCustomSocketEvent } from "../rest/customSocketEvents";
 import { buildN8nHttpRequester } from "./httpRequester";
+import { readPlugCredentials } from "./plugCommandRequestBuilder";
 import {
   plugToolPublishSocketEventOperation,
   plugToolWaitForSocketEventOperation,
 } from "./plugToolsDescription";
 import {
-  emptyInputItem,
-  serializeErrorForContinueOnFail,
   toNodeOperationError,
-  toOptionalString,
   type PlugToolsExecutionConfig,
   type PlugToolsSocketEventListenResult,
 } from "./plugToolsCommon";
+import { executePerInputItem } from "./plugItemExecution";
 import { isRecord, parseJsonText } from "../utils/json";
 import { buildApiUrl } from "../utils/url";
 
@@ -70,21 +69,10 @@ interface BinarySocketEventAttachment {
   readonly buffer: Buffer;
 }
 
-const readCredentials = async (
+const readSocketEventCredentials = async (
   context: IExecuteFunctions,
   credentialName: string,
-): Promise<PlugCredentialDefaults> => {
-  const rawCredentials = await context.getCredentials(credentialName);
-  return {
-    user: String(rawCredentials.user ?? ""),
-    password: String(rawCredentials.password ?? ""),
-    baseUrl: String(rawCredentials.baseUrl ?? DEFAULT_BASE_URL),
-    agentId: toOptionalString(rawCredentials.agentId),
-    clientToken: toOptionalString(rawCredentials.clientToken),
-    payloadSigningKey: toOptionalString(rawCredentials.payloadSigningKey),
-    payloadSigningKeyId: toOptionalString(rawCredentials.payloadSigningKeyId),
-  };
-};
+): Promise<PlugCredentialDefaults> => readPlugCredentials(context, credentialName);
 
 const normalizePublishChannel = (
   value: unknown,
@@ -226,6 +214,18 @@ const validateSocketEventPayloadAndAttachments = (
   },
   node: INode,
 ): void => {
+  assertPublishCustomSocketEventInputWithinLimits({
+    eventName: "client:custom.validation",
+    payload: input.payload,
+    attachments: input.attachments.map((attachment) => ({
+      fieldName: attachment.fieldName,
+      originalName: attachment.originalName,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+      base64: attachment.buffer.toString("base64"),
+    })),
+  });
+
   const payloadBytes = getJsonUtf8ByteLength(input.payload, "Payload JSON");
   if (payloadBytes > defaultCustomSocketEventPayloadJsonMaxBytes) {
     throw new NodeOperationError(
@@ -429,18 +429,16 @@ export const executePlugToolsSocketEventNode = async (
   context: IExecuteFunctions,
   config: PlugToolsExecutionConfig,
 ): Promise<INodeExecutionData[][]> => {
-  const sourceItems = context.getInputData();
-  const items = sourceItems.length > 0 ? sourceItems : [emptyInputItem];
-  const credentials = await readCredentials(
+  const credentials = await readSocketEventCredentials(
     context,
     config.credentialName ?? "plugDatabaseAccountApi",
   );
   const requester = buildN8nHttpRequester(context);
   const sessionRunner = createExecutionSessionRunner(requester, credentials);
-  const outputItems: INodeExecutionData[] = [];
 
-  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-    try {
+  return executePerInputItem(
+    context,
+    async (itemIndex) => {
       const rawOperation = context.getNodeParameter(
         "operation",
         itemIndex,
@@ -515,15 +513,12 @@ export const executePlugToolsSocketEventNode = async (
           }),
         );
 
-        outputItems.push(
-          await buildWaitForSocketEventOutputItem(context, {
-            result,
-            binaryPropertyPrefix,
-            includeMetadata,
-            itemIndex,
-          }),
-        );
-        continue;
+        return buildWaitForSocketEventOutputItem(context, {
+          result,
+          binaryPropertyPrefix,
+          includeMetadata,
+          itemIndex,
+        });
       }
 
       if (
@@ -613,7 +608,7 @@ export const executePlugToolsSocketEventNode = async (
         });
       });
 
-      outputItems.push({
+      return {
         json: {
           ...result,
           ...(includeMetadata
@@ -640,23 +635,11 @@ export const executePlugToolsSocketEventNode = async (
         pairedItem: {
           item: itemIndex,
         },
-      });
-    } catch (error: unknown) {
-      if (context.continueOnFail()) {
-        outputItems.push({
-          json: {
-            error: serializeErrorForContinueOnFail(error),
-          },
-          pairedItem: {
-            item: itemIndex,
-          },
-        });
-        continue;
-      }
-
-      throw toNodeOperationError(context, error, config.nodeDisplayName, itemIndex);
-    }
-  }
-
-  return [outputItems];
+      };
+    },
+    {
+      onError: (error, itemIndex) =>
+        toNodeOperationError(context, error, config.nodeDisplayName, itemIndex),
+    },
+  );
 };

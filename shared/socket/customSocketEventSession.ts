@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { RelayConnectionReadyPayload } from "../contracts/api";
+import { DEFAULT_API_VERSION, SOCKET_PROTOCOL_VERSION } from "../contracts/api";
 import type { PayloadFrameSigningOptions } from "../contracts/payload-frame";
 import {
   assertAgentProfileUpdatedPayload,
@@ -9,476 +9,62 @@ import {
   assertCustomSocketEventName,
   assertPublishCustomSocketEventInput,
   assertPublishCustomSocketEventInputWithinLimits,
-  assertSocketEventControlAck,
-  assertSocketEventPublishedAck,
   clientAgentProfileUpdatedEventName,
-  defaultSocketEventDeduplicationMaxEntries,
   defaultSocketEventAckTimeoutMs,
-  defaultManualListenTimeoutMs,
-  defaultSocketEventListenTimeoutMaxMs,
-  type AgentProfileUpdatedPayload,
-  type CustomSocketEventFramePayload,
   type PublishCustomSocketEventInput,
   type PublishCustomSocketEventResponse,
-  type SocketEventRuntimeMetadata,
-  type SocketEventPublishedAck,
-  type SocketEventControlAck,
 } from "../contracts/custom-socket-events";
-import { PlugError, PlugTimeoutError, PlugValidationError } from "../contracts/errors";
+import { PlugError, PlugValidationError } from "../contracts/errors";
 import { plugLogger } from "../logging/plugLogger";
+import {
+  customSocketAppErrorEvent as appErrorEvent,
+  customSocketConnectErrorEvent as connectErrorEvent,
+  customSocketConsumerCommandEvent as consumerCommandEvent,
+  customSocketDisconnectEvent as disconnectEvent,
+  customSocketPublishEvent as publishEvent,
+  customSocketSubscribeEvent as subscribeEvent,
+  customSocketSubscribedEvent as subscribedEvent,
+  customSocketUnsubscribeEvent as unsubscribeEvent,
+  customSocketUnsubscribedEvent as unsubscribedEvent,
+} from "./customSocketEventSessionConstants";
+export type {
+  CustomSocketEventSession,
+  CustomSocketEventTransport,
+  StartAgentProfileUpdatedSessionInput,
+  StartCustomSocketEventSessionInput,
+  WaitForCustomSocketEventInput,
+  WaitForCustomSocketEventResult,
+} from "./customSocketEventSessionTypes";
+import type {
+  CustomSocketEventSession,
+  CustomSocketEventTransport,
+  StartAgentProfileUpdatedSessionInput,
+  StartCustomSocketEventSessionInput,
+  WaitForCustomSocketEventInput,
+  WaitForCustomSocketEventResult,
+} from "./customSocketEventSessionTypes";
+import {
+  createCustomSocketAppError,
+  createCustomSocketConnectError,
+  createCustomSocketDisconnectError,
+} from "./customSocketEventSessionErrors";
+import {
+  assertRequiredPayloadSigningKey,
+  createConsumerIdleKeepalive,
+  createEventIdDedupe,
+  defaultCustomSocketEventDeduplicationMaxEntries,
+  normalizeConsumerIdleKeepaliveIntervalMs,
+  normalizeListenTimeoutMs,
+  normalizeNonNegativeInteger,
+  scheduleSocketEventTask,
+  withSigningPolicy,
+} from "./customSocketEventSessionSupport";
+import {
+  waitForConnectionReady,
+  waitForControlAck,
+  waitForPublishedAck,
+} from "./customSocketEventSessionWait";
 import { decodePayloadFrameAsync } from "./payloadFrameCodec";
-import { createSocketApplicationError, createSocketConnectError } from "./socketErrors";
-
-const appErrorEvent = "app:error";
-const connectErrorEvent = "connect_error";
-const disconnectEvent = "disconnect";
-const connectionReadyEvent = "connection:ready";
-const subscribeEvent = "socket:event.subscribe";
-const subscribedEvent = "socket:event.subscribed";
-const unsubscribeEvent = "socket:event.unsubscribe";
-const unsubscribedEvent = "socket:event.unsubscribed";
-const publishEvent = "socket:event.publish";
-const publishedEvent = "socket:event.published";
-
-export interface CustomSocketEventTransport {
-  readonly id?: string;
-  readonly connected: boolean;
-  connect(): void;
-  disconnect(): void;
-  on(event: string, handler: (payload: unknown) => void): void;
-  off(event: string, handler: (payload: unknown) => void): void;
-  emit(event: string, payload?: unknown): void;
-}
-
-export interface StartCustomSocketEventSessionInput {
-  readonly transport: CustomSocketEventTransport;
-  readonly eventNames: readonly string[];
-  readonly ackTimeoutMs?: number;
-  readonly payloadFrameSigning?: PayloadFrameSigningOptions;
-  readonly reconnectAttempt?: number;
-  readonly requirePayloadSignature?: boolean;
-  readonly deduplicateEventIdsTtlMs?: number;
-  readonly scheduleEvent?: (task: () => Promise<void>) => void;
-  readonly onEvent: (
-    event: CustomSocketEventFramePayload,
-    metadata: SocketEventRuntimeMetadata,
-  ) => void | Promise<void>;
-  readonly onFatalError: (error: PlugError) => void;
-}
-
-export interface StartAgentProfileUpdatedSessionInput {
-  readonly transport: CustomSocketEventTransport;
-  readonly ackTimeoutMs?: number;
-  readonly payloadFrameSigning?: PayloadFrameSigningOptions;
-  readonly reconnectAttempt?: number;
-  readonly requirePayloadSignature?: boolean;
-  readonly scheduleEvent?: (task: () => Promise<void>) => void;
-  readonly onEvent: (
-    event: AgentProfileUpdatedPayload,
-    metadata: SocketEventRuntimeMetadata,
-  ) => void | Promise<void>;
-  readonly onFatalError: (error: PlugError) => void;
-}
-
-export interface CustomSocketEventSession {
-  readonly eventNames: readonly string[];
-  close(options?: { readonly unsubscribe?: boolean }): Promise<void>;
-}
-
-export interface WaitForCustomSocketEventInput {
-  readonly transport: CustomSocketEventTransport;
-  readonly eventName: string;
-  readonly ackTimeoutMs?: number;
-  readonly listenTimeoutMs?: number;
-  readonly payloadFrameSigning?: PayloadFrameSigningOptions;
-  readonly requirePayloadSignature?: boolean;
-}
-
-export interface WaitForCustomSocketEventResult {
-  readonly event: CustomSocketEventFramePayload;
-  readonly metadata: SocketEventRuntimeMetadata;
-}
-
-const normalizeNonNegativeInteger = (value: unknown): number | undefined => {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  const numeric =
-    typeof value === "number"
-      ? value
-      : typeof value === "string" && value.trim() !== ""
-        ? Number(value)
-        : Number.NaN;
-
-  if (!Number.isFinite(numeric) || numeric < 0) {
-    return undefined;
-  }
-
-  return Math.floor(numeric);
-};
-
-const createEventIdDedupe = (
-  ttlMs: number | undefined,
-  maxEntries: number,
-): ((eventId: string, nowMs: number) => boolean) => {
-  if (ttlMs === undefined || ttlMs <= 0) {
-    return () => false;
-  }
-
-  const seen = new Map<string, number>();
-
-  return (eventId: string, nowMs: number): boolean => {
-    const existingExpiresAt = seen.get(eventId);
-    if (existingExpiresAt !== undefined && existingExpiresAt > nowMs) {
-      return true;
-    }
-
-    seen.set(eventId, nowMs + ttlMs);
-    for (const [cachedEventId, expiresAt] of seen) {
-      if (expiresAt <= nowMs || seen.size > maxEntries) {
-        seen.delete(cachedEventId);
-      }
-      if (seen.size <= maxEntries) {
-        break;
-      }
-    }
-
-    return false;
-  };
-};
-
-const normalizeRetryAfterSeconds = (retryAfterMs: unknown): number | undefined => {
-  if (
-    typeof retryAfterMs !== "number" ||
-    !Number.isFinite(retryAfterMs) ||
-    retryAfterMs <= 0
-  ) {
-    return undefined;
-  }
-
-  return Math.max(1, Math.ceil(retryAfterMs / 1000));
-};
-
-const createSocketAppError = (payload: unknown): PlugError =>
-  createSocketApplicationError(payload, {
-    refreshDescription: "The workflow will refresh the Plug session and reconnect.",
-    namespaceDeprecatedDescription:
-      "Use the /consumers namespace for custom socket events.",
-    retryableCodes: [
-      "CONSUMER_SOCKET_INITIALIZATION_FAILED",
-      "ROOM_JOIN_FAILED",
-      "SOCKET_APP_ERROR",
-    ],
-  });
-
-const createConnectError = (payload: unknown): PlugError =>
-  createSocketConnectError(payload, {
-    refreshDescription: "The workflow will refresh the Plug session and reconnect.",
-    retryDescription: "Run the workflow again to create a fresh socket connection.",
-  });
-
-const createDisconnectError = (reason: unknown): PlugError =>
-  new PlugError("The Plug socket disconnected while listening for custom events.", {
-    code: "SOCKET_DISCONNECTED",
-    description: "The workflow will need to reconnect before receiving more events.",
-    technicalMessage: typeof reason === "string" ? reason : undefined,
-    retryable: true,
-  });
-
-const buildSocketAckError = (
-  error: {
-    readonly code: string;
-    readonly message: string;
-    readonly statusCode?: number;
-    readonly retryAfterMs?: number;
-  },
-  rateLimit: unknown,
-): PlugError => {
-  const retryAfterSeconds = normalizeRetryAfterSeconds(error.retryAfterMs);
-  return new PlugError(error.message, {
-    code: error.code,
-    statusCode: error.statusCode,
-    retryable: error.code === "RATE_LIMITED" || error.statusCode === 429,
-    retryAfterSeconds,
-    details: rateLimit ? { rateLimit } : undefined,
-  });
-};
-
-const createControlError = (
-  ack: Extract<SocketEventControlAck, { success: false }>,
-): PlugError => buildSocketAckError(ack.error, ack.rateLimit);
-
-const createPublishedError = (
-  ack: Extract<SocketEventPublishedAck, { success: false }>,
-): PlugError => buildSocketAckError(ack.error, ack.rateLimit);
-
-const withSigningPolicy = (
-  signing: PayloadFrameSigningOptions | undefined,
-  requirePayloadSignature: boolean | undefined,
-): PayloadFrameSigningOptions | undefined => {
-  if (!signing && !requirePayloadSignature) {
-    return undefined;
-  }
-
-  return {
-    ...(signing ?? {}),
-    ...(requirePayloadSignature ? { requireSignature: true } : {}),
-  };
-};
-
-const assertRequiredPayloadSigningKey = (
-  signing: PayloadFrameSigningOptions | undefined,
-  requirePayloadSignature: boolean | undefined,
-): void => {
-  if (requirePayloadSignature && (!signing?.key || signing.key.trim() === "")) {
-    throw new PlugValidationError(
-      "Payload Signing Key is required when Require Payload Signature is enabled.",
-    );
-  }
-};
-
-const scheduleSocketEventTask = (
-  scheduler: ((task: () => Promise<void>) => void) | undefined,
-  task: () => Promise<void>,
-  onError: (error: unknown) => void,
-): void => {
-  if (scheduler) {
-    scheduler(task);
-    return;
-  }
-
-  void task().catch(onError);
-};
-
-const normalizeListenTimeoutMs = (value: number | undefined): number => {
-  const numeric = value ?? defaultManualListenTimeoutMs;
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    throw new PlugValidationError("Listen Timeout (MS) must be a positive number");
-  }
-
-  const normalized = Math.floor(numeric);
-  if (normalized > defaultSocketEventListenTimeoutMaxMs) {
-    throw new PlugValidationError(
-      `Listen Timeout (MS) must be at most ${defaultSocketEventListenTimeoutMaxMs}`,
-    );
-  }
-
-  return normalized;
-};
-
-const waitForConnectionReady = async (
-  transport: CustomSocketEventTransport,
-  timeoutMs: number,
-  signing?: PayloadFrameSigningOptions,
-): Promise<RelayConnectionReadyPayload> =>
-  new Promise<RelayConnectionReadyPayload>((resolve, reject) => {
-    const cleanup = (): void => {
-      clearTimeout(timer);
-      transport.off(connectionReadyEvent, handleReady);
-      transport.off(appErrorEvent, handleAppError);
-      transport.off(connectErrorEvent, handleConnectError);
-      transport.off(disconnectEvent, handleDisconnect);
-    };
-
-    const handleReady = (payload: unknown): void => {
-      cleanup();
-      void decodePayloadFrameAsync<RelayConnectionReadyPayload>(payload, {
-        signing,
-      }).then((decoded) => resolve(decoded.data), reject);
-    };
-
-    const handleAppError = (payload: unknown): void => {
-      cleanup();
-      reject(createSocketAppError(payload));
-    };
-
-    const handleConnectError = (payload: unknown): void => {
-      cleanup();
-      reject(createConnectError(payload));
-    };
-
-    const handleDisconnect = (payload: unknown): void => {
-      cleanup();
-      reject(createDisconnectError(payload));
-    };
-
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(
-        new PlugTimeoutError("Timed out while waiting for socket connection:ready", {
-          timeoutMs,
-          eventName: connectionReadyEvent,
-        }),
-      );
-    }, timeoutMs);
-
-    transport.on(connectionReadyEvent, handleReady);
-    transport.on(appErrorEvent, handleAppError);
-    transport.on(connectErrorEvent, handleConnectError);
-    transport.on(disconnectEvent, handleDisconnect);
-    transport.connect();
-  });
-
-const waitForControlAck = async (input: {
-  readonly transport: CustomSocketEventTransport;
-  readonly requestEvent: string;
-  readonly responseEvent: string;
-  readonly requestId: string;
-  readonly eventName: string;
-  readonly expectedSubscribed: boolean;
-  readonly timeoutMs: number;
-}): Promise<void> =>
-  new Promise<void>((resolve, reject) => {
-    const cleanup = (): void => {
-      clearTimeout(timer);
-      input.transport.off(input.responseEvent, handleAck);
-      input.transport.off(appErrorEvent, handleAppError);
-      input.transport.off(connectErrorEvent, handleConnectError);
-      input.transport.off(disconnectEvent, handleDisconnect);
-    };
-
-    const handleAck = (payload: unknown): void => {
-      try {
-        const ack = assertSocketEventControlAck(payload);
-        if (ack.success) {
-          if (
-            ack.requestId !== input.requestId ||
-            ack.data.eventName !== input.eventName ||
-            ack.data.subscribed !== input.expectedSubscribed
-          ) {
-            return;
-          }
-
-          cleanup();
-          resolve();
-          return;
-        }
-
-        if (ack.requestId !== input.requestId) {
-          return;
-        }
-
-        cleanup();
-        reject(createControlError(ack));
-      } catch (error: unknown) {
-        cleanup();
-        reject(error);
-      }
-    };
-
-    const handleAppError = (payload: unknown): void => {
-      cleanup();
-      reject(createSocketAppError(payload));
-    };
-
-    const handleConnectError = (payload: unknown): void => {
-      cleanup();
-      reject(createConnectError(payload));
-    };
-
-    const handleDisconnect = (payload: unknown): void => {
-      cleanup();
-      reject(createDisconnectError(payload));
-    };
-
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(
-        new PlugTimeoutError(`Timed out while waiting for ${input.responseEvent}`, {
-          timeoutMs: input.timeoutMs,
-          eventName: input.responseEvent,
-          requestId: input.requestId,
-          customEventName: input.eventName,
-        }),
-      );
-    }, input.timeoutMs);
-
-    input.transport.on(input.responseEvent, handleAck);
-    input.transport.on(appErrorEvent, handleAppError);
-    input.transport.on(connectErrorEvent, handleConnectError);
-    input.transport.on(disconnectEvent, handleDisconnect);
-    input.transport.emit(input.requestEvent, {
-      requestId: input.requestId,
-      eventName: input.eventName,
-    });
-  });
-
-const waitForPublishedAck = async (input: {
-  readonly transport: CustomSocketEventTransport;
-  readonly requestId: string;
-  readonly timeoutMs: number;
-}): Promise<PublishCustomSocketEventResponse> =>
-  new Promise<PublishCustomSocketEventResponse>((resolve, reject) => {
-    const cleanup = (): void => {
-      clearTimeout(timer);
-      input.transport.off(publishedEvent, handleAck);
-      input.transport.off(appErrorEvent, handleAppError);
-      input.transport.off(connectErrorEvent, handleConnectError);
-      input.transport.off(disconnectEvent, handleDisconnect);
-    };
-
-    const handleAck = (payload: unknown): void => {
-      try {
-        const ack = assertSocketEventPublishedAck(payload);
-        if (ack.requestId !== input.requestId) {
-          return;
-        }
-
-        cleanup();
-        if (!ack.success) {
-          reject(createPublishedError(ack));
-          return;
-        }
-
-        resolve({
-          success: true,
-          eventId: ack.data.eventId,
-          eventName: ack.data.eventName,
-          recipients: ack.data.recipients,
-          idempotentReplay: ack.data.idempotentReplay,
-          ...(ack.data.idempotencyKey !== undefined
-            ? { idempotencyKey: ack.data.idempotencyKey }
-            : {}),
-          requestId: ack.requestId,
-        });
-      } catch (error: unknown) {
-        cleanup();
-        reject(error);
-      }
-    };
-
-    const handleAppError = (payload: unknown): void => {
-      cleanup();
-      reject(createSocketAppError(payload));
-    };
-
-    const handleConnectError = (payload: unknown): void => {
-      cleanup();
-      reject(createConnectError(payload));
-    };
-
-    const handleDisconnect = (payload: unknown): void => {
-      cleanup();
-      reject(createDisconnectError(payload));
-    };
-
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(
-        new PlugTimeoutError(`Timed out while waiting for ${publishedEvent}`, {
-          timeoutMs: input.timeoutMs,
-          eventName: publishedEvent,
-          requestId: input.requestId,
-        }),
-      );
-    }, input.timeoutMs);
-
-    input.transport.on(publishedEvent, handleAck);
-    input.transport.on(appErrorEvent, handleAppError);
-    input.transport.on(connectErrorEvent, handleConnectError);
-    input.transport.on(disconnectEvent, handleDisconnect);
-  });
 
 export const publishCustomSocketEventOverSocket = async (input: {
   readonly transport: CustomSocketEventTransport;
@@ -623,11 +209,32 @@ export const startCustomSocketEventSession = async (
   const dedupeTtlMs = normalizeNonNegativeInteger(input.deduplicateEventIdsTtlMs);
   const isDuplicateEventId = createEventIdDedupe(
     dedupeTtlMs,
-    defaultSocketEventDeduplicationMaxEntries,
+    defaultCustomSocketEventDeduplicationMaxEntries,
   );
   const subscribed = new Set<string>();
   const eventHandlers = new Map<string, (payload: unknown) => void>();
   let closing = false;
+  let keepaliveSubscribeIndex = 0;
+  const keepaliveIntervalMs = normalizeConsumerIdleKeepaliveIntervalMs(
+    input.consumerIdleKeepaliveIntervalMs,
+  );
+  const keepalive = createConsumerIdleKeepalive({
+    transport: input.transport,
+    intervalMs: keepaliveIntervalMs,
+    isActive: () => !closing,
+    touch: () => {
+      const eventName = eventNames[keepaliveSubscribeIndex % eventNames.length];
+      keepaliveSubscribeIndex += 1;
+      input.transport.emit(subscribeEvent, {
+        requestId: randomUUID(),
+        eventName,
+      });
+      plugLogger.debug("transport.socket.custom_event.keepalive", {
+        touchEvent: subscribeEvent,
+        eventName,
+      });
+    },
+  });
 
   try {
     await waitForConnectionReady(
@@ -647,13 +254,13 @@ export const startCustomSocketEventSession = async (
   };
 
   const handleAppError = (payload: unknown): void => {
-    notifyFatal(createSocketAppError(payload));
+    notifyFatal(createCustomSocketAppError(payload));
   };
   const handleConnectError = (payload: unknown): void => {
-    notifyFatal(createConnectError(payload));
+    notifyFatal(createCustomSocketConnectError(payload));
   };
   const handleDisconnect = (payload: unknown): void => {
-    notifyFatal(createDisconnectError(payload));
+    notifyFatal(createCustomSocketDisconnectError(payload));
   };
 
   input.transport.on(appErrorEvent, handleAppError);
@@ -749,6 +356,7 @@ export const startCustomSocketEventSession = async (
     }
   } catch (error: unknown) {
     closing = true;
+    keepalive.stop();
     for (const [eventName, handler] of eventHandlers) {
       input.transport.off(eventName, handler);
     }
@@ -764,6 +372,7 @@ export const startCustomSocketEventSession = async (
     eventNames,
     close: async (options): Promise<void> => {
       closing = true;
+      keepalive.stop();
       for (const [eventName, handler] of eventHandlers) {
         input.transport.off(eventName, handler);
       }
@@ -786,6 +395,42 @@ export const startAgentProfileUpdatedSession = async (
   const timeoutMs = input.ackTimeoutMs ?? defaultSocketEventAckTimeoutMs;
   const reconnectAttempt = Math.max(0, Math.floor(input.reconnectAttempt ?? 0));
   let closing = false;
+  const agentId = input.agentId?.trim();
+  const keepaliveIntervalMs = normalizeConsumerIdleKeepaliveIntervalMs(
+    input.consumerIdleKeepaliveIntervalMs,
+  );
+  const keepalive = createConsumerIdleKeepalive({
+    transport: input.transport,
+    intervalMs: keepaliveIntervalMs,
+    isActive: () => !closing,
+    touch: () => {
+      if (!agentId) {
+        plugLogger.warn("transport.socket.custom_event.keepalive_skipped", {
+          reason: "missing_agent_id",
+        });
+        return;
+      }
+
+      input.transport.emit(consumerCommandEvent, {
+        protocolVersion: SOCKET_PROTOCOL_VERSION,
+        requestId: randomUUID(),
+        clientRequestId: randomUUID(),
+        agentId,
+        command: {
+          jsonrpc: "2.0",
+          method: "rpc.discover",
+          id: null,
+          api_version: DEFAULT_API_VERSION,
+        },
+        timeoutMs: Math.min(timeoutMs, 5_000),
+        payloadFrameCompression: "default",
+      });
+      plugLogger.debug("transport.socket.custom_event.keepalive", {
+        touchEvent: consumerCommandEvent,
+        agentId,
+      });
+    },
+  });
 
   try {
     await waitForConnectionReady(
@@ -794,6 +439,8 @@ export const startAgentProfileUpdatedSession = async (
       withSigningPolicy(input.payloadFrameSigning, input.requirePayloadSignature),
     );
   } catch (error: unknown) {
+    closing = true;
+    keepalive.stop();
     input.transport.disconnect();
     throw error;
   }
@@ -805,13 +452,13 @@ export const startAgentProfileUpdatedSession = async (
   };
 
   const handleAppError = (payload: unknown): void => {
-    notifyFatal(createSocketAppError(payload));
+    notifyFatal(createCustomSocketAppError(payload));
   };
   const handleConnectError = (payload: unknown): void => {
-    notifyFatal(createConnectError(payload));
+    notifyFatal(createCustomSocketConnectError(payload));
   };
   const handleDisconnect = (payload: unknown): void => {
-    notifyFatal(createDisconnectError(payload));
+    notifyFatal(createCustomSocketDisconnectError(payload));
   };
   const handleProfileUpdated = (payload: unknown): void => {
     scheduleSocketEventTask(
@@ -854,6 +501,7 @@ export const startAgentProfileUpdatedSession = async (
     eventNames: [clientAgentProfileUpdatedEventName],
     close: async (): Promise<void> => {
       closing = true;
+      keepalive.stop();
       input.transport.off(appErrorEvent, handleAppError);
       input.transport.off(connectErrorEvent, handleConnectError);
       input.transport.off(disconnectEvent, handleDisconnect);

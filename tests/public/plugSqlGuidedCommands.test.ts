@@ -8,6 +8,8 @@ import {
   buildGuidedCancelCommand,
   buildGuidedSqlCommand,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugSqlGuidedCommands";
+import { finalizeBuiltCommandRequest } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugCommandRequestBuilder";
+import { plugBulkInsertMaxRows } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugSqlPerformanceHints";
 import { createMockExecuteContext } from "../helpers/mockExecuteFunctions";
 
 const executionContext: PlugResolvedExecutionContext = {
@@ -248,6 +250,142 @@ describe("plugSqlGuidedCommands", () => {
 
     expect(() => buildGuidedBulkInsertCommand(context, 0, executionContext)).toThrow(
       "Row at index 0 must have 1 value(s) to match Columns JSON",
+    );
+  });
+
+  it("applies auto max_parallel_read_only_batch_items for read-only batches when hints are enabled", () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "client@example.com",
+        password: "secret",
+        baseUrl: "https://plug-server.example.com/api/v1",
+      },
+      parameters: {
+        batchCommandsJson:
+          '[{"sql":"SELECT TOP 1 * FROM Cliente"},{"sql":"SELECT TOP 1 * FROM Vendedor"}]',
+        batchOptions: {
+          autoPerformanceHints: true,
+        },
+      },
+      responses: [],
+    });
+
+    const built = buildGuidedBatchCommand(context, 0, executionContext);
+
+    expect(built.command.params?.options).toMatchObject({
+      max_parallel_read_only_batch_items: 2,
+    });
+  });
+
+  it("does not apply auto batch parallelism when the batch contains mutations", () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "client@example.com",
+        password: "secret",
+        baseUrl: "https://plug-server.example.com/api/v1",
+      },
+      parameters: {
+        batchCommandsJson:
+          '[{"sql":"SELECT TOP 1 * FROM Cliente"},{"sql":"UPDATE Cliente SET Nome = \'x\' WHERE CodCliente = 1"}]',
+        batchOptions: {
+          autoPerformanceHints: true,
+        },
+      },
+      responses: [],
+    });
+
+    const built = buildGuidedBatchCommand(context, 0, executionContext);
+
+    expect(
+      built.command.params?.options?.max_parallel_read_only_batch_items,
+    ).toBeUndefined();
+  });
+
+  it("applies auto prefer_db_streaming on socket when hints are enabled", () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "client@example.com",
+        password: "secret",
+        baseUrl: "https://plug-server.example.com/api/v1",
+      },
+      parameters: {
+        channel: "socket",
+        sql: "SELECT * FROM Cliente",
+        namedParamsJson: "",
+        sqlOptions: {
+          autoPerformanceHints: true,
+        },
+      },
+      responses: [],
+      nodeTypeVersion: 2,
+    });
+
+    const built = finalizeBuiltCommandRequest(
+      buildGuidedSqlCommand(context, 0, executionContext),
+      context,
+      0,
+      { supportsSocket: true },
+      "executeSql",
+    );
+
+    expect(built.command.params?.options).toMatchObject({
+      prefer_db_streaming: true,
+    });
+    expect(built.channel).toBe("socket");
+  });
+
+  it("respects explicit preferDbStreaming false even when auto hints are enabled", () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "client@example.com",
+        password: "secret",
+        baseUrl: "https://plug-server.example.com/api/v1",
+      },
+      parameters: {
+        channel: "socket",
+        sql: "SELECT * FROM Cliente",
+        namedParamsJson: "",
+        sqlOptions: {
+          autoPerformanceHints: true,
+          preferDbStreaming: false,
+        },
+      },
+      responses: [],
+      nodeTypeVersion: 2,
+    });
+
+    const built = finalizeBuiltCommandRequest(
+      buildGuidedSqlCommand(context, 0, executionContext),
+      context,
+      0,
+      { supportsSocket: true },
+      "executeSql",
+    );
+
+    expect(built.command.params?.options).toMatchObject({
+      prefer_db_streaming: false,
+    });
+  });
+
+  it("rejects bulk insert above hub row limits", () => {
+    const rows = Array.from({ length: plugBulkInsertMaxRows + 1 }, (_, index) => [index]);
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "client@example.com",
+        password: "secret",
+        baseUrl: "https://plug-server.example.com/api/v1",
+      },
+      parameters: {
+        bulkInsertTable: "dbo.Example",
+        bulkInsertColumnsJson: '[{"name":"id","type":"i64"}]',
+        bulkInsertRowsJson: JSON.stringify(rows),
+        bulkInsertOptions: {},
+      },
+      responses: [],
+    });
+
+    expect(() => buildGuidedBulkInsertCommand(context, 0, executionContext)).toThrow(
+      PlugValidationError,
     );
   });
 

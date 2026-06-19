@@ -1,0 +1,11 @@
+export const customSocketAppErrorEvent = "app:error";
+export const customSocketConnectErrorEvent = "connect_error";
+export const customSocketDisconnectEvent = "disconnect";
+export const customSocketConnectionReadyEvent = "connection:ready";
+export const customSocketSubscribeEvent = "socket:event.subscribe";
+export const customSocketSubscribedEvent = "socket:event.subscribed";
+export const customSocketUnsubscribeEvent = "socket:event.unsubscribe";
+export const customSocketUnsubscribedEvent = "socket:event.unsubscribed";
+export const customSocketPublishEvent = "socket:event.publish";
+export const customSocketPublishedEvent = "socket:event.published";
+export const customSocketConsumerCommandEvent = "agents:command";

@@ -65,6 +65,16 @@ describe("Plug account credential snapshot", () => {
             "password": true,
           },
         },
+        {
+          "default": "",
+          "description": "Optional JSON array of previous HMAC signing keys for key rotation, e.g. [{"key":"...","keyId":"old-key-1"}].",
+          "displayName": "Payload Signing Previous Keys JSON",
+          "name": "payloadSigningPreviousKeysJson",
+          "type": "string",
+          "typeOptions": {
+            "password": true,
+          },
+        },
       ]
     `);
     expect(credential.test).toMatchInlineSnapshot(`

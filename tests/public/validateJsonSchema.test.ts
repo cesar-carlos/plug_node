@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PlugValidationError } from "../../shared/contracts/errors";
+import { PlugValidationError } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
 import { validateJsonSchema } from "../../packages/n8n-nodes-plug-database/generated/shared/tools/data";
 
 describe("validateJsonSchema", () => {

@@ -1,0 +1,17 @@
+export const relayAppErrorEvent = "app:error";
+export const relayConnectErrorEvent = "connect_error";
+export const relayDisconnectEvent = "disconnect";
+export const relayConnectionReadyEvent = "connection:ready";
+export const relayConversationStartEvent = "relay:conversation.start";
+export const relayConversationStartedEvent = "relay:conversation.started";
+export const relayConversationEndEvent = "relay:conversation.end";
+export const relayRpcRequestEvent = "relay:rpc.request";
+export const relayRpcRequestBatchEvent = "relay:rpc.request.batch";
+export const relayRpcAcceptedEvent = "relay:rpc.accepted";
+export const relayRpcBatchAcceptedEvent = "relay:rpc.batch_accepted";
+export const relayRpcResponseEvent = "relay:rpc.response";
+export const relayRpcChunkEvent = "relay:rpc.chunk";
+export const relayRpcCompleteEvent = "relay:rpc.complete";
+export const relayRpcStreamPullEvent = "relay:rpc.stream.pull";
+export const relayRpcStreamPullResponseEvent = "relay:rpc.stream.pull_response";
+export const relayMaxStreamPullWindowSize = 1000;

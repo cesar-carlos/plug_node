@@ -21,6 +21,12 @@ export const defaultCustomSocketEventTotalFilesMaxBytes = 2_097_152;
 export const defaultCustomSocketEventPayloadJsonMaxBytes = 524_288;
 export const defaultSocketEventDeduplicationTtlMs = 300_000;
 export const defaultSocketEventDeduplicationMaxEntries = 4096;
+/** Hub default `SOCKET_CONSUMER_IDLE_TIMEOUT_MS` (30 min). */
+export const defaultConsumerIdleTimeoutMs = 1_800_000;
+/** Default keepalive cadence for long-lived `/consumers` listeners (20 min). */
+export const defaultConsumerIdleKeepaliveIntervalMs = 1_200_000;
+export const minConsumerIdleKeepaliveIntervalMs = 60_000;
+export const maxConsumerIdleKeepaliveIntervalMs = 1_700_000;
 
 const customSocketEventNamePattern = /^client:custom\.[A-Za-z0-9][A-Za-z0-9._:-]{0,113}$/;
 

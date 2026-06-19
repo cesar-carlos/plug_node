@@ -23,13 +23,14 @@
     "changeset:status": "changeset status --verbose",
     "pack:check": "node ./scripts/check-packages.mjs && node ./scripts/diagnose-plug-surface.mjs --check && node ./scripts/smoke-install-packages.mjs",
     "diagnose:surface": "node ./scripts/diagnose-plug-surface.mjs",
-    "verify:surface": "node ./scripts/verify-plug-surface.mjs",
+    "verify:deps": "npm run sync-shared && depcruise --config .dependency-cruiser.js shared packages/n8n-nodes-plug-database/credentials packages/n8n-nodes-plug-database/nodes",
     "verify:doc-links": "node ./scripts/verify-doc-links.mjs",
     "scan:public": "npx @n8n/scan-community-package n8n-nodes-plug-database",
     "publish:packages": "changeset publish",
     "sync-shared": "node ./scripts/sync-shared.mjs",
     "build": "npm run build --workspaces --if-present",
     "bench:payload-frame": "npm run sync-shared && npm run build --workspace n8n-nodes-plug-database && node ./scripts/benchmark-payload-frame.mjs",
+    "bench:payload-frame:check": "npm run sync-shared && npm run build --workspace n8n-nodes-plug-database && node ./scripts/check-payload-frame-benchmark.mjs",
     "ci": "npm run verify",
     "dev": "npm run dev --workspaces --if-present",
     "format": "prettier --write .",
@@ -51,14 +52,16 @@
     "test:e2e:auth": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/auth.e2e.test.ts",
     "test:e2e:stress": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/stress.e2e.test.ts",
     "test:e2e:hub": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/rest.e2e.test.ts tests/e2e/socket.e2e.test.ts",
+    "test:e2e:ci": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/auth.e2e.test.ts tests/e2e/custom-socket-events.e2e.test.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
-    "verify": "npm run format:check && npm run verify:surface && npm run verify:doc-links && npm run migrate:workflows:check-examples && npm run lint && npm run typecheck && npm test && npm run build"
+    "verify": "npm run format:check && npm run verify:surface && npm run verify:doc-links && npm run migrate:workflows:check-examples && npm run verify:deps && npm run lint && npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
     "@types/papaparse": "^5.5.2",
     "@vitest/coverage-v8": "4.1.5",
+    "dependency-cruiser": "^16.10.4",
     "dotenv": "^17.4.2",
     "vitest": "4.1.5"
   }

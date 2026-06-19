@@ -69,6 +69,17 @@ export const plugDatabaseAccountCredentialProperties: INodeProperties[] = [
     description:
       "Optional key identifier sent as PayloadFrame signature.key_id and required when verifying signed frames.",
   },
+  {
+    displayName: "Payload Signing Previous Keys JSON",
+    name: "payloadSigningPreviousKeysJson",
+    type: "string",
+    typeOptions: {
+      password: true,
+    },
+    default: "",
+    description:
+      'Optional JSON array of previous HMAC signing keys for key rotation, e.g. [{"key":"...","keyId":"old-key-1"}].',
+  },
 ];
 
 export const plugDatabaseAccountCredentialTest: ICredentialTestRequest = {

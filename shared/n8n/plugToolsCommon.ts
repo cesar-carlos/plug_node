@@ -1,4 +1,4 @@
-import type { IDataObject, IExecuteFunctions, INodeExecutionData } from "n8n-workflow";
+import type { IExecuteFunctions } from "n8n-workflow";
 import { NodeOperationError } from "n8n-workflow";
 
 import { toNodeFacingError } from "../output/errorOutput";
@@ -18,6 +18,7 @@ import type {
 } from "../contracts/custom-socket-events";
 import type { HtmlToPdfRenderer } from "../tools/pdf";
 import { parseJsonText } from "../utils/json";
+import { toOptionalString } from "./plugExecutionParameters";
 
 export interface PlugToolsPdfExecutionConfig {
   readonly nodeDisplayName: string;
@@ -79,22 +80,8 @@ export interface PlugToolsExecutionConfig {
   readonly socketEventListener?: PlugToolsSocketEventListener;
 }
 
-export const emptyInputItem: INodeExecutionData = { json: {} };
-
-export const toCollection = (
-  context: IExecuteFunctions,
-  parameterName: string,
-  itemIndex: number,
-): IDataObject => context.getNodeParameter(parameterName, itemIndex, {}) as IDataObject;
-
-export const toOptionalString = (value: unknown): string | undefined => {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-};
+export { emptyInputItem } from "./plugItemExecution";
+export { toCollection, toOptionalString } from "./plugExecutionParameters";
 
 export const normalizeOutputBinaryProperty = (value: unknown): string => {
   const propertyName = toOptionalString(value) ?? "data";

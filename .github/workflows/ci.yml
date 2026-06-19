@@ -87,5 +87,39 @@ jobs:
       - name: Verify workspace
         run: npm run verify
 
+      - name: Check PayloadFrame benchmark regression
+        run: PLUG_BENCH_ITERATIONS=100 npm run bench:payload-frame:check
+
       - name: Validate npm tarballs
         run: npm run pack:check
+
+  e2e-staging:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Repair optional native bindings on Linux
+        run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
+
+      - name: Run staging E2E smoke
+        env:
+          PLUG_E2E_USER: ${{ secrets.PLUG_E2E_USER }}
+          PLUG_E2E_PASSWORD: ${{ secrets.PLUG_E2E_PASSWORD }}
+          PLUG_E2E_AGENT_ID: ${{ secrets.PLUG_E2E_AGENT_ID }}
+          PLUG_E2E_CLIENT_TOKEN: ${{ secrets.PLUG_E2E_CLIENT_TOKEN }}
+          PLUG_E2E_BASE_URL: ${{ secrets.PLUG_E2E_BASE_URL }}
+          PLUG_E2E_TIMEOUT_MS: ${{ vars.PLUG_E2E_TIMEOUT_MS || '30000' }}
+        run: npm run test:e2e:ci

@@ -25,7 +25,28 @@ Socket typeVersion 2 reuses the consumer transport for all items in one node exe
 
 Defaults (per item): 512 chunks, 50,000 rows, 8 MB. Tune under **Socket Options** when streaming large reports, or use **Chunk Items** to avoid holding the full result in memory.
 
-`streamPullWindowSize` (1–1000, default 32) controls how many chunks are requested per pull window.
+`streamPullWindowSize` (0–1000) controls how many chunks are requested per pull window. Use **0** for adaptive mode (agent `recommendedStreamPullWindowSize`, clamped to 1000). When the agent does not advertise a recommendation, the internal fallback is **256**, aligned with the hub default.
+
+## Relay Fast Path
+
+Enable **Relay Fast Path** under **Socket Options** (`fastPath: true`) for relay transport workloads where the hub supports unary fast-path routing. This skips `relay:rpc.accepted` on the happy path and routes responses by JSON-RPC body `id`. Prefer it for cross-agent relay RPC and unary workloads where latency matters. See `plug_server/docs/relay_fastpath_study.md` for hub-side trade-offs.
+
+**Request Server Timings** (`requestServerTimings: true` in Socket Options) asks the hub to include server-side phase timings in relay responses when supported.
+
+## Auto Performance Hints
+
+**Auto Performance Hints** (default **on** in Execute SQL and Execute Batch **Additional Options**) applies performance suggestions only when you have not set the related option explicitly:
+
+| Operation     | When hints apply (Socket / batch)             | Suggestion                                   |
+| ------------- | --------------------------------------------- | -------------------------------------------- |
+| Execute SQL   | Channel = **Socket**, eligible large `SELECT` | `options.prefer_db_streaming: true`          |
+| Execute Batch | All commands are read-only `SELECT`           | `options.max_parallel_read_only_batch_items` |
+
+Hints do **not** override explicit **Prefer DB Streaming**, **Max Parallel Read-Only Items**, or **Auto Performance Hints = off**.
+
+## Bulk Insert limits
+
+Bulk Insert is validated client-side before dispatch: at most **50,000** rows and ~**10 MiB** of serialized `table`/`columns`/`rows` JSON (hub `AGENT_SQL_BULK_INSERT_MAX_ROWS` / `AGENT_SQL_BULK_INSERT_MAX_JSON_BYTES`). Split larger loads into multiple node runs or batches manually; the node does not auto-chunk.
 
 ## Socket timeouts
 
@@ -61,6 +82,7 @@ Enable **Coalesce Input Items** under batch **Additional Options** to merge `Bat
 - Maximum **100** commands after merge.
 - The node returns **one** output item; `__plug.coalescedItemCount` records how many input items were merged.
 - Failures apply to the whole batch (not per-item `continueOnFail` granularity).
+- **Max Parallel Read-Only Items** and **Auto Performance Hints** control `max_parallel_read_only_batch_items` for read-only batches (see Auto Performance Hints above).
 
 ## Hub alignment
 

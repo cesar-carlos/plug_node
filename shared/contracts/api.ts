@@ -3,8 +3,8 @@ export const DEFAULT_API_VERSION = "2.8";
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 /** Max wait for socket `connection:ready` before failing the command (separate from idle command timeout). */
 export const DEFAULT_SOCKET_CONNECT_TIMEOUT_MS = 10_000;
-export const DEFAULT_RELAY_PULL_WINDOW = 32;
-export const DEFAULT_CONSUMER_SOCKET_PULL_WINDOW = 32;
+export const DEFAULT_RELAY_PULL_WINDOW = 256;
+export const DEFAULT_CONSUMER_SOCKET_PULL_WINDOW = 256;
 export const SOCKET_PROTOCOL_VERSION = "2026-05-14";
 
 export type PlugChannel = "rest" | "socket";
@@ -50,6 +50,12 @@ export interface PlugCredentialDefaults extends PlugClientAuthCredentials {
   readonly clientToken?: string;
   readonly payloadSigningKey?: string;
   readonly payloadSigningKeyId?: string;
+  readonly payloadSigningPreviousKeysJson?: string;
+}
+
+export interface PlugServerTimings {
+  readonly schemaVersion: number;
+  readonly phasesMs: Record<string, number>;
 }
 
 export type PlugCredentials = PlugCredentialDefaults;
@@ -276,6 +282,7 @@ export interface AgentCommandRequestBody {
     readonly pageSize: number;
   };
   readonly payloadFrameCompression?: PayloadFrameCompression;
+  readonly requestServerTimings?: boolean;
 }
 
 export interface NormalizedRpcError {
@@ -384,6 +391,49 @@ export type RelayRpcAcceptedPayload =
   | RelayRpcAcceptedSuccessPayload
   | RelayRpcAcceptedFailurePayload;
 
+export interface RelayRpcBatchAcceptedItemSuccess {
+  readonly clientRequestId: string;
+  readonly requestId: string;
+  readonly deduplicated?: boolean;
+  readonly replayed?: boolean;
+  readonly inFlight?: boolean;
+}
+
+export interface RelayRpcBatchAcceptedItemFailure {
+  readonly clientRequestId: string;
+  readonly error: {
+    readonly code: string;
+    readonly message: string;
+    readonly statusCode?: number;
+    readonly itemIndex?: number;
+  };
+}
+
+export type RelayRpcBatchAcceptedItem =
+  | RelayRpcBatchAcceptedItemSuccess
+  | RelayRpcBatchAcceptedItemFailure;
+
+export interface RelayRpcBatchAcceptedSuccessPayload {
+  readonly success: true;
+  readonly conversationId: string;
+  readonly batchSize: number;
+  readonly items: RelayRpcBatchAcceptedItem[];
+}
+
+export interface RelayRpcBatchAcceptedFailurePayload {
+  readonly success: false;
+  readonly error: {
+    readonly code: string;
+    readonly message: string;
+    readonly statusCode?: number;
+    readonly details?: JsonObject;
+  };
+}
+
+export type RelayRpcBatchAcceptedPayload =
+  | RelayRpcBatchAcceptedSuccessPayload
+  | RelayRpcBatchAcceptedFailurePayload;
+
 export interface RelayStreamPullResponsePayload {
   readonly success: boolean;
   readonly conversationId?: string;
@@ -416,6 +466,7 @@ export interface ConsumerCommandSocketSuccessPayload {
   readonly response: NormalizedAgentRpcResponse | ConsumerCommandNotificationResponse;
   readonly streamId?: string;
   readonly retryAfterSeconds?: number;
+  readonly serverTimings?: PlugServerTimings;
 }
 
 export interface ConsumerCommandSocketFailurePayload {
@@ -423,6 +474,7 @@ export interface ConsumerCommandSocketFailurePayload {
   readonly requestId?: string;
   readonly clientRequestId?: string;
   readonly streamId?: string;
+  readonly serverTimings?: PlugServerTimings;
   readonly error: {
     readonly code: string;
     readonly message: string;
@@ -531,6 +583,7 @@ export interface PlugTransportExecutionMetrics {
   readonly attemptCount?: number;
   readonly lastRetryDelayMs?: number;
   readonly connectedAfterMs?: number;
+  readonly serverTimings?: PlugServerTimings;
 }
 
 export interface SocketTransportResult {
@@ -574,4 +627,6 @@ export interface BuiltCommandRequest {
     readonly maxBufferedBytes?: number;
   };
   readonly streamPullWindowSize?: number;
+  readonly fastPath?: boolean;
+  readonly requestServerTimings?: boolean;
 }

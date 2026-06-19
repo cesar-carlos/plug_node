@@ -30,4 +30,7 @@ export interface ExecuteConsumerCommandInput {
     readonly maxBufferedBytes?: number;
   };
   readonly streamPullWindowSize?: number;
+  readonly requestServerTimings?: boolean;
+  readonly agentRecommendedStreamPullWindowSize?: number;
+  readonly agentMaxStreamPullWindowSize?: number;
 }

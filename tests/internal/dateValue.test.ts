@@ -4,7 +4,7 @@ import {
   addBusinessDaysValue,
   formatDateValue,
   parseDateValue,
-} from "../../shared/tools/dateValue";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/tools/dateValue";
 
 describe("dateValue", () => {
   it("formats iso dates", () => {

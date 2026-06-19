@@ -1,19 +1,26 @@
-import type { IExecuteFunctions } from "n8n-workflow";
+import type { IDataObject, IExecuteFunctions } from "n8n-workflow";
 
-import { DEFAULT_API_VERSION, DEFAULT_BASE_URL } from "../contracts/api";
-import type {
-  BuiltCommandRequest,
-  PlugChannel,
-  PlugCredentialDefaults,
-  PlugResolvedExecutionContext,
-  PlugSocketImplementation,
-  RpcSingleCommand,
+import {
+  DEFAULT_API_VERSION,
+  DEFAULT_BASE_URL,
+  type BuiltCommandRequest,
+  type PlugChannel,
+  type PlugClientAuthCredentials,
+  type PlugCredentialDefaults,
+  type PlugResolvedExecutionContext,
+  type PlugSocketImplementation,
+  type RpcSingleCommand,
 } from "../contracts/api";
 import { PlugValidationError } from "../contracts/errors";
 import { parseOptionalJsonObject } from "../utils/json";
+import {
+  assertAdvancedJsonRpcMethod,
+  parseAdvancedJsonRpcCommand,
+} from "./plugAdvancedJsonRpcValidation";
 import { applyCommandDefaults } from "./plugCommandDefaults";
 import {
   toCollection,
+  toOptionalBoolean,
   toOptionalPositiveNumber,
   toOptionalString,
 } from "./plugExecutionParameters";
@@ -23,6 +30,7 @@ import {
   buildGuidedCancelCommand,
   buildGuidedSqlCommand,
 } from "./plugSqlGuidedCommands";
+import { shouldAutoPreferDbStreaming } from "./plugSqlPerformanceHints";
 import type { PlugClientNodeExecutionConfig } from "./plugClientExecutionTypes";
 
 export const defaultSocketBufferLimits = {
@@ -31,7 +39,7 @@ export const defaultSocketBufferLimits = {
   maxBufferedBytes: 8 * 1024 * 1024,
 } as const;
 
-export const defaultSocketStreamPullWindowSize = 32;
+export const defaultSocketStreamPullWindowSize = 256;
 export const maxSocketStreamPullWindowSize = 1000;
 
 const operationMethodMap: Record<string, RpcSingleCommand["method"]> = {
@@ -58,24 +66,51 @@ const resolveSocketImplementation = (
 ): PlugSocketImplementation =>
   context.getNode().typeVersion >= 2 ? "agentsCommand" : "relay";
 
+const mapRawPlugCredentials = (rawCredentials: IDataObject): PlugCredentialDefaults => ({
+  user: String(rawCredentials.user ?? ""),
+  password: String(rawCredentials.password ?? ""),
+  agentId: toOptionalString(rawCredentials.agentId),
+  clientToken: toOptionalString(rawCredentials.clientToken),
+  payloadSigningKey: toOptionalString(rawCredentials.payloadSigningKey),
+  payloadSigningKeyId: toOptionalString(rawCredentials.payloadSigningKeyId),
+  payloadSigningPreviousKeysJson: toOptionalString(
+    rawCredentials.payloadSigningPreviousKeysJson,
+  ),
+  baseUrl: toOptionalString(rawCredentials.baseUrl) ?? DEFAULT_BASE_URL,
+});
+
+export const readPlugEmailPasswordCredentials = async (
+  context: IExecuteFunctions,
+  credentialName = "plugDatabaseAccountApi",
+): Promise<PlugClientAuthCredentials> => {
+  const rawCredentials = (await context.getCredentials(credentialName)) as IDataObject;
+  const credentials = mapRawPlugCredentials(rawCredentials);
+  return {
+    user: credentials.user,
+    password: credentials.password,
+    baseUrl: credentials.baseUrl,
+  };
+};
+
+export const readPlugCredentialDefaults = async (
+  context: IExecuteFunctions,
+  credentialName = "plugDatabaseAccountApi",
+): Promise<PlugCredentialDefaults> => {
+  const rawCredentials = (await context.getCredentials(credentialName)) as IDataObject;
+  return mapRawPlugCredentials(rawCredentials);
+};
+
 export const readPlugClientCredentials = async (
   context: IExecuteFunctions,
   config: PlugClientNodeExecutionConfig,
-): Promise<PlugCredentialDefaults> => {
-  const rawCredentials = await context.getCredentials(
-    config.credentialName ?? "plugDatabaseAccountApi",
-  );
+): Promise<PlugCredentialDefaults> =>
+  readPlugCredentials(context, config.credentialName ?? "plugDatabaseAccountApi");
 
-  return {
-    user: String(rawCredentials.user ?? ""),
-    password: String(rawCredentials.password ?? ""),
-    agentId: toOptionalString(rawCredentials.agentId),
-    clientToken: toOptionalString(rawCredentials.clientToken),
-    payloadSigningKey: toOptionalString(rawCredentials.payloadSigningKey),
-    payloadSigningKeyId: toOptionalString(rawCredentials.payloadSigningKeyId),
-    baseUrl: DEFAULT_BASE_URL,
-  };
-};
+/** Canonical credential reader for access, tools, and SQL execution modules. */
+export const readPlugCredentials = async (
+  context: IExecuteFunctions,
+  credentialName = "plugDatabaseAccountApi",
+): Promise<PlugCredentialDefaults> => readPlugCredentialDefaults(context, credentialName);
 
 export const resolvePlugExecutionContext = (
   context: IExecuteFunctions,
@@ -209,17 +244,17 @@ const buildAdvancedCommand = (
     "advancedCommandJson",
     itemIndex,
   ) as string;
-  const parsed = parseOptionalJsonObject(advancedCommandJson, "Raw JSON-RPC Command");
-  if (!parsed) {
+  const parsedObject = parseOptionalJsonObject(
+    advancedCommandJson,
+    "Raw JSON-RPC Command",
+  );
+  if (!parsedObject) {
     throw new PlugValidationError("Raw JSON-RPC Command is required");
   }
 
+  const parsed = parseAdvancedJsonRpcCommand(parsedObject);
   const expectedMethod = operationMethodMap[operation];
-  if (parsed.method !== expectedMethod) {
-    throw new PlugValidationError(
-      `Raw JSON-RPC Command method must be ${expectedMethod} for the selected operation`,
-    );
-  }
+  assertAdvancedJsonRpcMethod(parsed, expectedMethod);
 
   const operationOptionsCollectionMap: Record<string, string> = {
     executeSql: "sqlOptions",
@@ -291,14 +326,111 @@ const resolveSocketBufferLimits = (
 const resolveSocketStreamPullWindowSize = (
   context: IExecuteFunctions,
   itemIndex: number,
-): number => {
+): number | undefined => {
   const socketOptions = toCollection(context, "socketOptions", itemIndex);
-  const configured = toOptionalPositiveNumber(socketOptions.streamPullWindowSize);
+  if (!("streamPullWindowSize" in socketOptions)) {
+    return defaultSocketStreamPullWindowSize;
+  }
+
+  const raw = socketOptions.streamPullWindowSize;
+  const configured = toOptionalPositiveNumber(raw);
   if (configured === undefined) {
     return defaultSocketStreamPullWindowSize;
   }
 
   return Math.min(maxSocketStreamPullWindowSize, Math.max(1, Math.floor(configured)));
+};
+
+const operationOptionsCollectionMap: Record<string, string> = {
+  executeSql: "sqlOptions",
+  executeBatch: "batchOptions",
+  bulkInsertSql: "bulkInsertOptions",
+  cancelSql: "cancelOptions",
+  discoverRpc: "discoverOptions",
+  getAgentProfile: "profileOptions",
+  getClientTokenPolicy: "profileOptions",
+  validateContext: "validateContextOptions",
+};
+
+const resolveRequestServerTimings = (
+  context: IExecuteFunctions,
+  itemIndex: number,
+  operation: string,
+  channel: PlugChannel,
+): boolean | undefined => {
+  const collectionName = operationOptionsCollectionMap[operation] ?? "profileOptions";
+  const operationOptions = toCollection(context, collectionName, itemIndex);
+  const fromOperation = toOptionalBoolean(operationOptions.requestServerTimings);
+  if (fromOperation === true) {
+    return true;
+  }
+
+  if (channel !== "socket") {
+    return undefined;
+  }
+
+  return resolveSocketRequestServerTimings(context, itemIndex);
+};
+
+const resolveSocketFastPath = (
+  context: IExecuteFunctions,
+  itemIndex: number,
+): boolean | undefined => {
+  const socketOptions = toCollection(context, "socketOptions", itemIndex);
+  const enabled = toOptionalBoolean(socketOptions.fastPath);
+  return enabled === true ? true : undefined;
+};
+
+const resolveSocketRequestServerTimings = (
+  context: IExecuteFunctions,
+  itemIndex: number,
+): boolean | undefined => {
+  const socketOptions = toCollection(context, "socketOptions", itemIndex);
+  const enabled = toOptionalBoolean(socketOptions.requestServerTimings);
+  return enabled === true ? true : undefined;
+};
+
+const applySocketSqlAutoPerformanceHints = (
+  builtRequest: BuiltCommandRequest,
+  context: IExecuteFunctions,
+  itemIndex: number,
+  channel: PlugChannel,
+  operation: string,
+): BuiltCommandRequest => {
+  if (channel !== "socket" || operation !== "executeSql") {
+    return builtRequest;
+  }
+
+  const sqlOptions = toCollection(context, "sqlOptions", itemIndex);
+  const autoPerformanceHints = toOptionalBoolean(sqlOptions.autoPerformanceHints) ?? true;
+  if (!autoPerformanceHints || "preferDbStreaming" in sqlOptions) {
+    return builtRequest;
+  }
+
+  const command = builtRequest.command;
+  if (Array.isArray(command) || command.method !== "sql.execute") {
+    return builtRequest;
+  }
+
+  const sql = command.params?.sql;
+  if (typeof sql !== "string" || !shouldAutoPreferDbStreaming(sql)) {
+    return builtRequest;
+  }
+
+  const existingOptions = command.params?.options;
+  return {
+    ...builtRequest,
+    command: {
+      ...command,
+      params: {
+        ...command.params,
+        options: {
+          ...(existingOptions ?? {}),
+          prefer_db_streaming: true,
+        },
+      },
+    },
+  };
 };
 
 export const finalizeBuiltCommandRequest = (
@@ -314,15 +446,19 @@ export const finalizeBuiltCommandRequest = (
     ? (context.getNodeParameter("channel", itemIndex, "rest") as PlugChannel)
     : "rest";
 
-  return {
+  const withChannel = {
     ...builtRequest,
     channel: !config.supportsSocket ? "rest" : channel,
+    ...(resolveRequestServerTimings(context, itemIndex, resolvedOperation, channel)
+      ? { requestServerTimings: true as const }
+      : {}),
     ...(channel === "socket" && config.supportsSocket
       ? {
           socketImplementation: resolveSocketImplementation(context),
           payloadFrameCompression: "default" as const,
           bufferLimits: resolveSocketBufferLimits(context, itemIndex),
           streamPullWindowSize: resolveSocketStreamPullWindowSize(context, itemIndex),
+          fastPath: resolveSocketFastPath(context, itemIndex),
         }
       : {}),
     responseMode:
@@ -330,6 +466,14 @@ export const finalizeBuiltCommandRequest = (
         ? "aggregatedJson"
         : getPlugResponseMode(context, itemIndex),
   };
+
+  return applySocketSqlAutoPerformanceHints(
+    withChannel,
+    context,
+    itemIndex,
+    withChannel.channel,
+    resolvedOperation,
+  );
 };
 
 export const buildBuiltCommandRequest = (

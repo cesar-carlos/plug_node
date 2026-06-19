@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createSocketIoTransportMock = vi.fn();
 const executeRelayCommandMock = vi.fn();
+const executeRelayBatchCommandMock = vi.fn();
 
 vi.mock(
   "../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/socketIoTransport",
@@ -12,8 +13,23 @@ vi.mock(
 
 vi.mock(
   "../../packages/n8n-nodes-plug-database/generated/shared/socket/relaySession",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../packages/n8n-nodes-plug-database/generated/shared/socket/relaySession")
+      >();
+    return {
+      ...actual,
+      executeRelayCommand: (...args: unknown[]) => executeRelayCommandMock(...args),
+    };
+  },
+);
+
+vi.mock(
+  "../../packages/n8n-nodes-plug-database/generated/shared/socket/relayBatchSession",
   () => ({
-    executeRelayCommand: (...args: unknown[]) => executeRelayCommandMock(...args),
+    executeRelayBatchCommand: (...args: unknown[]) =>
+      executeRelayBatchCommandMock(...args),
   }),
 );
 
@@ -36,6 +52,7 @@ const relaySuccess = {
   agentId: "agent-1",
   requestId: "req-1",
   notification: false as const,
+  conversationId: "conversation-1",
   response: {
     type: "single" as const,
     success: true,
@@ -54,8 +71,19 @@ describe("RelaySocketExecutionManager", () => {
   beforeEach(() => {
     createSocketIoTransportMock.mockReset();
     executeRelayCommandMock.mockReset();
+    executeRelayBatchCommandMock.mockReset();
     createSocketIoTransportMock.mockImplementation(() => buildMockTransport());
     executeRelayCommandMock.mockResolvedValue(relaySuccess);
+    executeRelayBatchCommandMock.mockResolvedValue([
+      {
+        clientRequestId: "1",
+        requestId: "hub-1",
+        response: {
+          ...relaySuccess,
+          requestId: "hub-1",
+        },
+      },
+    ]);
   });
 
   it("creates the socket transport only once across consecutive relay executes", async () => {
@@ -85,13 +113,18 @@ describe("RelaySocketExecutionManager", () => {
 
     await executor.execute(input);
     await executor.execute(input);
-    executor.close();
 
     expect(createSocketIoTransportMock).toHaveBeenCalledTimes(1);
     expect(executeRelayCommandMock).toHaveBeenCalledTimes(2);
+    expect(executeRelayCommandMock.mock.calls[1]?.[0]).toMatchObject({
+      reusedConversationId: "conversation-1",
+      skipConversationEnd: true,
+      managedTransport: true,
+    });
+    executor.close();
   });
 
-  it("rejects command arrays before calling executeRelayCommand", async () => {
+  it("routes command arrays through executeRelayBatchCommand", async () => {
     const { createRelaySocketCommandExecutor } =
       await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/relaySocketExecutionManager");
 
@@ -118,8 +151,14 @@ describe("RelaySocketExecutionManager", () => {
       responseMode: "aggregatedJson" as const,
     };
 
-    await expect(executor.execute(input)).rejects.toThrow(/single JSON-RPC command/i);
+    const result = await executor.execute(input);
+
+    expect(executeRelayBatchCommandMock).toHaveBeenCalledTimes(1);
     expect(executeRelayCommandMock).not.toHaveBeenCalled();
+    expect(result.response).toMatchObject({
+      type: "batch",
+      success: true,
+    });
   });
 
   it("recreates the transport when the access token changes", async () => {

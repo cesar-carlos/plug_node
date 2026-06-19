@@ -68,8 +68,40 @@ export interface AgentClientListResponse extends JsonObject {
   readonly pageSize: number;
 }
 
+export type OwnedClientStatus = "pending" | "active" | "rejected" | "blocked";
+
+export interface OwnedClientRecord extends JsonObject {
+  readonly id: string;
+  readonly email?: string | null;
+  readonly name?: string | null;
+  readonly lastName?: string | null;
+  readonly status?: OwnedClientStatus | string | null;
+  readonly userId?: string;
+  readonly createdAt?: string;
+  readonly updatedAt?: string;
+  readonly [key: string]: unknown;
+}
+
+export interface OwnedClientListResponse extends JsonObject {
+  readonly clients: OwnedClientRecord[];
+  readonly count: number;
+  readonly total: number;
+  readonly page: number;
+  readonly pageSize: number;
+}
+
+export interface OwnedClientDetailResponse extends JsonObject {
+  readonly client: OwnedClientRecord;
+}
+
+export interface OwnedClientRegistrationDecisionResponse extends JsonObject {
+  readonly approved?: boolean;
+  readonly rejected?: boolean;
+  readonly clientEmail?: string;
+}
+
 export interface UserAccessMutationSummary extends JsonObject {
-  readonly resourceType: "accessRequest" | "agentClientAccess";
+  readonly resourceType: "accessRequest" | "agentClientAccess" | "ownedClientGovernance";
   readonly resourceId: string;
   readonly raw: unknown;
 }

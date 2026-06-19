@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { matchesConsumerStreamPullResponse } from "../../shared/socket/consumerCommandStreamPull";
+import { matchesConsumerStreamPullResponse } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/consumerCommandStreamPull";
 
 describe("matchesConsumerStreamPullResponse", () => {
   it("requires requestId and streamId on successful pull responses", () => {

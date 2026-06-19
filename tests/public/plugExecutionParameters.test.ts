@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  toCappedPositiveInteger,
   toCollection,
   toOptionalBoolean,
+  toOptionalPositiveInteger,
   toOptionalPositiveNumber,
   toOptionalString,
-} from "../../shared/n8n/plugExecutionParameters";
+  toPositiveInteger,
+} from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugExecutionParameters";
 import { createMockExecuteContext } from "../helpers/mockExecuteFunctions";
 
 describe("plugExecutionParameters", () => {
@@ -22,10 +25,36 @@ describe("plugExecutionParameters", () => {
     expect(toOptionalPositiveNumber(Number.NaN)).toBeUndefined();
   });
 
+  it("normalizes optional positive integers with validation", () => {
+    expect(toOptionalPositiveInteger(2.9, "Page")).toBe(2);
+    expect(toOptionalPositiveInteger(undefined, "Page")).toBeUndefined();
+    expect(() => toOptionalPositiveInteger(-1, "Page")).toThrow(
+      "Page must be a positive number",
+    );
+  });
+
   it("reads booleans strictly", () => {
     expect(toOptionalBoolean(true)).toBe(true);
     expect(toOptionalBoolean(false)).toBe(false);
     expect(toOptionalBoolean("true")).toBeUndefined();
+  });
+
+  it("normalizes positive integers with validation", () => {
+    expect(toPositiveInteger(4, 1, "Max Rows")).toBe(4);
+    expect(toPositiveInteger(undefined, 10, "Max Rows")).toBe(10);
+    expect(() => toPositiveInteger(1.5, 1, "Max Rows")).toThrow(
+      "Max Rows must be an integer",
+    );
+    expect(() => toPositiveInteger(-1, 1, "Max Rows")).toThrow(
+      "Max Rows must be a positive number",
+    );
+  });
+
+  it("caps positive integers at hard limits", () => {
+    expect(toCappedPositiveInteger(100, 50, "Max Size", 200)).toBe(100);
+    expect(() => toCappedPositiveInteger(300, 50, "Max Size", 200)).toThrow(
+      "Max Size must be less than or equal to 200 bytes",
+    );
   });
 
   it("reads node parameter collections", () => {

@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type {
   PlugSession,
@@ -6,6 +6,7 @@ import type {
   RpcSingleCommand,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 import { buildNodeOutputItems } from "../../packages/n8n-nodes-plug-database/generated/shared/output/nodeOutput";
+import { isRecord } from "../../packages/n8n-nodes-plug-database/generated/shared/utils/json";
 import {
   executeRelayCommand,
   type RelaySocketTransport,
@@ -1057,6 +1058,71 @@ describe("executeRelayCommand", () => {
     expect(result.metrics?.ignoredCommandResponses).toBe(0);
     expect(result.executionMetrics?.connectedAfterMs).toBeGreaterThanOrEqual(0);
     expect(result.accepted?.inFlight).toBe(true);
+  });
+
+  it("routes unary relay responses without relay:rpc.accepted when fastPath is enabled", async () => {
+    class FastPathRelayTransport extends MockRelayTransport {
+      override emit(event: string, payload?: unknown): void {
+        this.emittedEvents.push({ event, payload });
+
+        if (event === "relay:conversation.start") {
+          queueMicrotask(() => {
+            this.dispatch("relay:conversation.started", {
+              success: true,
+              conversationId: "conversation-1",
+              agentId: "agent-1",
+            });
+          });
+          return;
+        }
+
+        if (event === "relay:rpc.request") {
+          queueMicrotask(() => {
+            this.dispatch(
+              "relay:rpc.response",
+              encodePayloadFrame(
+                {
+                  jsonrpc: "2.0",
+                  id: "client-request-1",
+                  result: { rows: [{ id: 1 }] },
+                },
+                { requestId: "hub-request-1", compression: "none" },
+              ),
+            );
+          });
+        }
+      }
+    }
+
+    const transport = new FastPathRelayTransport();
+    transport.connect();
+
+    const result = await executeRelayCommand({
+      transport,
+      session,
+      command: {
+        jsonrpc: "2.0",
+        method: "client_token.getPolicy",
+        id: "client-request-1",
+        params: { client_token: "client-token" },
+      },
+      responseMode: "aggregatedJson",
+      fastPath: true,
+      managedTransport: true,
+      skipConversationEnd: true,
+    });
+
+    expect(result.requestId).toBe("hub-request-1");
+    expect(result.accepted).toBeUndefined();
+    expect(result.metrics?.fastPath).toBe(true);
+    expect(
+      transport.emittedEvents.some(
+        (entry) =>
+          entry.event === "relay:rpc.request" &&
+          isRecord(entry.payload) &&
+          entry.payload.fastPath === true,
+      ),
+    ).toBe(true);
   });
 
   it("fails immediately when the relay socket disconnects during control events", async () => {

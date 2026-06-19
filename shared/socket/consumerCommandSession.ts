@@ -8,6 +8,8 @@ import {
   type PlugCommandTransportResult,
   type RpcSingleCommand,
   type SocketCommandRuntimeMetrics,
+  type SocketTransportNotificationResult,
+  type SocketTransportResult,
 } from "../contracts/api";
 import { PlugTimeoutError } from "../contracts/errors";
 import { plugLogger } from "../logging/plugLogger";
@@ -66,6 +68,18 @@ import {
   countRows,
   resolveSocketBufferLimits,
 } from "./streamCommandSessionCommon";
+import {
+  extractMaxStreamPullWindowSize,
+  extractRecommendedStreamPullWindowSize,
+  resolveAdaptiveStreamPullWindowSize,
+} from "./streamPullWindowPolicy";
+import {
+  beginStreamPull,
+  createStreamAggregationController,
+  finishStreamPull,
+  shouldSkipStreamPull,
+} from "./streamAggregationState";
+import { extractServerTimings } from "./relaySessionNormalization";
 
 export type {
   ConsumerSocketTransport,
@@ -148,6 +162,16 @@ export const executeConsumerCommand = async (
     timeouts.connectTimeoutMs,
     input.payloadFrameSigning,
   );
+  const effectiveStreamPullWindowSize = resolveAdaptiveStreamPullWindowSize({
+    configured: input.streamPullWindowSize,
+    agentRecommended:
+      input.agentRecommendedStreamPullWindowSize ??
+      extractRecommendedStreamPullWindowSize(connectionReady),
+    agentMax:
+      input.agentMaxStreamPullWindowSize ??
+      extractMaxStreamPullWindowSize(connectionReady),
+    fallback: DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
+  });
   const connectedAfterMs = Date.now() - commandStartMs;
 
   plugLogger.debug("transport.socket.command.request", {
@@ -163,15 +187,10 @@ export const executeConsumerCommand = async (
     const settle = createSettleOnce();
     const chunkPayloads: JsonObject[] = [];
     let activeRequestId = commandRequestId;
-    let activeStreamId: string | undefined;
+    const streamAggregation = createStreamAggregationController();
     let rawResponsePayload: unknown;
     let normalizedResponse: NormalizedAgentRpcResponse | undefined;
     let completePayload: JsonObject | undefined;
-    let streamCreditsRemaining = 0;
-    let streamPullInFlight = false;
-    let pendingChunksDuringPull = 0;
-    let streamCompleted = false;
-    let pullCount = 0;
     let chunkCount = 0;
     let bufferedBytes = 0;
     let bufferedRows = 0;
@@ -179,13 +198,14 @@ export const executeConsumerCommand = async (
     let ignoredStreamChunks = 0;
     let ignoredStreamCompletes = 0;
     let ignoredStreamPullResponses = 0;
+    let capturedServerTimings: import("../contracts/api").PlugServerTimings | undefined;
 
     const buildMetrics = (): SocketCommandRuntimeMetrics => ({
       ignoredCommandResponses,
       ignoredStreamChunks,
       ignoredStreamCompletes,
       ignoredStreamPullResponses,
-      streamPullRequests: pullCount,
+      streamPullRequests: streamAggregation.state.pullCount,
       streamChunks: chunkCount,
       bufferedBytes,
       bufferedRows,
@@ -234,21 +254,49 @@ export const executeConsumerCommand = async (
           eventName: consumerSocketCommandResponseEvent,
           details: {
             requestId: activeRequestId,
-            streamId: activeStreamId,
+            streamId: streamAggregation.state.activeStreamId,
             socketMode: "agentsCommand",
           },
         }),
       );
     });
 
-    const finishResolve = (result: PlugCommandTransportResult): void => {
+    const finishResolve = (
+      result: SocketTransportResult | SocketTransportNotificationResult,
+    ): void => {
       cleanup();
+      const serverTimings =
+        capturedServerTimings ??
+        ("rawResponsePayload" in result
+          ? extractServerTimings(result.rawResponsePayload)
+          : undefined);
       settle.settleOnce(resolve, {
         ...result,
         executionMetrics: {
           connectedAfterMs,
+          ...(serverTimings ? { serverTimings } : {}),
           ...("executionMetrics" in result ? result.executionMetrics : {}),
         },
+        ...(serverTimings && result.metrics
+          ? {
+              metrics: {
+                ...result.metrics,
+                serverTimings,
+                ...(input.requestServerTimings === true
+                  ? { requestServerTimings: true }
+                  : {}),
+              },
+            }
+          : result.metrics
+            ? {
+                metrics: {
+                  ...result.metrics,
+                  ...(input.requestServerTimings === true
+                    ? { requestServerTimings: true }
+                    : {}),
+                },
+              }
+            : {}),
       });
     };
 
@@ -275,40 +323,42 @@ export const executeConsumerCommand = async (
     };
 
     const requestNextStreamWindow = async (): Promise<void> => {
-      if (!activeStreamId || streamPullInFlight || streamCompleted) {
+      if (shouldSkipStreamPull(streamAggregation.state)) {
         return;
       }
 
-      streamPullInFlight = true;
-      pullCount += 1;
+      beginStreamPull(streamAggregation.state);
+      let shouldRequestAdditionalWindow = false;
       try {
         idleTimer.resetIdleTimer();
         const nextWindowSize = await requestConsumerStreamPull(
           input.transport,
           activeRequestId,
-          activeStreamId,
+          streamAggregation.state.activeStreamId as string,
           timeouts.commandTimeoutMs,
-          input.streamPullWindowSize ?? DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
+          effectiveStreamPullWindowSize,
           (payload) => {
             ignoredStreamPullResponses += 1;
             plugLogger.debug("transport.socket.command.stream_pull_ignored", {
               socketMode: "agentsCommand",
               agentId: input.agentId,
               expectedRequestId: activeRequestId,
-              expectedStreamId: activeStreamId,
+              expectedStreamId: streamAggregation.state.activeStreamId,
               requestId: payload.requestId,
               streamId: payload.streamId,
             });
           },
           input.payloadFrameSigning,
         );
-        streamCreditsRemaining = Math.max(nextWindowSize - pendingChunksDuringPull, 0);
-        pendingChunksDuringPull = 0;
+        shouldRequestAdditionalWindow = finishStreamPull(
+          streamAggregation.state,
+          nextWindowSize,
+        );
       } finally {
-        streamPullInFlight = false;
+        streamAggregation.state.streamPullInFlight = false;
       }
 
-      if (activeStreamId && streamCreditsRemaining === 0 && !streamCompleted) {
+      if (shouldRequestAdditionalWindow && !streamAggregation.state.streamCompleted) {
         await requestNextStreamWindow();
       }
     };
@@ -326,6 +376,10 @@ export const executeConsumerCommand = async (
             input.payloadFrameSigning,
           );
           const response = normalizeConsumerCommandResponse(decodedPayload);
+          capturedServerTimings =
+            extractServerTimings(payload) ??
+            response.serverTimings ??
+            (response.success ? extractServerTimings(response.response) : undefined);
           if (!matchesConsumerCommandRequest(response, commandRequestId)) {
             ignoredCommandResponses += 1;
             plugLogger.debug("transport.socket.command.response_ignored", {
@@ -377,19 +431,19 @@ export const executeConsumerCommand = async (
             return;
           }
 
-          activeStreamId =
+          const streamId =
             typeof response.streamId === "string" && response.streamId.trim() !== ""
               ? response.streamId
               : undefined;
 
-          if (!activeStreamId) {
+          if (!streamId) {
             plugLogger.info("transport.socket.command.complete", {
               socketMode: "agentsCommand",
               agentId: input.agentId,
               requestId: response.requestId,
               durationMs: Date.now() - commandStartMs,
               chunkCount,
-              pullCount,
+              pullCount: streamAggregation.state.pullCount,
               bufferedBytes,
               bufferedRows,
               retryAfterSeconds: response.retryAfterSeconds,
@@ -410,7 +464,8 @@ export const executeConsumerCommand = async (
             return;
           }
 
-          await requestNextStreamWindow();
+          streamAggregation.setActiveStreamId(streamId);
+          await streamAggregation.requestInitialWindow(requestNextStreamWindow);
         } catch (error: unknown) {
           cleanup();
           settle.settleOnce(reject, error);
@@ -435,7 +490,7 @@ export const executeConsumerCommand = async (
             chunk,
             activeRequestId,
             commandRequestId,
-            activeStreamId,
+            streamAggregation.state.activeStreamId,
             toConsumerCommandRequestId,
           )
         ) {
@@ -445,7 +500,7 @@ export const executeConsumerCommand = async (
             agentId: input.agentId,
             expectedRequestId: activeRequestId,
             commandRequestId,
-            expectedStreamId: activeStreamId,
+            expectedStreamId: streamAggregation.state.activeStreamId,
             requestId: toConsumerCommandRequestId(chunk.request_id),
             streamId: typeof chunk.stream_id === "string" ? chunk.stream_id : undefined,
           });
@@ -470,19 +525,11 @@ export const executeConsumerCommand = async (
 
         assertBufferLimits();
 
-        if (activeStreamId && streamPullInFlight) {
-          pendingChunksDuringPull += 1;
-        } else if (activeStreamId && streamCreditsRemaining > 0) {
-          streamCreditsRemaining -= 1;
-        }
-
-        if (activeStreamId && streamCreditsRemaining === 0) {
-          enqueueChunkWork(async () => {
-            if (!streamCompleted) {
-              await requestNextStreamWindow();
-            }
-          });
-        }
+        streamAggregation.recordChunkReceived();
+        streamAggregation.schedulePullIfCreditsExhausted(
+          enqueueChunkWork,
+          requestNextStreamWindow,
+        );
       });
     };
 
@@ -503,7 +550,7 @@ export const executeConsumerCommand = async (
             complete,
             activeRequestId,
             commandRequestId,
-            activeStreamId,
+            streamAggregation.state.activeStreamId,
             toConsumerCommandRequestId,
           )
         ) {
@@ -513,7 +560,7 @@ export const executeConsumerCommand = async (
             agentId: input.agentId,
             expectedRequestId: activeRequestId,
             commandRequestId,
-            expectedStreamId: activeStreamId,
+            expectedStreamId: streamAggregation.state.activeStreamId,
             requestId: toConsumerCommandRequestId(complete.request_id),
             streamId:
               typeof complete.stream_id === "string" ? complete.stream_id : undefined,
@@ -521,7 +568,7 @@ export const executeConsumerCommand = async (
           return;
         }
 
-        streamCompleted = true;
+        streamAggregation.state.streamCompleted = true;
         completePayload = complete;
         if (input.responseMode === "aggregatedJson") {
           normalizedResponse = removeStreamMarkerFromConsumerResponse(normalizedResponse);
@@ -532,7 +579,7 @@ export const executeConsumerCommand = async (
           requestId: activeRequestId,
           durationMs: Date.now() - commandStartMs,
           chunkCount,
-          pullCount,
+          pullCount: streamAggregation.state.pullCount,
           bufferedBytes,
           bufferedRows,
         });
@@ -606,6 +653,7 @@ export const executeConsumerCommand = async (
       command,
       timeoutMs: timeouts.commandTimeoutMs,
       payloadFrameCompression: input.payloadFrameCompression ?? "default",
+      ...(input.requestServerTimings === true ? { requestServerTimings: true } : {}),
     });
   });
 };

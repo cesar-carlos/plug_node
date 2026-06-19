@@ -78,6 +78,15 @@ const isMethodNotFoundError = (error: PlugError): boolean => {
   return details.reason === "method_not_found";
 };
 
+export const applyRetryBackoffJitter = (baseDelayMs: number): number => {
+  if (baseDelayMs <= 0) {
+    return 0;
+  }
+
+  const jitterFactor = 0.75 + Math.random() * 0.5;
+  return Math.max(0, Math.round(baseDelayMs * jitterFactor));
+};
+
 export const computeRetryDelayMs = (error: PlugError, attemptNumber: number): number => {
   if (
     typeof error.retryAfterSeconds === "number" &&
@@ -87,7 +96,8 @@ export const computeRetryDelayMs = (error: PlugError, attemptNumber: number): nu
     return Math.max(0, Math.ceil(error.retryAfterSeconds * 1000));
   }
 
-  return Math.min(5000, 250 * 2 ** attemptNumber);
+  const baseDelayMs = Math.min(5000, 250 * 2 ** attemptNumber);
+  return applyRetryBackoffJitter(baseDelayMs);
 };
 
 /** Retries transient REST failures using the same policy as metadata hub calls. */

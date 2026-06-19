@@ -14,6 +14,17 @@ import { PlugValidationError } from "../contracts/errors";
 
 type DigestEncoding = "base64" | "base64url" | "hex";
 
+const allowedDigestAlgorithms = new Set(["sha256", "sha512"]);
+
+const assertAllowedDigestAlgorithm = (algorithm: string): string => {
+  const normalized = algorithm.trim().toLowerCase();
+  if (!allowedDigestAlgorithms.has(normalized)) {
+    throw new PlugValidationError("Algorithm must be sha256 or sha512");
+  }
+
+  return normalized;
+};
+
 // Default PBKDF2-SHA256 iterations. OWASP 2023+ recommends >= 600k for SHA-256.
 // Values encrypted before the upgrade carry their original iteration count in
 // the envelope so decryptText can still recover them.
@@ -34,7 +45,8 @@ export const generateHash = (
   value: string | Buffer,
   algorithm: string,
   encoding: DigestEncoding = "hex",
-): string => createHash(algorithm).update(value).digest(encoding);
+): string =>
+  createHash(assertAllowedDigestAlgorithm(algorithm)).update(value).digest(encoding);
 
 export const hmacSign = (
   value: string | Buffer,
@@ -42,7 +54,9 @@ export const hmacSign = (
   algorithm: string,
   encoding: DigestEncoding = "hex",
 ): string =>
-  createHmac(algorithm, textOrThrow(secret, "Secret")).update(value).digest(encoding);
+  createHmac(assertAllowedDigestAlgorithm(algorithm), textOrThrow(secret, "Secret"))
+    .update(value)
+    .digest(encoding);
 
 export const base64Encode = (value: string | Buffer): string =>
   Buffer.from(value).toString("base64");

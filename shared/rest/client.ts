@@ -12,6 +12,7 @@ import { DEFAULT_REQUEST_TIMEOUT_MS } from "../contracts/api";
 import { PlugValidationError } from "../contracts/errors";
 import { buildAuthorizedHeaders, createHttpError } from "../auth/session";
 import { plugLogger } from "../logging/plugLogger";
+import { extractServerTimings } from "../socket/relaySessionNormalization";
 import { isRecord } from "../utils/json";
 import { buildApiUrl } from "../utils/url";
 
@@ -76,6 +77,9 @@ export const executeRestCommand = async (
     ...(commandRequest.payloadFrameCompression !== undefined
       ? { payloadFrameCompression: commandRequest.payloadFrameCompression }
       : {}),
+    ...(commandRequest.requestServerTimings === true
+      ? { requestServerTimings: true }
+      : {}),
   };
 
   const response = await requester<unknown>({
@@ -111,6 +115,8 @@ export const executeRestCommand = async (
   }
 
   const commandResponse = parsed as RestBridgeCommandResponse;
+  const serverTimings = extractServerTimings(response.body);
+
   return {
     channel: "rest",
     agentId: commandResponse.agentId,
@@ -118,5 +124,10 @@ export const executeRestCommand = async (
     notification: false,
     response: commandResponse.response,
     raw: commandResponse,
+    ...(serverTimings
+      ? {
+          executionMetrics: { serverTimings },
+        }
+      : {}),
   };
 };

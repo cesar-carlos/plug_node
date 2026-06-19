@@ -3,11 +3,13 @@ import { NodeConnectionTypes } from "n8n-workflow";
 
 import {
   defaultBinaryPropertyPrefix,
+  defaultConsumerIdleKeepaliveIntervalMs,
   defaultManualListenTimeoutMs,
   defaultMaxInflightSocketEvents,
   defaultMaxQueuedSocketEvents,
   defaultSocketEventAckTimeoutMs,
   defaultSocketEventDeduplicationTtlMs,
+  maxConsumerIdleKeepaliveIntervalMs,
 } from "../contracts/custom-socket-events";
 
 export const plugSocketEventTriggerCredentialName = "plugDatabaseAccountApi";
@@ -125,6 +127,18 @@ export const plugDatabaseSocketEventTriggerDescription: INodeTypeDescription = {
         minValue: 1,
       },
       description: "Time to wait for socket connection and control acknowledgements",
+    },
+    {
+      displayName: "Consumer Idle Keepalive (MS)",
+      name: "consumerIdleKeepaliveIntervalMs",
+      type: "number",
+      default: defaultConsumerIdleKeepaliveIntervalMs,
+      typeOptions: {
+        minValue: 0,
+        maxValue: maxConsumerIdleKeepaliveIntervalMs,
+      },
+      description:
+        "Emit lightweight inbound socket activity on this interval to avoid the hub consumer idle timeout (default 30 min). Set 0 to disable. Recommended: 1,200,000 (20 min).",
     },
     {
       displayName: "Reconnect On Disconnect",

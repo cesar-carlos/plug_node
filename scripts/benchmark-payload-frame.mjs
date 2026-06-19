@@ -1,4 +1,14 @@
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
+
+const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
+export const defaultBenchmarkBaselinePath = path.join(
+  scriptDirectory,
+  "benchmarks",
+  "payload-frame-baseline.json",
+);
 
 const iterations = Number.parseInt(process.env.PLUG_BENCH_ITERATIONS ?? "1000", 10);
 const effectiveIterations =
@@ -50,7 +60,7 @@ const measure = (name, fn, count = effectiveIterations) => {
   };
 };
 
-const results = [
+export const runPayloadFrameBenchmark = () => [
   measure("decode small PayloadFrame without gzip", () => {
     decodePayloadFrame(frames.smallNone);
   }),
@@ -74,4 +84,21 @@ const results = [
   }),
 ];
 
-console.table(results);
+export const readBenchmarkBaseline = async (
+  baselinePath = defaultBenchmarkBaselinePath,
+) => JSON.parse(await readFile(baselinePath, "utf8"));
+
+const isMainModule =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+
+if (isMainModule) {
+  const results = runPayloadFrameBenchmark();
+  console.table(results);
+
+  const outputPath = process.env.PLUG_BENCH_OUTPUT ?? process.argv[2];
+  if (outputPath) {
+    await writeFile(outputPath, `${JSON.stringify(results, null, 2)}\n`, "utf8");
+    console.log(`Wrote benchmark results to ${outputPath}`);
+  }
+}

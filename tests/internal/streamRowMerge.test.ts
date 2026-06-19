@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { NormalizedAgentRpcResponse } from "../../shared/contracts/api";
-import { tryMergeChunkRowsIntoConsumerResponse } from "../../shared/socket/consumerCommandResponseMerge";
-import { tryMergeChunkRowsIntoRawRpcResponse } from "../../shared/socket/streamCommandSessionCommon";
+import type { NormalizedAgentRpcResponse } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
+import { tryMergeChunkRowsIntoConsumerResponse } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/consumerCommandResponseMerge";
+import { tryMergeChunkRowsIntoRawRpcResponse } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/streamCommandSessionCommon";
 
 describe("stream row merge", () => {
   it("appends chunk rows in place for consumer aggregated responses", () => {

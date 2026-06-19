@@ -17,6 +17,10 @@ import {
   toOptionalPositiveNumber,
   toOptionalString,
 } from "./plugExecutionParameters";
+import {
+  assertBulkInsertWithinHubLimits,
+  resolveAutoMaxParallelReadOnlyBatchItems,
+} from "./plugSqlPerformanceHints";
 
 const sqlTemplateMarkers = [
   "{{substitua_pela_tabela}}",
@@ -338,6 +342,15 @@ export const buildGuidedBatchCommand = (
   const maxParallelReadOnlyBatchItems = toOptionalPositiveNumber(
     options.maxParallelReadOnlyBatchItems,
   );
+  const maxParallelExplicit = "maxParallelReadOnlyBatchItems" in options;
+  const autoPerformanceHints = toOptionalBoolean(options.autoPerformanceHints) ?? true;
+  const resolvedMaxParallelReadOnlyBatchItems = maxParallelExplicit
+    ? maxParallelReadOnlyBatchItems
+    : resolveAutoMaxParallelReadOnlyBatchItems(
+        batchItems,
+        maxParallelReadOnlyBatchItems,
+        autoPerformanceHints,
+      );
   const database = toOptionalString(options.database);
   const idempotencyKey = toOptionalString(options.idempotencyKey);
   const apiVersion = toOptionalString(options.apiVersion) ?? DEFAULT_API_VERSION;
@@ -354,8 +367,10 @@ export const buildGuidedBatchCommand = (
           ...(timeoutMs ? { timeout_ms: timeoutMs } : {}),
           ...(maxRows ? { max_rows: maxRows } : {}),
           ...(transaction !== undefined ? { transaction } : {}),
-          ...(maxParallelReadOnlyBatchItems
-            ? { max_parallel_read_only_batch_items: maxParallelReadOnlyBatchItems }
+          ...(resolvedMaxParallelReadOnlyBatchItems
+            ? {
+                max_parallel_read_only_batch_items: resolvedMaxParallelReadOnlyBatchItems,
+              }
             : {}),
         },
       },
@@ -397,6 +412,7 @@ export const buildGuidedBulkInsertCommand = (
   }
   const columns = parseBulkInsertColumns(parsedColumns);
   const rows = parseBulkInsertRows(parsedRows, columns.length);
+  assertBulkInsertWithinHubLimits(table.trim(), columns, rows);
   const timeoutMs = toOptionalPositiveNumber(options.timeoutMs);
   const database = toOptionalString(options.database);
   const idempotencyKey = toOptionalString(options.idempotencyKey);

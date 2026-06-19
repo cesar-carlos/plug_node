@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { PlugValidationError } from "../../shared/contracts/errors";
+import { PlugValidationError } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
 import {
   buildCoalescedBatchRequest,
   MAX_COALESCED_BATCH_COMMANDS,
   shouldCoalesceBatchInputItems,
-} from "../../shared/n8n/plugBatchCoalesce";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugBatchCoalesce";
 import { createMockExecuteContext } from "../helpers/mockExecuteFunctions";
 
 const credentials = {
@@ -138,6 +138,6 @@ describe("plugBatchCoalesce", () => {
         }),
         finalizeBuiltRequest: (builtRequest) => builtRequest,
       }),
-    ).toThrow(/exceeds 100 commands/i);
+    ).toThrow(new RegExp(`exceeds ${MAX_COALESCED_BATCH_COMMANDS} commands`, "i"));
   });
 });

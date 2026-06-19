@@ -66,18 +66,22 @@ Cache login tokens in long-running workflows (see server limits doc).
 
 ## Node parity checklist
 
-| Hub capability                | Node support                                         |
-| ----------------------------- | ---------------------------------------------------- |
-| `sql.execute`                 | Execute SQL (guided + advanced)                      |
-| `sql.executeBatch`            | Execute Batch                                        |
-| `sql.bulkInsert`              | Bulk Insert SQL (guided JSON for table/columns/rows) |
-| `sql.cancel`                  | Cancel SQL                                           |
-| `rpc.discover`                | Discover RPC                                         |
-| `agent.getProfile`            | Get Agent Profile                                    |
-| `client_token.getPolicy`      | Get Client Token Policy                              |
-| `options.prefer_db_streaming` | Prefer DB Streaming (SQL options)                    |
-| `options.execution_mode`      | Managed / Preserve                                   |
-| `options.multi_result`        | Multi Result                                         |
+| Hub capability                       | Node support                                                         |
+| ------------------------------------ | -------------------------------------------------------------------- |
+| `sql.execute`                        | Execute SQL (guided + advanced)                                      |
+| `sql.executeBatch`                   | Execute Batch                                                        |
+| `sql.bulkInsert`                     | Bulk Insert SQL (guided JSON for table/columns/rows)                 |
+| `sql.cancel`                         | Cancel SQL                                                           |
+| `rpc.discover`                       | Discover RPC                                                         |
+| `agent.getProfile`                   | Get Agent Profile                                                    |
+| `client_token.getPolicy`             | Get Client Token Policy                                              |
+| `options.prefer_db_streaming`        | Prefer DB Streaming (SQL options) + Auto Performance Hints on Socket |
+| `options.execution_mode`             | Managed / Preserve                                                   |
+| `options.multi_result`               | Multi Result                                                         |
+| `fastPath` (relay)                   | Socket Options → Relay Fast Path                                     |
+| `requestServerTimings`               | Socket Options                                                       |
+| `streamPullWindowSize` adaptive      | Socket Options (`0` = agent recommendation)                          |
+| `max_parallel_read_only_batch_items` | Batch options + Auto Performance Hints                               |
 
 ## Test coverage matrix (plug_node)
 

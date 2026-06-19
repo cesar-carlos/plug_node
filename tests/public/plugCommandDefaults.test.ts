@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_API_VERSION } from "../../shared/contracts/api";
+import { DEFAULT_API_VERSION } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 import type {
   PlugResolvedExecutionContext,
   RpcSingleCommand,
-} from "../../shared/contracts/api";
-import { applyCommandDefaults } from "../../shared/n8n/plugCommandDefaults";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
+import { applyCommandDefaults } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugCommandDefaults";
 
 const executionContext: PlugResolvedExecutionContext = {
   user: "client@example.com",

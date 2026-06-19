@@ -4,7 +4,7 @@ import {
   attachIdleCommandTimer,
   createSettleOnce,
   resolveSocketCommandTimeouts,
-} from "../../shared/socket/socketSessionLifecycle";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/socket/socketSessionLifecycle";
 
 describe("socketSessionLifecycle", () => {
   it("resolves connect timeout separately from command timeout", () => {

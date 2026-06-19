@@ -10,7 +10,12 @@ import {
 import sharp from "sharp";
 
 import { PlugValidationError } from "../contracts/errors";
+import {
+  toCappedPositiveInteger,
+  toPositiveNumber,
+} from "../n8n/plugExecutionParameters";
 import { isRecord } from "../utils/json";
+import { toOptionalString } from "../utils/strings";
 
 export type BarcodeOutputFormat = "png" | "svg";
 export type BarcodeType =
@@ -104,58 +109,12 @@ const allowedTextAlignments = new Set(["left", "center", "right"]);
 const allowedQrErrorCorrectionLevels = new Set(["L", "M", "Q", "H"]);
 const colorPattern = /^#?[0-9a-fA-F]{6}$/;
 
-const toOptionalString = (value: unknown): string | undefined => {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-};
-
-const toPositiveNumber = (value: unknown, fallback: number, label: string): number => {
-  if (value === undefined || value === null || value === "") {
-    return fallback;
-  }
-
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    throw new PlugValidationError(`${label} must be a positive number`);
-  }
-
-  return value;
-};
-
 const toOptionalPositiveNumber = (value: unknown, label: string): number | undefined => {
   if (value === undefined || value === null || value === "") {
     return undefined;
   }
 
   return toPositiveNumber(value, 0, label);
-};
-
-const toPositiveInteger = (value: unknown, fallback: number, label: string): number => {
-  const numberValue = toPositiveNumber(value, fallback, label);
-  if (!Number.isInteger(numberValue)) {
-    throw new PlugValidationError(`${label} must be an integer`);
-  }
-
-  return numberValue;
-};
-
-const toCappedPositiveInteger = (
-  value: unknown,
-  fallback: number,
-  label: string,
-  hardLimit: number,
-): number => {
-  const normalized = toPositiveInteger(value, fallback, label);
-  if (normalized > hardLimit) {
-    throw new PlugValidationError(
-      `${label} must be less than or equal to ${hardLimit} bytes`,
-    );
-  }
-
-  return normalized;
 };
 
 const readPositiveIntegerEnv = (

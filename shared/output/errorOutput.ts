@@ -64,23 +64,31 @@ export const toNodeFacingError = (error: unknown): Error | string => {
 export const serializeErrorForContinueOnFail = (
   error: unknown,
 ): Record<string, unknown> => {
-  if (error instanceof PlugError) {
+  const technicalMessage =
+    error instanceof PlugError ? error.technicalMessage : undefined;
+  const nodeFacing = toNodeFacingError(error);
+  if (nodeFacing instanceof PlugError) {
     return compactRecord({
-      message: error.message,
-      description: error.description,
-      code: error.code,
-      statusCode: error.statusCode,
-      correlationId: error.correlationId,
-      retryable: error.retryable,
-      retryAfterSeconds: error.retryAfterSeconds,
+      message: nodeFacing.message,
+      description: nodeFacing.description,
+      technicalMessage,
+      code: nodeFacing.code,
+      statusCode: nodeFacing.statusCode,
+      correlationId: nodeFacing.correlationId,
+      retryable: nodeFacing.retryable,
+      retryAfterSeconds: nodeFacing.retryAfterSeconds,
     });
   }
 
-  if (error instanceof Error) {
+  if (nodeFacing instanceof Error) {
     return compactRecord({
-      message: error.message,
-      name: error.name,
+      message: nodeFacing.message,
+      name: nodeFacing.name,
     });
+  }
+
+  if (typeof nodeFacing === "string") {
+    return { message: nodeFacing };
   }
 
   return {

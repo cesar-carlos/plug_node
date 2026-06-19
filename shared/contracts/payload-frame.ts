@@ -23,8 +23,14 @@ export interface DecodedPayloadFrame<TData = unknown> {
   readonly data: TData;
 }
 
+export interface PayloadFrameSigningKeyEntry {
+  readonly key: string;
+  readonly keyId?: string;
+}
+
 export interface PayloadFrameSigningOptions {
   readonly key?: string;
   readonly keyId?: string;
   readonly requireSignature?: boolean;
+  readonly previousKeys?: readonly PayloadFrameSigningKeyEntry[];
 }

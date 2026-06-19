@@ -1,20 +1,12 @@
-import type {
-  IDataObject,
-  IExecuteFunctions,
-  IHttpRequestOptions,
-  INodeExecutionData,
-} from "n8n-workflow";
-import { NodeOperationError } from "n8n-workflow";
+import type { IDataObject, IExecuteFunctions, INodeExecutionData } from "n8n-workflow";
 
-import type { PlugUserAuthCredentials } from "../contracts/api";
+import type { PlugHttpRequester } from "../contracts/api";
 import type {
   UserAccessExecutionResult,
   UserAccessOperation,
 } from "../contracts/user-access";
-import { DEFAULT_BASE_URL } from "../contracts/api";
 import { PlugValidationError } from "../contracts/errors";
 import { createUserExecutionSessionRunner } from "../auth/session";
-import { serializeErrorForContinueOnFail } from "../output/errorOutput";
 import { buildUserAccessOutputItems } from "../output/userAccessOutput";
 import { executeWithPlugTransientRetry } from "./plugTransientRetry";
 import { collectAllPages } from "../rest/resourceClient";
@@ -26,87 +18,15 @@ import {
   rejectAccessRequest,
   revokeAgentClientAccess,
 } from "../rest/userAccess";
-import { isRecord } from "../utils/json";
+import { buildN8nHttpRequester } from "./httpRequester";
+import { readPlugEmailPasswordCredentials } from "./plugCommandRequestBuilder";
+import { toOptionalPositiveInteger, toOptionalString } from "./plugExecutionParameters";
+import { executePerInputItem, toAccessNodeOperationError } from "./plugItemExecution";
 
 export interface PlugUserAccessNodeExecutionConfig {
   readonly credentialName?: string;
   readonly nodeDisplayName?: string;
 }
-
-const toOptionalString = (value: unknown): string | undefined => {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-};
-
-const toPositiveInteger = (value: unknown, label: string): number | undefined => {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    if (value === undefined || value === null || value === 0) {
-      return undefined;
-    }
-
-    throw new PlugValidationError(`${label} must be a positive number`);
-  }
-
-  return Math.trunc(value);
-};
-
-const buildHttpRequester = (
-  context: IExecuteFunctions,
-): import("../contracts/api").PlugHttpRequester => {
-  return async (options) => {
-    const requestOptions: IHttpRequestOptions = {
-      method: options.method,
-      url: options.url,
-      headers: options.headers,
-      ...(options.body !== undefined
-        ? {
-            body: options.body as NonNullable<IHttpRequestOptions["body"]>,
-          }
-        : {}),
-      timeout: options.timeoutMs,
-      returnFullResponse: true,
-      ignoreHttpStatusErrors: true,
-      json: true,
-    };
-
-    const response = await context.helpers.httpRequest(requestOptions);
-    const responseBody =
-      isRecord(response) && "body" in response ? response.body : response;
-    const responseHeaders =
-      isRecord(response) && isRecord(response.headers)
-        ? (response.headers as Record<string, string | string[] | undefined>)
-        : {};
-    const statusCode =
-      isRecord(response) && typeof response.statusCode === "number"
-        ? response.statusCode
-        : 200;
-
-    return {
-      statusCode,
-      headers: responseHeaders,
-      body: responseBody,
-    };
-  };
-};
-
-const readCredentials = async (
-  context: IExecuteFunctions,
-  config: PlugUserAccessNodeExecutionConfig,
-): Promise<PlugUserAuthCredentials> => {
-  const rawCredentials = await context.getCredentials(
-    config.credentialName ?? "plugDatabaseAccountApi",
-  );
-
-  return {
-    user: String(rawCredentials.user ?? ""),
-    password: String(rawCredentials.password ?? ""),
-    baseUrl: DEFAULT_BASE_URL,
-  };
-};
 
 const getIncludeMetadata = (context: IExecuteFunctions, itemIndex: number): boolean =>
   context.getNodeParameter("includePlugMetadata", itemIndex, true) as boolean;
@@ -129,7 +49,7 @@ const requireStringParameter = (
 };
 
 const buildExecutionResult = async (
-  requester: import("../contracts/api").PlugHttpRequester,
+  requester: PlugHttpRequester,
   sessionRunner: ReturnType<typeof createUserExecutionSessionRunner>,
   context: IExecuteFunctions,
   itemIndex: number,
@@ -146,11 +66,11 @@ const buildExecutionResult = async (
         | "active"
         | "inactive";
       const search = toOptionalString(context.getNodeParameter("search", itemIndex, ""));
-      const page = toPositiveInteger(
+      const page = toOptionalPositiveInteger(
         context.getNodeParameter("page", itemIndex, 1),
         "Page",
       );
-      const pageSize = toPositiveInteger(
+      const pageSize = toOptionalPositiveInteger(
         context.getNodeParameter("pageSize", itemIndex, 50),
         "Page Size",
       );
@@ -198,9 +118,49 @@ const buildExecutionResult = async (
       };
     }
     case "listManagedAccessRequests": {
-      const response = await sessionRunner((session) =>
-        listManagedAccessRequests(requester, session),
+      const page = toOptionalPositiveInteger(
+        context.getNodeParameter("page", itemIndex, 1),
+        "Page",
       );
+      const pageSize = toOptionalPositiveInteger(
+        context.getNodeParameter("pageSize", itemIndex, 50),
+        "Page Size",
+      );
+      const returnAll = context.getNodeParameter(
+        "returnAll",
+        itemIndex,
+        false,
+      ) as boolean;
+
+      const response = await sessionRunner((session) => {
+        const initialQuery = {
+          page,
+          pageSize,
+        };
+
+        if (!returnAll) {
+          return listManagedAccessRequests(requester, session, initialQuery);
+        }
+
+        return collectAllPages({
+          initialQuery,
+          fetchPage: (query) => listManagedAccessRequests(requester, session, query),
+          toEnvelope: (pageResponse) => ({
+            items: pageResponse.items,
+            total: pageResponse.total,
+            page: pageResponse.page,
+            pageSize: pageResponse.pageSize,
+          }),
+          buildAggregatedResponse: (items, firstResponse) => ({
+            ...firstResponse,
+            items,
+            total: firstResponse.total,
+            page: 1,
+            pageSize: items.length,
+          }),
+        });
+      });
+
       return {
         operation,
         response,
@@ -275,16 +235,17 @@ export const executePlugUserAccessNode = async (
   context: IExecuteFunctions,
   config: PlugUserAccessNodeExecutionConfig,
 ): Promise<INodeExecutionData[][]> => {
-  const sourceItems = context.getInputData();
-  const items =
-    sourceItems.length > 0 ? sourceItems : [{ json: {} } as INodeExecutionData];
-  const credentials = await readCredentials(context, config);
-  const requester = buildHttpRequester(context);
+  const credentials = await readPlugEmailPasswordCredentials(
+    context,
+    config.credentialName ?? "plugDatabaseAccountApi",
+  );
+  const requester = buildN8nHttpRequester(context);
   const sessionRunner = createUserExecutionSessionRunner(requester, credentials);
-  const outputItems: INodeExecutionData[] = [];
+  const nodeDisplayName = config.nodeDisplayName ?? "Plug User Access";
 
-  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-    try {
+  return executePerInputItem(
+    context,
+    async (itemIndex) => {
       const { value: executionResult } = await executeWithPlugTransientRetry({
         execute: () => buildExecutionResult(requester, sessionRunner, context, itemIndex),
       });
@@ -293,33 +254,11 @@ export const executePlugUserAccessNode = async (
         getIncludeMetadata(context, itemIndex),
       );
 
-      outputItems.push(...toNodeItems(jsonItems as IDataObject[]));
-    } catch (error: unknown) {
-      if (context.continueOnFail()) {
-        outputItems.push({
-          json: {
-            ...items[itemIndex].json,
-            error: serializeErrorForContinueOnFail(error),
-          },
-          pairedItem: {
-            item: itemIndex,
-          },
-        });
-        continue;
-      }
-
-      const nodeError =
-        error instanceof Error || typeof error === "string"
-          ? error
-          : isRecord(error)
-            ? JSON.stringify(error)
-            : new Error(`Unknown ${config.nodeDisplayName ?? "Plug User Access"} error`);
-
-      throw new NodeOperationError(context.getNode(), nodeError, {
-        itemIndex,
-      });
-    }
-  }
-
-  return [outputItems];
+      return toNodeItems(jsonItems as IDataObject[]);
+    },
+    {
+      onError: (error, itemIndex) =>
+        toAccessNodeOperationError(context, error, itemIndex, nodeDisplayName),
+    },
+  );
 };

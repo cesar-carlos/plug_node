@@ -15,7 +15,7 @@ import {
   mapGuidedBatchCommandItems,
 } from "./plugSqlGuidedCommands";
 
-export const MAX_COALESCED_BATCH_COMMANDS = 100;
+export const MAX_COALESCED_BATCH_COMMANDS = 32;
 
 const stableSerialize = (value: unknown): string => JSON.stringify(value ?? {});
 

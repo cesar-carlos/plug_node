@@ -72,9 +72,11 @@ describe("payloadFrameCodec", () => {
         jsonrpc: "2.0",
         id: "req-2",
         result: {
-          text: Array.from({ length: 400 }, (_, index) => `plug-row-${index}-value`)
-            .join("|")
-            .repeat(2),
+          text: Array.from(
+            { length: 300 },
+            (_, index) =>
+              `plug-row-${index}-${((index * 2_654_435_761) >>> 0).toString(36)}-${((index * 1_597_334_677) >>> 0).toString(16)}`,
+          ).join("|"),
         },
       },
       { requestId: "req-2" },
@@ -190,6 +192,36 @@ describe("payloadFrameCodec", () => {
     ).toThrow("PayloadFrame signature key_id mismatch");
   });
 
+  it("verifies signed frames with a previous key from the keyring", () => {
+    const frame = encodePayloadFrame(
+      {
+        jsonrpc: "2.0",
+        id: "req-rotated",
+        result: { ok: true },
+      },
+      {
+        requestId: "req-rotated",
+        compression: "none",
+        signing: {
+          key: "old-secret",
+          keyId: "old-key-id",
+        },
+      },
+    );
+
+    expect(
+      decodePayloadFrame(frame, {
+        signing: {
+          key: "current-secret",
+          keyId: "current-key-id",
+          previousKeys: [{ key: "old-secret", keyId: "old-key-id" }],
+        },
+      }).data,
+    ).toMatchObject({
+      id: "req-rotated",
+    });
+  });
+
   it("rejects PayloadFrame envelopes with unsupported fields", () => {
     const frame = encodePayloadFrame({ ok: true }, { requestId: "req-strict" });
 
@@ -303,7 +335,7 @@ describe("payloadFrameCodec", () => {
     );
     const tamperedFrame: PayloadFrameEnvelope = {
       ...frame,
-      originalSize: frame.compressedSize * 21,
+      originalSize: frame.compressedSize * 11,
     };
 
     await expect(decodePayloadFrameAsync(tamperedFrame)).rejects.toThrow(

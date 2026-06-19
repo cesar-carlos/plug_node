@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { PlugError } from "../../shared/contracts/errors";
+import { PlugError } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
 import {
   assertSocketBufferWithinLimits,
   countRows,
   resolveSocketBufferLimits,
   tryMergeChunkRowsIntoRawRpcResponse,
-} from "../../shared/socket/streamCommandSessionCommon";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/socket/streamCommandSessionCommon";
 
 describe("streamCommandSessionCommon", () => {
   it("resolves default socket buffer limits", () => {

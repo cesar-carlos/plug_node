@@ -4,6 +4,12 @@ import { existsSync } from "node:fs";
 import type { Browser, Page, Route } from "playwright-core";
 
 import { PlugValidationError } from "../contracts/errors";
+import {
+  toCappedPositiveInteger,
+  toNonNegativeNumber,
+  toPositiveNumber,
+} from "../n8n/plugExecutionParameters";
+import { toOptionalString } from "../utils/strings";
 
 export type PdfBrowserChannel = "chrome" | "msedge" | "chromium";
 export type PdfBrowserChannelOption = "auto" | PdfBrowserChannel;
@@ -105,66 +111,8 @@ const allowedWaitUntilValues = new Set<PdfWaitUntil>([
 ]);
 const allowedPdfMedia = new Set<PdfMedia>(["print", "screen"]);
 
-const toOptionalString = (value: unknown): string | undefined => {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-};
-
 const toBoolean = (value: unknown, fallback: boolean): boolean =>
   typeof value === "boolean" ? value : fallback;
-
-const toPositiveNumber = (value: unknown, fallback: number, label: string): number => {
-  if (value === undefined || value === null || value === "") {
-    return fallback;
-  }
-
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    throw new PlugValidationError(`${label} must be a positive number`);
-  }
-
-  return value;
-};
-
-const toNonNegativeNumber = (value: unknown, fallback: number, label: string): number => {
-  if (value === undefined || value === null || value === "") {
-    return fallback;
-  }
-
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new PlugValidationError(`${label} must be zero or a positive number`);
-  }
-
-  return value;
-};
-
-const toPositiveInteger = (value: unknown, fallback: number, label: string): number => {
-  const numberValue = toPositiveNumber(value, fallback, label);
-  if (!Number.isInteger(numberValue)) {
-    throw new PlugValidationError(`${label} must be an integer`);
-  }
-
-  return numberValue;
-};
-
-const toCappedPositiveInteger = (
-  value: unknown,
-  fallback: number,
-  label: string,
-  hardLimit: number,
-): number => {
-  const normalized = toPositiveInteger(value, fallback, label);
-  if (normalized > hardLimit) {
-    throw new PlugValidationError(
-      `${label} must be less than or equal to ${hardLimit} bytes`,
-    );
-  }
-
-  return normalized;
-};
 
 const readPositiveIntegerEnv = (
   env: NodeJS.ProcessEnv,

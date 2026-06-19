@@ -1,19 +1,13 @@
 import type { IExecuteFunctions, INodeExecutionData } from "n8n-workflow";
 
 import {
-  createPlaywrightHtmlToPdfRenderer,
-  normalizeHtmlDocument,
-  normalizePdfFileName,
-  resolvePdfBrowserLaunchOptions,
-  resolvePdfRenderOptions,
-} from "../tools/pdf";
-import {
   extractPdfText,
   markdownToHtmlDocument,
   mergePdfBuffers,
   splitPdfBuffer,
   textToHtmlDocument,
 } from "../tools/documents";
+import { normalizeHtmlDocument } from "../tools/pdf";
 import {
   plugToolExtractPdfTextOperation,
   plugToolMarkdownToPdfOperation,
@@ -23,137 +17,33 @@ import {
 } from "./plugToolsDescription";
 import {
   assertBufferSize,
-  emptyInputItem,
   normalizePositiveIntegerLimit,
   normalizeOutputBinaryProperty,
   normalizeOutputJsonProperty,
-  now,
-  serializeErrorForContinueOnFail,
   toCollection,
   toNodeOperationError,
   type PlugToolsPdfExecutionConfig,
 } from "./plugToolsCommon";
+import { executeHtmlToPdfItems } from "./plugToolsHtmlToPdf";
+import { executePerInputItem } from "./plugItemExecution";
 
 const renderHtmlPdfOperation = async (
   context: IExecuteFunctions,
   config: PlugToolsPdfExecutionConfig,
   operation: typeof plugToolMarkdownToPdfOperation | typeof plugToolTextToPdfOperation,
-): Promise<INodeExecutionData[][]> => {
-  const sourceItems = context.getInputData();
-  const items = sourceItems.length > 0 ? sourceItems : [emptyInputItem];
-  const renderer = config.renderer ?? createPlaywrightHtmlToPdfRenderer();
-  const outputItems: INodeExecutionData[] = [];
-
-  try {
-    for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-      try {
-        const browserOptions = toCollection(context, "browserOptions", itemIndex);
-        const pdfOptions = toCollection(context, "pdfOptions", itemIndex);
-        const outputBinaryProperty = normalizeOutputBinaryProperty(
-          context.getNodeParameter("outputBinaryProperty", itemIndex, "data"),
-        );
-        const fileName = normalizePdfFileName(
-          context.getNodeParameter("fileName", itemIndex, "document.pdf"),
-        );
-        const includeMetadata = context.getNodeParameter(
-          "includePlugToolsMetadata",
-          itemIndex,
-          true,
-        ) as boolean;
-        const metadataProperty = includeMetadata
-          ? normalizeOutputJsonProperty(
-              context.getNodeParameter("metadataProperty", itemIndex, "__plugTools"),
-              "__plugTools",
-              "Metadata Property",
-            )
-          : undefined;
-        const browser = resolvePdfBrowserLaunchOptions({
-          executablePath: browserOptions.browserExecutablePath,
-          channel: browserOptions.browserChannel,
-          timeoutMs: browserOptions.timeoutMs,
-          enableJavaScript: browserOptions.enableJavaScript,
-        });
-        const pdf = resolvePdfRenderOptions({
-          format: pdfOptions.format,
-          landscape: pdfOptions.landscape,
-          printBackground: pdfOptions.printBackground,
-          preferCSSPageSize: pdfOptions.preferCSSPageSize,
-          scale: pdfOptions.scale,
-          marginTop: pdfOptions.marginTop,
-          marginRight: pdfOptions.marginRight,
-          marginBottom: pdfOptions.marginBottom,
-          marginLeft: pdfOptions.marginLeft,
-          headerTemplate: pdfOptions.headerTemplate,
-          footerTemplate: pdfOptions.footerTemplate,
-          waitUntil: pdfOptions.waitUntil,
-          media: pdfOptions.media,
-          renderDelayMs: pdfOptions.renderDelayMs,
-          maxHtmlSizeBytes: pdfOptions.maxHtmlSizeBytes,
-          maxOutputSizeBytes: pdfOptions.maxOutputSizeBytes,
-        });
-        const rawHtml =
-          operation === plugToolMarkdownToPdfOperation
-            ? await markdownToHtmlDocument(
-                context.getNodeParameter("markdown", itemIndex),
-              )
-            : textToHtmlDocument(context.getNodeParameter("text", itemIndex));
-        const html = normalizeHtmlDocument(rawHtml, "", pdf.maxHtmlSizeBytes);
-        const startedAt = now();
-        const buffer = await renderer.render({ html, browser, pdf });
-        const durationMs = now() - startedAt;
-        const binaryData = await context.helpers.prepareBinaryData(
-          buffer,
-          fileName,
-          "application/pdf",
-        );
-
-        outputItems.push({
-          json: {
-            ...items[itemIndex].json,
-            ...(includeMetadata
-              ? {
-                  [metadataProperty ?? "__plugTools"]: {
-                    operation,
-                    fileName,
-                    mimeType: "application/pdf",
-                    sizeBytes: buffer.length,
-                    durationMs,
-                    outputBinaryProperty,
-                    browser: browser.executablePath
-                      ? "executablePath"
-                      : (browser.channel ?? "chromium"),
-                    browserSource: browser.source,
-                  },
-                }
-              : {}),
-          },
-          binary: {
-            ...(items[itemIndex].binary ?? {}),
-            [outputBinaryProperty]: binaryData,
-          },
-          pairedItem: { item: itemIndex },
-        });
-      } catch (error: unknown) {
-        if (context.continueOnFail()) {
-          outputItems.push({
-            json: {
-              ...items[itemIndex].json,
-              error: serializeErrorForContinueOnFail(error),
-            },
-            pairedItem: { item: itemIndex },
-          });
-          continue;
-        }
-
-        throw toNodeOperationError(context, error, config.nodeDisplayName, itemIndex);
-      }
-    }
-  } finally {
-    await renderer.close();
-  }
-
-  return [outputItems];
-};
+): Promise<INodeExecutionData[][]> =>
+  executeHtmlToPdfItems({
+    context,
+    config,
+    operation,
+    resolveHtml: async (itemIndex, pdf) => {
+      const rawHtml =
+        operation === plugToolMarkdownToPdfOperation
+          ? await markdownToHtmlDocument(context.getNodeParameter("markdown", itemIndex))
+          : textToHtmlDocument(context.getNodeParameter("text", itemIndex));
+      return normalizeHtmlDocument(rawHtml, "", pdf.maxHtmlSizeBytes);
+    },
+  });
 
 export const executePlugToolsDocumentNode = async (
   context: IExecuteFunctions,
@@ -172,11 +62,9 @@ export const executePlugToolsDocumentNode = async (
     return renderHtmlPdfOperation(context, config, operation);
   }
 
-  const items = context.getInputData();
-  const outputItems: INodeExecutionData[] = [];
-
-  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-    try {
+  return executePerInputItem(
+    context,
+    async (itemIndex, item) => {
       const binaryPropertyName = context.getNodeParameter(
         "binaryPropertyName",
         itemIndex,
@@ -225,9 +113,10 @@ export const executePlugToolsDocumentNode = async (
           "merged.pdf",
           "application/pdf",
         );
-        outputItems.push({
+
+        return {
           json: {
-            ...items[itemIndex].json,
+            ...item.json,
             __plugTools: {
               operation,
               inputCount: buffers.length,
@@ -236,12 +125,11 @@ export const executePlugToolsDocumentNode = async (
             },
           },
           binary: {
-            ...(items[itemIndex].binary ?? {}),
+            ...(item.binary ?? {}),
             [outputBinaryProperty]: binaryData,
           },
           pairedItem: { item: itemIndex },
-        });
-        continue;
+        };
       }
 
       if (operation === plugToolSplitPdfOperation) {
@@ -252,15 +140,17 @@ export const executePlugToolsDocumentNode = async (
           buffer,
           context.getNodeParameter("pageRange", itemIndex, "") as string,
         );
+        const pageItems: INodeExecutionData[] = [];
+
         for (const page of pages) {
           const binaryData = await context.helpers.prepareBinaryData(
             page.buffer,
             `page-${page.pageNumber}.pdf`,
             "application/pdf",
           );
-          outputItems.push({
+          pageItems.push({
             json: {
-              ...items[itemIndex].json,
+              ...item.json,
               __plugTools: {
                 operation,
                 pageNumber: page.pageNumber,
@@ -269,13 +159,14 @@ export const executePlugToolsDocumentNode = async (
               },
             },
             binary: {
-              ...(items[itemIndex].binary ?? {}),
+              ...(item.binary ?? {}),
               [outputBinaryProperty]: binaryData,
             },
             pairedItem: { item: itemIndex },
           });
         }
-        continue;
+
+        return pageItems;
       }
 
       const outputJsonProperty = normalizeOutputJsonProperty(
@@ -284,9 +175,10 @@ export const executePlugToolsDocumentNode = async (
         "Output JSON Property",
       );
       const extracted = await extractPdfText(buffer);
-      outputItems.push({
+
+      return {
         json: {
-          ...items[itemIndex].json,
+          ...item.json,
           [outputJsonProperty]: extracted,
           __plugTools: {
             operation,
@@ -295,22 +187,11 @@ export const executePlugToolsDocumentNode = async (
           },
         },
         pairedItem: { item: itemIndex },
-      });
-    } catch (error: unknown) {
-      if (context.continueOnFail()) {
-        outputItems.push({
-          json: {
-            ...items[itemIndex].json,
-            error: serializeErrorForContinueOnFail(error),
-          },
-          pairedItem: { item: itemIndex },
-        });
-        continue;
-      }
-
-      throw toNodeOperationError(context, error, config.nodeDisplayName, itemIndex);
-    }
-  }
-
-  return [outputItems];
+      };
+    },
+    {
+      onError: (error, itemIndex) =>
+        toNodeOperationError(context, error, config.nodeDisplayName, itemIndex),
+    },
+  );
 };

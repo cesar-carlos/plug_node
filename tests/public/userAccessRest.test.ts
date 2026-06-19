@@ -9,11 +9,16 @@ import type {
 import type { PlugError } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
 import {
   approveAccessRequest,
+  approveOwnedClientRegistration,
+  getOwnedClient,
   listAgentCatalog,
   listAgentClients,
   listManagedAccessRequests,
+  listOwnedClients,
   rejectAccessRequest,
+  rejectOwnedClientRegistration,
   revokeAgentClientAccess,
+  setOwnedClientStatus,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/rest/userAccess";
 
 const credentials: PlugUserAuthCredentials = {
@@ -64,6 +69,31 @@ describe("user access REST helpers", () => {
         url: expect.stringContaining(
           "/agents/catalog?status=active&search=alpha&page=2&pageSize=10",
         ),
+      }),
+    );
+  });
+
+  it("builds query params for listManagedAccessRequests", async () => {
+    const requester: PlugHttpRequester = vi.fn().mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: {
+        items: [],
+        total: 0,
+        page: 2,
+        pageSize: 25,
+      },
+    });
+
+    await listManagedAccessRequests(requester, session, {
+      page: 2,
+      pageSize: 25,
+    });
+
+    expect(requester).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "GET",
+        url: expect.stringContaining("/me/client-access-requests?page=2&pageSize=25"),
       }),
     );
   });
@@ -175,6 +205,130 @@ describe("user access REST helpers", () => {
       resourceId: "client-1",
       agentId: "agent-1",
     });
+  });
+
+  it("builds query params for /me/clients list and detail", async () => {
+    const listRequester: PlugHttpRequester = vi.fn().mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: {
+        clients: [
+          {
+            id: "client-1",
+            email: "client@example.com",
+            status: "active",
+          },
+        ],
+        count: 1,
+        total: 1,
+        page: 1,
+        pageSize: 50,
+      },
+    });
+
+    await listOwnedClients(listRequester, session, {
+      status: "active",
+      search: "plug",
+      page: 2,
+      pageSize: 25,
+    });
+
+    expect(listRequester).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "GET",
+        url: expect.stringContaining(
+          "/me/clients?status=active&search=plug&page=2&pageSize=25",
+        ),
+      }),
+    );
+
+    const detailRequester: PlugHttpRequester = vi.fn().mockResolvedValue({
+      statusCode: 200,
+      headers: {},
+      body: {
+        client: {
+          id: "client-1",
+          email: "client@example.com",
+          status: "active",
+        },
+      },
+    });
+
+    const detail = await getOwnedClient(detailRequester, session, "client-1");
+
+    expect(detail.client).toMatchObject({
+      id: "client-1",
+      email: "client@example.com",
+    });
+  });
+
+  it("builds owned client governance mutations", async () => {
+    const requester: PlugHttpRequester = vi
+      .fn()
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: {},
+        body: {
+          client: {
+            id: "client-1",
+            status: "blocked",
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: {},
+        body: {
+          approved: true,
+          clientEmail: "client@example.com",
+        },
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: {},
+        body: {
+          rejected: true,
+          clientEmail: "pending@example.com",
+        },
+      });
+
+    const status = await setOwnedClientStatus(requester, session, {
+      clientId: "client-1",
+      status: "blocked",
+    });
+    const approved = await approveOwnedClientRegistration(requester, session, "client-1");
+    const rejected = await rejectOwnedClientRegistration(requester, session, {
+      clientId: "client-2",
+      reason: "incomplete profile",
+    });
+
+    expect(status.client).toMatchObject({ id: "client-1", status: "blocked" });
+    expect(approved).toMatchObject({
+      resourceType: "ownedClientGovernance",
+      resourceId: "client-1",
+      raw: { approved: true },
+    });
+    expect(rejected).toMatchObject({
+      resourceId: "client-2",
+      raw: { rejected: true },
+    });
+
+    expect(requester).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        method: "PATCH",
+        url: expect.stringContaining("/me/clients/client-1/status"),
+        body: { status: "blocked" },
+      }),
+    );
+    expect(requester).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        method: "POST",
+        url: expect.stringContaining("/me/clients/client-2/registration/reject"),
+        body: { reason: "incomplete profile" },
+      }),
+    );
   });
 
   it("surfaces forbidden errors from user-scoped endpoints", async () => {

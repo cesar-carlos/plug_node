@@ -16,12 +16,12 @@ import type { PayloadFrameCompression } from "../contracts/api";
 import { PlugValidationError } from "../contracts/errors";
 import { isRecord, stringifyJson } from "../utils/json";
 
-const compressionThresholdBytes = 1024;
+const compressionThresholdBytes = 4096;
 const minAutoGzipSavingsBytes = 64;
 const maxGzipInputBytes = 512 * 1024;
 const maxCompressedBytes = 10 * 1024 * 1024;
 const maxDecodedBytes = 10 * 1024 * 1024;
-const maxInflationRatio = 20;
+const maxInflationRatio = 10;
 const asyncGzipThresholdBytes = 128 * 1024;
 const asyncGunzipThresholdBytes = 64 * 1024;
 const signatureAlgorithm = "hmac-sha256";
@@ -149,6 +149,43 @@ const normalizeSigningKey = (
 ): string | undefined => {
   const key = options?.key;
   return typeof key === "string" && key.trim() !== "" ? key : undefined;
+};
+
+const resolveVerificationKeys = (
+  signing: PayloadFrameSigningOptions | undefined,
+): Array<{ readonly key: string; readonly keyId?: string }> => {
+  const keys: Array<{ readonly key: string; readonly keyId?: string }> = [];
+  const primaryKey = normalizeSigningKey(signing);
+  if (primaryKey) {
+    keys.push({
+      key: primaryKey,
+      ...(signing?.keyId?.trim() ? { keyId: signing.keyId.trim() } : {}),
+    });
+  }
+
+  for (const entry of signing?.previousKeys ?? []) {
+    const key = entry.key.trim();
+    if (key === "") {
+      continue;
+    }
+
+    keys.push({
+      key,
+      ...(entry.keyId?.trim() ? { keyId: entry.keyId.trim() } : {}),
+    });
+  }
+
+  return keys;
+};
+
+const signaturesMatch = (provided: string, expected: string): boolean => {
+  const expectedBytes = Buffer.from(expected, "utf8");
+  const providedBytes = Buffer.from(provided, "utf8");
+
+  return (
+    providedBytes.length === expectedBytes.length &&
+    timingSafeEqual(providedBytes, expectedBytes)
+  );
 };
 
 const buildSignatureInput = (
@@ -446,39 +483,47 @@ const verifyFrameSignature = (
     return;
   }
 
-  const key = normalizeSigningKey(signing);
-  if (!key) {
+  const verificationKeys = resolveVerificationKeys(signing);
+  if (verificationKeys.length === 0) {
     throw new PlugValidationError(
       "PayloadFrame signature is present but no signing key is configured",
     );
   }
 
-  if (
-    signing?.keyId !== undefined &&
-    signing.keyId.trim() !== "" &&
-    (frame.signature.key_id === undefined ||
-      frame.signature.key_id.trim() === "" ||
-      frame.signature.key_id !== signing.keyId)
-  ) {
+  const frameKeyId = frame.signature.key_id?.trim();
+  const requiresKeyId =
+    verificationKeys.some((entry) => entry.keyId !== undefined && entry.keyId !== "") ||
+    signing?.keyId !== undefined;
+
+  if (requiresKeyId && (frameKeyId === undefined || frameKeyId === "")) {
+    throw new PlugValidationError("PayloadFrame signature key_id is required");
+  }
+
+  const candidateKeys =
+    frameKeyId !== undefined && frameKeyId !== ""
+      ? verificationKeys.filter((entry) => !entry.keyId || entry.keyId === frameKeyId)
+      : verificationKeys;
+
+  if (candidateKeys.length === 0) {
     throw new PlugValidationError("PayloadFrame signature key_id mismatch");
   }
 
-  const expected = createHmac("sha256", key)
-    .update(buildSignatureInput(frame, binaryPayload))
-    .digest("base64");
   const provided = frame.signature.value.trim();
   if (provided === "") {
     throw new PlugValidationError("PayloadFrame signature value is required");
   }
-  const expectedBytes = Buffer.from(expected, "utf8");
-  const providedBytes = Buffer.from(provided, "utf8");
 
-  if (
-    providedBytes.length !== expectedBytes.length ||
-    !timingSafeEqual(providedBytes, expectedBytes)
-  ) {
-    throw new PlugValidationError("PayloadFrame signature verification failed");
+  const signatureInput = buildSignatureInput(frame, binaryPayload);
+  for (const entry of candidateKeys) {
+    const expected = createHmac("sha256", entry.key)
+      .update(signatureInput)
+      .digest("base64");
+    if (signaturesMatch(provided, expected)) {
+      return;
+    }
   }
+
+  throw new PlugValidationError("PayloadFrame signature verification failed");
 };
 
 export const encodePayloadFrame = (

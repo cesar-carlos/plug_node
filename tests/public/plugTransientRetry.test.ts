@@ -4,8 +4,9 @@ import {
   PlugError,
   PlugTimeoutError,
   PlugValidationError,
-} from "../../shared/contracts/errors";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
 import {
+  applyRetryBackoffJitter,
   computeRetryDelayMs,
   executeWithPlugTransientRetry,
   getPlugOperationRetryKind,
@@ -13,7 +14,7 @@ import {
   MAX_TRANSIENT_RETRIES,
   shouldRetryPlugOperation,
   sleepMs,
-} from "../../shared/n8n/plugTransientRetry";
+} from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugTransientRetry";
 
 describe("plugTransientRetry", () => {
   it("classifies sql and metadata operations", () => {
@@ -132,15 +133,24 @@ describe("plugTransientRetry", () => {
     expect(computeRetryDelayMs(error, 1)).toBe(3000);
   });
 
-  it("applies exponential backoff when retryAfterSeconds is absent", () => {
+  it("applies exponential backoff with jitter when retryAfterSeconds is absent", () => {
     const error = new PlugError("unavailable", {
       code: "SERVICE_UNAVAILABLE",
       statusCode: 503,
       retryable: true,
     });
 
-    expect(computeRetryDelayMs(error, 0)).toBe(250);
-    expect(computeRetryDelayMs(error, 1)).toBe(500);
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
+    expect(computeRetryDelayMs(error, 0)).toBe(188);
+    expect(computeRetryDelayMs(error, 1)).toBe(375);
+    randomSpy.mockRestore();
+  });
+
+  it("applies jitter within the expected backoff range", () => {
+    expect(applyRetryBackoffJitter(250)).toBeGreaterThanOrEqual(188);
+    expect(applyRetryBackoffJitter(250)).toBeLessThanOrEqual(313);
+    expect(applyRetryBackoffJitter(500)).toBeGreaterThanOrEqual(375);
+    expect(applyRetryBackoffJitter(500)).toBeLessThanOrEqual(625);
   });
 
   it("detects replay_detected errors", () => {

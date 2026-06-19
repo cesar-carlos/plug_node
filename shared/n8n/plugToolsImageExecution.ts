@@ -20,11 +20,11 @@ import {
   assertBufferSize,
   normalizePositiveIntegerLimit,
   normalizeOutputBinaryProperty,
-  serializeErrorForContinueOnFail,
   toCollection,
   toNodeOperationError,
   type PlugToolsExecutionConfig,
 } from "./plugToolsCommon";
+import { executePerInputItem } from "./plugItemExecution";
 
 type ImageOperation =
   | typeof plugToolResizeImageOperation
@@ -62,12 +62,10 @@ export const executePlugToolsImageNode = async (
   context: IExecuteFunctions,
   config: PlugToolsExecutionConfig,
   operation: ImageOperation,
-): Promise<INodeExecutionData[][]> => {
-  const items = context.getInputData();
-  const outputItems: INodeExecutionData[] = [];
-
-  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-    try {
+): Promise<INodeExecutionData[][]> =>
+  executePerInputItem(
+    context,
+    async (itemIndex, item) => {
       const binaryPropertyName = context.getNodeParameter(
         "binaryPropertyName",
         itemIndex,
@@ -104,9 +102,10 @@ export const executePlugToolsImageNode = async (
         `image.${output.extension}`,
         output.mimeType,
       );
-      outputItems.push({
+
+      return {
         json: {
-          ...items[itemIndex].json,
+          ...item.json,
           __plugTools: {
             operation,
             width: output.width,
@@ -117,26 +116,14 @@ export const executePlugToolsImageNode = async (
           },
         },
         binary: {
-          ...(items[itemIndex].binary ?? {}),
+          ...(item.binary ?? {}),
           [outputBinaryProperty]: binaryData,
         },
         pairedItem: { item: itemIndex },
-      });
-    } catch (error: unknown) {
-      if (context.continueOnFail()) {
-        outputItems.push({
-          json: {
-            ...items[itemIndex].json,
-            error: serializeErrorForContinueOnFail(error),
-          },
-          pairedItem: { item: itemIndex },
-        });
-        continue;
-      }
-
-      throw toNodeOperationError(context, error, config.nodeDisplayName, itemIndex);
-    }
-  }
-
-  return [outputItems];
-};
+      };
+    },
+    {
+      onError: (error, itemIndex) =>
+        toNodeOperationError(context, error, config.nodeDisplayName, itemIndex),
+    },
+  );

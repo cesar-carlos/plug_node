@@ -1,444 +1,29 @@
-﻿import type { INodeProperties } from "n8n-workflow";
-const operationOptions = [
-  {
-    name: "Validate Context",
-    value: "validateContext",
-    description: "Checks login, agent access, and the resolved client token end to end.",
-  },
-  {
-    name: "Execute SQL",
-    value: "executeSql",
-    description: "Runs a single sql.execute command against the resolved agent.",
-  },
-  {
-    name: "Execute Batch",
-    value: "executeBatch",
-    description: "Runs a single sql.executeBatch command.",
-  },
-  {
-    name: "Bulk Insert SQL",
-    value: "bulkInsertSql",
-    description: "Runs sql.bulkInsert with a table, column schema, and row matrix.",
-  },
-  {
-    name: "Cancel SQL",
-    value: "cancelSql",
-    description: "Cancels a running SQL command by execution ID or request ID.",
-  },
-  {
-    name: "Discover RPC",
-    value: "discoverRpc",
-    description: "Reads the agent RPC catalog with rpc.discover.",
-  },
-  {
-    name: "Get Agent Profile",
-    value: "getAgentProfile",
-    description: "Reads the agent profile with the resolved client token.",
-  },
-  {
-    name: "Get Client Token Policy",
-    value: "getClientTokenPolicy",
-    description: "Reads the policy for the resolved client token.",
-  },
-] as const;
+﻿export * from "./plugSqlDescriptionCommon";
+export * from "./plugSqlDescriptionAdvancedOptions";
+export * from "./plugSqlDescriptionOperationFields";
 
-const operationsWithInputMode = [
-  "executeSql",
-  "executeBatch",
-  "bulkInsertSql",
-  "cancelSql",
-  "discoverRpc",
-  "getAgentProfile",
-  "getClientTokenPolicy",
-];
+import type { INodeProperties } from "n8n-workflow";
 
-const socketEligibleOperationsV1 = [
-  "validateContext",
-  "executeSql",
-  "cancelSql",
-  "discoverRpc",
-  "getAgentProfile",
-  "getClientTokenPolicy",
-];
-
-const socketEligibleOperationsV2 = [
-  ...socketEligibleOperationsV1,
-  "executeBatch",
-  "bulkInsertSql",
-];
-
-const buildResponseModeProperty = (supportsSocket: boolean): INodeProperties => ({
-  displayName: "Response Mode",
-  name: "responseMode",
-  type: "options",
-  default: "aggregatedJson",
-  description:
-    "Choose the shape of the node output. Use Aggregated JSON for most workflows and Chunk Items for large socket streams.",
-  options: [
-    {
-      name: "Aggregated JSON",
-      value: "aggregatedJson",
-      description:
-        "Returns SQL rows as n8n items when possible, otherwise one JSON item.",
-    },
-    ...(supportsSocket
-      ? [
-          {
-            name: "Chunk Items",
-            value: "chunkItems",
-            description:
-              "Returns socket stream chunks as items for large result sets. Other combinations fall back to aggregated output.",
-          },
-        ]
-      : []),
-    {
-      name: "Raw JSON-RPC",
-      value: "rawJsonRpc",
-      description: "Returns the normalized RPC envelope for debugging or advanced flows.",
-    },
-  ],
-  displayOptions: {
-    show: {
-      operation: operationsWithInputMode,
-    },
-  },
-});
-
-const buildIncludeMetadataProperty = (): INodeProperties => ({
-  displayName: "Include Plug Metadata",
-  name: "includePlugMetadata",
-  type: "boolean",
-  default: true,
-  description:
-    "Whether to include the __plug object with channel, agent, request, and socket metadata in the output.",
-});
-
-const commonAdvancedOptions = [
-  {
-    displayName: "Timeout (ms)",
-    name: "timeoutMs",
-    type: "number",
-    default: 15000,
-    description:
-      "Sets both the bridge wait timeout and the command timeout when the operation supports it.",
-  },
-  {
-    displayName: "API Version",
-    name: "apiVersion",
-    type: "string",
-    default: "2.8",
-    description:
-      "Overrides the default Plug api_version value used for the JSON-RPC command.",
-  },
-  {
-    displayName: "RPC Meta JSON",
-    name: "metaJson",
-    type: "string",
-    default: "",
-    typeOptions: {
-      rows: 4,
-    },
-    description:
-      "Optional JSON object merged into command.meta. Leave empty to use the default.",
-  },
-] as INodeProperties[];
-
-const sqlAdvancedOptions: INodeProperties = {
-  displayName: "Additional Options",
-  name: "sqlOptions",
-  type: "collection",
-  placeholder: "Add option",
-  default: {},
-  displayOptions: {
-    show: {
-      operation: ["executeSql"],
-      inputMode: ["guided"],
-    },
-  },
-  options: [
-    ...commonAdvancedOptions,
-    {
-      displayName: "Max Rows",
-      name: "maxRows",
-      type: "number",
-      default: 0,
-      description:
-        "Maximum rows to ask the agent to return. Use 0 to leave the agent default unchanged.",
-    },
-    {
-      displayName: "Execution Mode",
-      name: "executionMode",
-      type: "options",
-      default: "managed",
-      description: "Choose how SQL should be handled by the agent.",
-      options: [
-        { name: "Managed", value: "managed" },
-        { name: "Preserve", value: "preserve" },
-      ],
-    },
-    {
-      displayName: "Multi Result",
-      name: "multiResult",
-      type: "boolean",
-      default: false,
-      description: "Enable multi_result for drivers that support it.",
-    },
-    {
-      displayName: "Prefer DB Streaming",
-      name: "preferDbStreaming",
-      type: "boolean",
-      default: false,
-      description:
-        "Sets options.prefer_db_streaming for eligible SELECT statements. Use with Channel = Socket for large reads.",
-    },
-    {
-      displayName: "Page",
-      name: "page",
-      type: "number",
-      default: 0,
-      description: "Page number for page-based pagination. Use together with Page Size.",
-    },
-    {
-      displayName: "Page Size",
-      name: "pageSize",
-      type: "number",
-      default: 0,
-      description: "Rows per page for page-based pagination. Use together with Page.",
-    },
-    {
-      displayName: "Cursor",
-      name: "cursor",
-      type: "string",
-      default: "",
-      description: "Optional cursor for driver-managed pagination.",
-    },
-    {
-      displayName: "Database",
-      name: "database",
-      type: "string",
-      default: "",
-      description: "Optional database or schema target for the command.",
-    },
-    {
-      displayName: "Idempotency Key",
-      name: "idempotencyKey",
-      type: "string",
-      default: "",
-      description: "Optional idempotency key forwarded to the agent.",
-    },
-    {
-      displayName: "Require WHERE for UPDATE/DELETE",
-      name: "requireWhereForUpdateDelete",
-      type: "boolean",
-      default: true,
-      description:
-        "Whether to block UPDATE and DELETE statements that do not include a WHERE clause before sending them to Plug.",
-    },
-  ],
-};
-
-const batchAdvancedOptions: INodeProperties = {
-  displayName: "Additional Options",
-  name: "batchOptions",
-  type: "collection",
-  placeholder: "Add option",
-  default: {},
-  displayOptions: {
-    show: {
-      operation: ["executeBatch"],
-      inputMode: ["guided"],
-    },
-  },
-  options: [
-    ...commonAdvancedOptions,
-    {
-      displayName: "Max Rows",
-      name: "maxRows",
-      type: "number",
-      default: 0,
-      description:
-        "Maximum rows to ask the agent to return from batch commands. Use 0 to leave the agent default unchanged.",
-    },
-    {
-      displayName: "Transaction",
-      name: "transaction",
-      type: "boolean",
-      default: false,
-      description: "Runs the batch inside a transaction when supported by the agent.",
-    },
-    {
-      displayName: "Max Parallel Read-Only Items",
-      name: "maxParallelReadOnlyBatchItems",
-      type: "number",
-      default: 0,
-      description:
-        "Optional max_parallel_read_only_batch_items for the batch. Use 0 to omit.",
-    },
-    {
-      displayName: "Database",
-      name: "database",
-      type: "string",
-      default: "",
-      description: "Optional database or schema target for the command.",
-    },
-    {
-      displayName: "Idempotency Key",
-      name: "idempotencyKey",
-      type: "string",
-      default: "",
-      description: "Optional idempotency key forwarded to the agent.",
-    },
-    {
-      displayName: "Require WHERE for UPDATE/DELETE",
-      name: "requireWhereForUpdateDelete",
-      type: "boolean",
-      default: true,
-      description:
-        "Whether to block UPDATE and DELETE statements in the batch that do not include a WHERE clause before sending them to Plug.",
-    },
-    {
-      displayName: "Coalesce Input Items",
-      name: "coalesceInputItems",
-      type: "boolean",
-      default: false,
-      description:
-        "Merge Batch Commands JSON from all input items into one sql.executeBatch call. Additional Options must match on every item. The node returns one output item.",
-    },
-  ],
-};
-
-const bulkInsertAdvancedOptions: INodeProperties = {
-  displayName: "Additional Options",
-  name: "bulkInsertOptions",
-  type: "collection",
-  placeholder: "Add option",
-  default: {},
-  displayOptions: {
-    show: {
-      operation: ["bulkInsertSql"],
-      inputMode: ["guided"],
-    },
-  },
-  options: [...commonAdvancedOptions],
-};
-
-const cancelAdvancedOptions: INodeProperties = {
-  displayName: "Additional Options",
-  name: "cancelOptions",
-  type: "collection",
-  placeholder: "Add option",
-  default: {},
-  displayOptions: {
-    show: {
-      operation: ["cancelSql"],
-      inputMode: ["guided"],
-    },
-  },
-  options: commonAdvancedOptions,
-};
-
-const discoverAdvancedOptions: INodeProperties = {
-  displayName: "Additional Options",
-  name: "discoverOptions",
-  type: "collection",
-  placeholder: "Add option",
-  default: {},
-  displayOptions: {
-    show: {
-      operation: ["discoverRpc"],
-      inputMode: ["guided"],
-    },
-  },
-  options: commonAdvancedOptions,
-};
-
-const profileAdvancedOptions: INodeProperties = {
-  displayName: "Additional Options",
-  name: "profileOptions",
-  type: "collection",
-  placeholder: "Add option",
-  default: {},
-  displayOptions: {
-    show: {
-      operation: ["getAgentProfile", "getClientTokenPolicy"],
-      inputMode: ["guided"],
-    },
-  },
-  options: commonAdvancedOptions,
-};
-
-const validateContextOptions: INodeProperties = {
-  displayName: "Additional Options",
-  name: "validateContextOptions",
-  type: "collection",
-  placeholder: "Add option",
-  default: {},
-  displayOptions: {
-    show: {
-      operation: ["validateContext"],
-    },
-  },
-  options: [
-    {
-      displayName: "Timeout (ms)",
-      name: "timeoutMs",
-      type: "number",
-      default: 15000,
-      description: "Optional timeout used for the validation request.",
-    },
-  ],
-};
-
-const socketAdvancedOptions: INodeProperties = {
-  displayName: "Socket Options",
-  name: "socketOptions",
-  type: "collection",
-  placeholder: "Add socket option",
-  default: {},
-  displayOptions: {
-    show: {
-      channel: ["socket"],
-    },
-  },
-  options: [
-    {
-      displayName: "Max Buffered Rows",
-      name: "maxBufferedRows",
-      type: "number",
-      default: 50000,
-      description:
-        "Maximum rows the node buffers locally while collecting socket stream output.",
-    },
-    {
-      displayName: "Max Buffered Bytes",
-      name: "maxBufferedBytes",
-      type: "number",
-      default: 8388608,
-      description:
-        "Maximum approximate JSON bytes the node buffers locally while collecting socket stream output.",
-    },
-    {
-      displayName: "Max Buffered Chunks",
-      name: "maxBufferedChunks",
-      type: "number",
-      default: 512,
-      description:
-        "Maximum socket stream chunks the node buffers locally before failing clearly.",
-    },
-    {
-      displayName: "Stream Pull Window Size",
-      name: "streamPullWindowSize",
-      type: "number",
-      default: 32,
-      typeOptions: {
-        minValue: 1,
-        maxValue: 1000,
-      },
-      description:
-        "Number of socket stream chunks requested from Plug in each pull window. Must be between 1 and 1000; defaults to 32.",
-    },
-  ],
-};
+import {
+  plugSqlBatchAdvancedOptions,
+  plugSqlBulkInsertAdvancedOptions,
+  plugSqlCancelAdvancedOptions,
+  plugSqlDiscoverAdvancedOptions,
+  plugSqlProfileAdvancedOptions,
+  plugSqlSocketAdvancedOptions,
+  plugSqlValidateContextAdvancedOptions,
+  plugSqlAdvancedOptions,
+} from "./plugSqlDescriptionAdvancedOptions";
+import {
+  buildPlugSqlIncludeMetadataProperty,
+  buildPlugSqlResponseModeProperty,
+  plugSqlOperationOptions,
+  plugSqlOperationsWithInputMode,
+  plugSqlSocketEligibleOperationsV1,
+  plugSqlSocketEligibleOperationsV2,
+  plugSqlValidateContextOperation,
+} from "./plugSqlDescriptionCommon";
+import { buildPlugSqlGuidedOperationFields } from "./plugSqlDescriptionOperationFields";
 
 export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties[] => {
   const properties: INodeProperties[] = [
@@ -446,8 +31,8 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
       displayName: "Operation",
       name: "operation",
       type: "options",
-      default: "validateContext",
-      options: [...operationOptions],
+      default: plugSqlValidateContextOperation,
+      options: [...plugSqlOperationOptions],
     },
   ];
 
@@ -467,7 +52,7 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
         displayOptions: {
           show: {
             "@version": [1],
-            operation: [...socketEligibleOperationsV1],
+            operation: [...plugSqlSocketEligibleOperationsV1],
           },
         },
       },
@@ -485,7 +70,7 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
         displayOptions: {
           show: {
             "@version": [2],
-            operation: [...socketEligibleOperationsV2],
+            operation: [...plugSqlSocketEligibleOperationsV2],
           },
         },
       },
@@ -506,13 +91,11 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
       ],
       displayOptions: {
         show: {
-          operation: operationsWithInputMode,
+          operation: plugSqlOperationsWithInputMode,
         },
       },
     },
-    {
-      ...buildResponseModeProperty(supportsSocket),
-    },
+    buildPlugSqlResponseModeProperty(supportsSocket),
     {
       displayName: "Agent ID",
       name: "agentId",
@@ -532,188 +115,16 @@ export const buildPlugSqlProperties = (supportsSocket: boolean): INodeProperties
       description:
         "Optional override for the Plug client token. Falls back to Default Client Token from the credential when empty.",
     },
-    {
-      ...buildIncludeMetadataProperty(),
-    },
-    {
-      displayName: "SQL",
-      name: "sql",
-      type: "string",
-      default: "",
-      required: true,
-      typeOptions: {
-        rows: 8,
-      },
-      placeholder: "SELECT TOP 10 *\nFROM Cliente\nWHERE CodCliente = :codCliente;",
-      description:
-        "SQL to execute. Replace template markers before running and use :name placeholders with Named Params JSON for dynamic values.",
-      displayOptions: {
-        show: {
-          operation: ["executeSql"],
-          inputMode: ["guided"],
-        },
-      },
-    },
-    {
-      displayName: "Named Params JSON",
-      name: "namedParamsJson",
-      type: "string",
-      default: "",
-      typeOptions: {
-        rows: 4,
-      },
-      placeholder: '{\n  "codCliente": "{{$json.CodCliente}}"\n}',
-      description:
-        "Optional JSON object for :name SQL parameters. Values can use n8n expressions such as {{$json.id}}.",
-      displayOptions: {
-        show: {
-          operation: ["executeSql"],
-          inputMode: ["guided"],
-        },
-      },
-    },
-    {
-      displayName: "Batch Commands JSON",
-      name: "batchCommandsJson",
-      type: "string",
-      default:
-        '[\n  { "sql": "SELECT TOP 1 * FROM Cliente" },\n  { "sql": "SELECT TOP 1 * FROM Vendedor" }\n]',
-      required: true,
-      typeOptions: {
-        rows: 10,
-      },
-      description:
-        "JSON array of batch SQL items. Replace template markers; each item can include sql, params, and execution_order.",
-      displayOptions: {
-        show: {
-          operation: ["executeBatch"],
-          inputMode: ["guided"],
-        },
-      },
-    },
-    {
-      displayName: "Table",
-      name: "bulkInsertTable",
-      type: "string",
-      default: "",
-      required: true,
-      description: "Target table name for sql.bulkInsert (for example dbo.MyTable).",
-      displayOptions: {
-        show: {
-          operation: ["bulkInsertSql"],
-          inputMode: ["guided"],
-        },
-      },
-    },
-    {
-      displayName: "Columns JSON",
-      name: "bulkInsertColumnsJson",
-      type: "string",
-      default:
-        '[\n  { "name": "id", "type": "i64" },\n  { "name": "name", "type": "text" }\n]',
-      required: true,
-      typeOptions: {
-        rows: 6,
-      },
-      description:
-        "JSON array of column definitions (name, type, optional nullable, max_len).",
-      displayOptions: {
-        show: {
-          operation: ["bulkInsertSql"],
-          inputMode: ["guided"],
-        },
-      },
-    },
-    {
-      displayName: "Rows JSON",
-      name: "bulkInsertRowsJson",
-      type: "string",
-      default: '[\n  [1, "example"]\n]',
-      required: true,
-      typeOptions: {
-        rows: 6,
-      },
-      description:
-        "JSON array of row arrays. Each row length must match the columns array.",
-      displayOptions: {
-        show: {
-          operation: ["bulkInsertSql"],
-          inputMode: ["guided"],
-        },
-      },
-    },
-    {
-      displayName: "Execution ID",
-      name: "cancelExecutionId",
-      type: "string",
-      default: "",
-      description: "Optional execution_id value for sql.cancel.",
-      displayOptions: {
-        show: {
-          operation: ["cancelSql"],
-          inputMode: ["guided"],
-        },
-      },
-    },
-    {
-      displayName: "Request ID",
-      name: "cancelRequestId",
-      type: "string",
-      default: "",
-      description: "Optional request_id value for sql.cancel.",
-      displayOptions: {
-        show: {
-          operation: ["cancelSql"],
-          inputMode: ["guided"],
-        },
-      },
-    },
-    {
-      displayName: "Discover Params JSON",
-      name: "discoverParamsJson",
-      type: "string",
-      default: "",
-      typeOptions: {
-        rows: 4,
-      },
-      placeholder: '{"include_methods": true}',
-      description:
-        "Optional JSON object forwarded to rpc.discover. Leave empty to omit params.",
-      displayOptions: {
-        show: {
-          operation: ["discoverRpc"],
-          inputMode: ["guided"],
-        },
-      },
-    },
-    {
-      displayName: "Raw JSON-RPC Command",
-      name: "advancedCommandJson",
-      type: "string",
-      default: "",
-      required: true,
-      typeOptions: {
-        rows: 12,
-      },
-      placeholder:
-        '{\n  "jsonrpc": "2.0",\n  "method": "sql.execute",\n  "params": {\n    "sql": "SELECT 1"\n  }\n}',
-      description:
-        "Enter a single JSON-RPC command object. The resolved client token from the node override or credential default is injected automatically where supported.",
-      displayOptions: {
-        show: {
-          operation: operationsWithInputMode,
-          inputMode: ["advanced"],
-        },
-      },
-    },
-    sqlAdvancedOptions,
-    batchAdvancedOptions,
-    bulkInsertAdvancedOptions,
-    cancelAdvancedOptions,
-    discoverAdvancedOptions,
-    profileAdvancedOptions,
-    validateContextOptions,
-    ...(supportsSocket ? [socketAdvancedOptions] : []),
+    buildPlugSqlIncludeMetadataProperty(),
+    ...buildPlugSqlGuidedOperationFields(),
+    plugSqlAdvancedOptions,
+    plugSqlBatchAdvancedOptions,
+    plugSqlBulkInsertAdvancedOptions,
+    plugSqlCancelAdvancedOptions,
+    plugSqlDiscoverAdvancedOptions,
+    plugSqlProfileAdvancedOptions,
+    plugSqlValidateContextAdvancedOptions,
+    ...(supportsSocket ? [plugSqlSocketAdvancedOptions] : []),
   );
 
   return properties;

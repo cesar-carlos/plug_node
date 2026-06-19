@@ -6,7 +6,7 @@ import { executePlugClientNode } from "../../packages/n8n-nodes-plug-database/ge
 import { buildPlugClientNodeDescription } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugClientDescription";
 import type { PlugCredentials } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 import { createMockExecuteContext } from "../helpers/mockExecuteFunctions";
-import * as plugTransientRetry from "../../shared/n8n/plugTransientRetry";
+import * as plugTransientRetry from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugTransientRetry";
 
 const credentials: PlugCredentials = {
   user: "client@example.com",
@@ -474,6 +474,7 @@ describe("executePlugClientNode", () => {
   });
 
   it("retries executeSql after HTTP 429 then succeeds", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
     const context = createMockExecuteContext({
       credentials,
       parameters: {
@@ -532,10 +533,11 @@ describe("executePlugClientNode", () => {
       __plug: {
         transport: {
           attemptCount: 2,
-          lastRetryDelayMs: 250,
+          lastRetryDelayMs: 188,
         },
       },
     });
+    randomSpy.mockRestore();
   });
 
   it("rejects guided SQL when template markers were not replaced", async () => {
@@ -1220,9 +1222,7 @@ describe("executePlugClientNode", () => {
         responseMode: "rawJsonRpc",
         includePlugMetadata: true,
         profileOptions: {},
-        socketOptions: {
-          streamPullWindowSize: 0,
-        },
+        socketOptions: {},
       },
       responses: [
         {
@@ -1239,7 +1239,7 @@ describe("executePlugClientNode", () => {
     });
 
     expect(socketExecutor.mock.calls[0][0]).toMatchObject({
-      streamPullWindowSize: 32,
+      streamPullWindowSize: 256,
     });
   });
 
@@ -1594,8 +1594,8 @@ describe("executePlugClientNode", () => {
       description: "Reconnect the Plug agent and run the node again.",
       code: "RPC_-32000",
       correlationId: "corr-1",
+      technicalMessage: "agent_offline",
     });
-    expect(result[0][0].json.error).not.toHaveProperty("technicalMessage");
     expect(result[0][0].json.error).not.toHaveProperty("details");
   });
 

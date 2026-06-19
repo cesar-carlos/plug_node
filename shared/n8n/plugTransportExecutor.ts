@@ -9,8 +9,8 @@ import { PlugError, PlugValidationError } from "../contracts/errors";
 import type { PlugExecutionSessionRunner } from "../auth/session";
 import { executeRestCommand } from "../rest/client";
 import { buildNodeOutputItems } from "../output/nodeOutput";
-import { toOptionalString } from "./plugExecutionParameters";
 import type { PlugClientNodeExecutionConfig } from "./plugClientExecutionTypes";
+import { resolvePayloadFrameSigning } from "./payloadFrameSigning";
 import { rotateBuiltRequestCommandIdsForRetry } from "./plugCommandIdRotation";
 import {
   computeRetryDelayMs,
@@ -19,26 +19,6 @@ import {
   shouldRetryPlugOperation,
   sleepMs,
 } from "./plugTransientRetry";
-
-const resolvePayloadFrameSigning = (
-  session: import("../contracts/api").PlugSession<PlugCredentialDefaults>,
-):
-  | {
-      readonly key?: string;
-      readonly keyId?: string;
-    }
-  | undefined => {
-  const key = toOptionalString(session.credentials.payloadSigningKey);
-  const keyId = toOptionalString(session.credentials.payloadSigningKeyId);
-  if (!key && !keyId) {
-    return undefined;
-  }
-
-  return {
-    ...(key ? { key } : {}),
-    ...(keyId ? { keyId } : {}),
-  };
-};
 
 const executeBuiltRequest = async (
   requester: import("../contracts/api").PlugHttpRequester,
@@ -60,22 +40,18 @@ const executeBuiltRequest = async (
         );
       }
 
-      if (socketImplementation === "relay" && Array.isArray(builtRequest.command)) {
-        throw new PlugValidationError(
-          "Socket channel requires a single JSON-RPC command.",
-        );
-      }
-
       return socketExecutor({
         session,
         agentId: builtRequest.agentId,
         command: builtRequest.command,
         timeoutMs: builtRequest.timeoutMs,
         payloadFrameCompression: builtRequest.payloadFrameCompression,
-        payloadFrameSigning: resolvePayloadFrameSigning(session),
+        payloadFrameSigning: resolvePayloadFrameSigning(session.credentials),
         responseMode: builtRequest.responseMode,
         bufferLimits: builtRequest.bufferLimits,
         streamPullWindowSize: builtRequest.streamPullWindowSize,
+        fastPath: builtRequest.fastPath,
+        requestServerTimings: builtRequest.requestServerTimings,
       });
     }
 
@@ -108,6 +84,8 @@ const attachTransportExecutionMetrics = (
       connectedAfterMs:
         transportResult.executionMetrics?.connectedAfterMs ??
         executionMetrics.connectedAfterMs,
+      serverTimings:
+        transportResult.executionMetrics?.serverTimings ?? executionMetrics.serverTimings,
     },
   };
 };
@@ -150,6 +128,9 @@ export const executeBuiltCommandWithRetry = async (input: {
           transportResult.channel === "socket" && !transportResult.notification
             ? transportResult.executionMetrics?.connectedAfterMs
             : undefined,
+        serverTimings: !transportResult.notification
+          ? transportResult.executionMetrics?.serverTimings
+          : undefined,
       };
       const transportWithMetrics = attachTransportExecutionMetrics(
         transportResult,

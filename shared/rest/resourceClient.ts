@@ -13,7 +13,7 @@ import { buildApiUrl, buildApiUrlWithQuery } from "../utils/url";
 const MAX_COLLECT_PAGES = 100;
 
 export interface PlugAuthorizedRequestOptions {
-  readonly method: "GET" | "POST" | "PUT" | "DELETE";
+  readonly method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   readonly path: string;
   readonly query?: Readonly<Record<string, string | number | boolean | undefined>>;
   readonly body?: unknown;

@@ -1,4 +1,3 @@
-import { io } from "socket.io-client";
 import type {
   INodeType,
   INodeTypeDescription,
@@ -16,6 +15,9 @@ import {
   defaultManualListenTimeoutMs,
   defaultSocketEventAckTimeoutMs,
   defaultSocketEventDeduplicationTtlMs,
+  defaultConsumerIdleKeepaliveIntervalMs,
+  maxConsumerIdleKeepaliveIntervalMs,
+  minConsumerIdleKeepaliveIntervalMs,
   type AgentProfileUpdatedPayload,
   type SocketEventOverflowPolicy,
   type SocketEventRuntimeMetadata,
@@ -27,9 +29,8 @@ import {
   startCustomSocketEventSession,
   type CustomSocketEventSession,
 } from "../../generated/shared/socket/customSocketEventSession";
-import { deriveSocketNamespaceUrl } from "../../generated/shared/utils/url";
 import { plugDatabaseSocketEventTriggerDescription } from "../../generated/shared/n8n/plugSocketEventTriggerDescription";
-import { SocketIoCustomEventTransport } from "./socketIoTransport";
+import { createTriggerSocketTransport } from "../PlugDatabase/socketIoTransport";
 import {
   createBackpressureQueue,
   defaultBackpressureStatsLogIntervalMs,
@@ -41,7 +42,6 @@ import {
   resolveTriggerPayloadFrameSigning,
 } from "./triggerItemBuilders";
 import {
-  createReconnectCircuitOpenError,
   defaultReconnectFailureWindowMs,
   defaultReconnectInitialDelayMs,
   defaultReconnectMaxDelayMs,
@@ -49,6 +49,7 @@ import {
   readTriggerEventNames,
   type PayloadSignatureRequirement,
 } from "./triggerHelpers";
+import { TriggerReconnectManager } from "./triggerReconnectManager";
 
 // eslint-disable-next-line @n8n/community-nodes/node-usable-as-tool -- Triggers are event sources, not AI-agent tools.
 export class PlugDatabaseSocketEventTrigger implements INodeType {
@@ -173,29 +174,45 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
       defaultSocketEventDeduplicationTtlMs,
       0,
     );
+    const consumerIdleKeepaliveIntervalMs = (() => {
+      const raw = this.getNodeParameter(
+        "consumerIdleKeepaliveIntervalMs",
+        defaultConsumerIdleKeepaliveIntervalMs,
+      );
+      const normalized = normalizeTriggerInteger(
+        raw,
+        defaultConsumerIdleKeepaliveIntervalMs,
+        0,
+      );
+      if (normalized === 0) {
+        return 0;
+      }
+
+      return Math.min(
+        maxConsumerIdleKeepaliveIntervalMs,
+        Math.max(minConsumerIdleKeepaliveIntervalMs, normalized),
+      );
+    })();
     let customEventSession: CustomSocketEventSession | undefined;
     let manualTimer: NodeJS.Timeout | undefined;
-    let reconnectTimer: NodeJS.Timeout | undefined;
     let closed = false;
-    let reconnecting = false;
-    let reconnectAttempts = 0;
-    let reconnectFailureTimes: number[] = [];
     const subscriptionRefreshCount = 0;
     const lastSubscriptionRefreshAt: string | undefined = undefined;
 
-    const toPlugError = (error: unknown): PlugError =>
-      error instanceof PlugError
-        ? error
-        : new PlugError("Plug socket custom event listener failed.", {
-            code: "SOCKET_CUSTOM_EVENT_LISTENER_FAILED",
-            technicalMessage: error instanceof Error ? error.message : undefined,
-          });
+    const reconnectManager = new TriggerReconnectManager({
+      reconnectOnDisconnect,
+      maxReconnectAttempts: normalizedMaxReconnectAttempts,
+      reconnectInitialDelayMs,
+      reconnectMaxDelayMs,
+      reconnectFailureWindowMs,
+      maxReconnectFailuresInWindow,
+      onFatalError: (error) => {
+        this.emitError(error);
+      },
+    });
 
     const clearReconnectTimer = (): void => {
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = undefined;
-      }
+      reconnectManager.clearReconnectTimer();
     };
 
     const eventQueue = createBackpressureQueue({
@@ -224,57 +241,23 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
       },
     });
 
-    const delay = async (durationMs: number): Promise<void> =>
-      new Promise((resolve) => {
-        setTimeout(resolve, durationMs);
-      });
-
-    const getReconnectDelayMs = (): number => {
-      const baseDelay = reconnectInitialDelayMs;
-      const maxDelay = reconnectMaxDelayMs;
-      const exponentialDelay = Math.min(
-        maxDelay,
-        baseDelay * 2 ** Math.min(reconnectAttempts, 8),
-      );
-      const jitter = 0.8 + Math.random() * 0.4;
-      return Math.max(100, Math.round(exponentialDelay * jitter));
-    };
-
-    const recordReconnectFailureAndIsCircuitOpen = (): boolean => {
-      if (maxReconnectFailuresInWindow <= 0) {
-        return false;
-      }
-
-      const now = Date.now();
-      const cutoff = now - reconnectFailureWindowMs;
-      reconnectFailureTimes = reconnectFailureTimes
-        .filter((timestamp) => timestamp >= cutoff)
-        .concat(now);
-
-      return reconnectFailureTimes.length > maxReconnectFailuresInWindow;
-    };
-
     const connectSocket = async (): Promise<void> => {
       await sessionRunner(async (session) => {
         if (closed) {
           return;
         }
 
-        const socket = io(deriveSocketNamespaceUrl(credentials.baseUrl, "/consumers"), {
-          autoConnect: false,
-          reconnection: false,
-          transports: ["websocket"],
-          auth: {
-            token: session.accessToken,
-          },
+        const transport = createTriggerSocketTransport({
+          baseUrl: credentials.baseUrl,
+          accessToken: session.accessToken,
         });
-        const transport = new SocketIoCustomEventTransport(socket);
 
         const commonInput = {
           transport,
           ackTimeoutMs,
           payloadFrameSigning,
-          reconnectAttempt: reconnectAttempts,
+          reconnectAttempt: reconnectManager.getReconnectAttempts(),
+          consumerIdleKeepaliveIntervalMs,
           requirePayloadSignature:
             eventSource === "customEvents"
               ? requirePayloadSignatureForCustomEvents
@@ -291,6 +274,7 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
           eventSource === "agentProfileUpdated"
             ? await startAgentProfileUpdatedSession({
                 ...commonInput,
+                agentId: credentials.agentId,
                 onEvent: async (event: AgentProfileUpdatedPayload, metadata) => {
                   if (closed) {
                     return;
@@ -341,99 +325,32 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
                 },
               });
       });
-
-      reconnectAttempts = 0;
-      reconnectFailureTimes = [];
-    };
-
-    const connectSocketWithRetry = async (): Promise<void> => {
-      for (;;) {
-        try {
-          await connectSocket();
-          return;
-        } catch (error: unknown) {
-          const plugError = toPlugError(error);
-          if (
-            closed ||
-            !reconnectOnDisconnect ||
-            !plugError.retryable ||
-            (normalizedMaxReconnectAttempts > 0 &&
-              reconnectAttempts >= normalizedMaxReconnectAttempts)
-          ) {
-            throw plugError;
-          }
-
-          if (recordReconnectFailureAndIsCircuitOpen()) {
-            throw createReconnectCircuitOpenError(plugError.message);
-          }
-
-          reconnectAttempts += 1;
-          await delay(getReconnectDelayMs());
-        }
-      }
-    };
-
-    const scheduleReconnect = (error: PlugError): void => {
-      if (closed || !reconnectOnDisconnect || !error.retryable) {
-        this.emitError(error);
-        return;
-      }
-
-      if (recordReconnectFailureAndIsCircuitOpen()) {
-        this.emitError(createReconnectCircuitOpenError(error.message));
-        return;
-      }
-
-      if (
-        normalizedMaxReconnectAttempts > 0 &&
-        reconnectAttempts >= normalizedMaxReconnectAttempts
-      ) {
-        this.emitError(
-          new PlugError("Plug socket reconnect attempts were exhausted.", {
-            code: "SOCKET_RECONNECT_EXHAUSTED",
-            description:
-              "Increase Max Reconnect Attempts or restart the workflow after checking the Plug server.",
-            retryable: true,
-            technicalMessage: error.message,
-          }),
-        );
-        return;
-      }
-
-      clearReconnectTimer();
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = undefined;
-        reconnectAttempts += 1;
-        reconnecting = false;
-        connectSocketWithRetry().catch((connectError: unknown) => {
-          void handleRuntimeError(toPlugError(connectError));
-        });
-      }, getReconnectDelayMs());
     };
 
     const handleRuntimeError = async (error: PlugError): Promise<void> => {
-      if (closed || reconnecting) {
-        return;
-      }
-
-      reconnecting = true;
-      try {
-        await customEventSession?.close({ unsubscribe: false });
-      } catch (closeError: unknown) {
-        plugLogger.debug("trigger.socket.close_failed_during_reconnect", {
-          message: closeError instanceof Error ? closeError.message : String(closeError),
-        });
-      } finally {
-        customEventSession = undefined;
-      }
-
-      scheduleReconnect(error);
+      await reconnectManager.handleRuntimeError(
+        error,
+        () => reconnectManager.connectWithRetry(connectSocket),
+        async () => {
+          try {
+            await customEventSession?.close({ unsubscribe: false });
+          } catch (closeError: unknown) {
+            plugLogger.debug("trigger.socket.close_failed_during_reconnect", {
+              message:
+                closeError instanceof Error ? closeError.message : String(closeError),
+            });
+          } finally {
+            customEventSession = undefined;
+          }
+        },
+      );
     };
 
-    await connectSocketWithRetry();
+    await reconnectManager.connectWithRetry(connectSocket);
 
     const closeFunction = async (): Promise<void> => {
       closed = true;
+      reconnectManager.markClosed();
       clearReconnectTimer();
       eventQueue.close();
       if (manualTimer) {

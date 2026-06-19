@@ -17,6 +17,7 @@ export default defineConfig({
         "packages/*/generated/shared/output/**/*.ts",
         "packages/*/generated/shared/socket/**/*.ts",
         "packages/*/generated/shared/n8n/**/*.ts",
+        "packages/n8n-nodes-plug-database/nodes/**/*.ts",
       ],
       exclude: ["**/*.d.ts", "packages/*/generated/shared/contracts/**/*.ts"],
     },

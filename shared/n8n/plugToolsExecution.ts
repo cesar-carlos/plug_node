@@ -69,6 +69,125 @@ export type {
   PlugToolsSocketEventPublisher,
 } from "./plugToolsCommon";
 
+type PlugToolsOperationExecutor = (
+  context: IExecuteFunctions,
+  config: PlugToolsExecutionConfig,
+  operation: string,
+) => Promise<INodeExecutionData[][]>;
+
+const legacyPublishSocketEventOperation = "publishEvent";
+
+const documentOperations = new Set<string>([
+  plugToolMarkdownToPdfOperation,
+  plugToolTextToPdfOperation,
+  plugToolMergePdfsOperation,
+  plugToolSplitPdfOperation,
+  plugToolExtractPdfTextOperation,
+]);
+
+const imageOperations = new Set<string>([
+  plugToolResizeImageOperation,
+  plugToolConvertImageOperation,
+  plugToolCompressImageOperation,
+  plugToolAddImageWatermarkOperation,
+  plugToolCreateThumbnailOperation,
+]);
+
+const utilityOperations = new Set<string>([
+  plugToolReadBarcodeOperation,
+  plugToolValidateCpfCnpjOperation,
+  plugToolFormatCpfCnpjOperation,
+  plugToolGenerateUuidOperation,
+  plugToolTransformJsonOperation,
+  plugToolCsvToJsonOperation,
+  plugToolJsonToCsvOperation,
+  plugToolNormalizeTextOperation,
+  plugToolExtractRegexFieldsOperation,
+  plugToolValidateJsonSchemaOperation,
+  plugToolGenerateHashOperation,
+  plugToolHmacSignOperation,
+  plugToolBase64Operation,
+  plugToolJwtDecodeOperation,
+  plugToolEncryptTextOperation,
+  plugToolDecryptTextOperation,
+  plugToolFormatDateOperation,
+  plugToolParseDateOperation,
+  plugToolAddBusinessDaysOperation,
+  plugToolFormatCurrencyOperation,
+  plugToolNumberToWordsOperation,
+  plugToolBuildSocketEventPayloadOperation,
+  plugToolValidateClientTokenOperation,
+  plugToolValidateAgentContextOperation,
+  plugToolBuildSqlRequestOperation,
+  plugToolParseSqlRowsOperation,
+  plugToolGenerateAccessRequestSummaryOperation,
+]);
+
+const socketEventOperations = new Set<string>([
+  plugToolPublishSocketEventOperation,
+  legacyPublishSocketEventOperation,
+  plugToolWaitForSocketEventOperation,
+]);
+
+const executeDocumentOperation: PlugToolsOperationExecutor = (
+  context,
+  config,
+  operation,
+) =>
+  executePlugToolsDocumentNode(
+    context,
+    config,
+    operation as Parameters<typeof executePlugToolsDocumentNode>[2],
+  );
+
+const executeImageOperation: PlugToolsOperationExecutor = (context, config, operation) =>
+  executePlugToolsImageNode(
+    context,
+    config,
+    operation as Parameters<typeof executePlugToolsImageNode>[2],
+  );
+
+const executeUtilityOperation: PlugToolsOperationExecutor = (
+  context,
+  config,
+  operation,
+) =>
+  executePlugToolsUtilityNode(
+    context,
+    config,
+    operation as Parameters<typeof executePlugToolsUtilityNode>[2],
+  );
+
+const executeSocketEventOperation: PlugToolsOperationExecutor = (context, config) =>
+  executePlugToolsSocketEventNode(context, config);
+
+const plugToolsOperationRegistry = new Map<string, PlugToolsOperationExecutor>([
+  [
+    plugToolHtmlToPdfOperation,
+    (context, config) => executePlugToolsPdfNode(context, config),
+  ],
+  [
+    plugToolGenerateBarcodeOperation,
+    (context, config) => executePlugToolsBarcodeNode(context, config),
+  ],
+]);
+
+for (const operation of documentOperations) {
+  plugToolsOperationRegistry.set(operation, executeDocumentOperation);
+}
+
+for (const operation of imageOperations) {
+  plugToolsOperationRegistry.set(operation, executeImageOperation);
+}
+
+for (const operation of utilityOperations) {
+  plugToolsOperationRegistry.set(operation, executeUtilityOperation);
+}
+
+for (const operation of socketEventOperations) {
+  plugToolsOperationRegistry.set(operation, executeSocketEventOperation);
+}
+
 export const executePlugToolsResource = async (
   context: IExecuteFunctions,
   config: PlugToolsExecutionConfig,
@@ -79,56 +198,10 @@ export const executePlugToolsResource = async (
     plugToolHtmlToPdfOperation,
   ) as string;
 
-  switch (operation) {
-    case plugToolHtmlToPdfOperation:
-      return executePlugToolsPdfNode(context, config);
-    case plugToolMarkdownToPdfOperation:
-    case plugToolTextToPdfOperation:
-    case plugToolMergePdfsOperation:
-    case plugToolSplitPdfOperation:
-    case plugToolExtractPdfTextOperation:
-      return executePlugToolsDocumentNode(context, config, operation);
-    case plugToolResizeImageOperation:
-    case plugToolConvertImageOperation:
-    case plugToolCompressImageOperation:
-    case plugToolAddImageWatermarkOperation:
-    case plugToolCreateThumbnailOperation:
-      return executePlugToolsImageNode(context, config, operation);
-    case plugToolGenerateBarcodeOperation:
-      return executePlugToolsBarcodeNode(context, config);
-    case plugToolReadBarcodeOperation:
-    case plugToolValidateCpfCnpjOperation:
-    case plugToolFormatCpfCnpjOperation:
-    case plugToolGenerateUuidOperation:
-    case plugToolTransformJsonOperation:
-    case plugToolCsvToJsonOperation:
-    case plugToolJsonToCsvOperation:
-    case plugToolNormalizeTextOperation:
-    case plugToolExtractRegexFieldsOperation:
-    case plugToolValidateJsonSchemaOperation:
-    case plugToolGenerateHashOperation:
-    case plugToolHmacSignOperation:
-    case plugToolBase64Operation:
-    case plugToolJwtDecodeOperation:
-    case plugToolEncryptTextOperation:
-    case plugToolDecryptTextOperation:
-    case plugToolFormatDateOperation:
-    case plugToolParseDateOperation:
-    case plugToolAddBusinessDaysOperation:
-    case plugToolFormatCurrencyOperation:
-    case plugToolNumberToWordsOperation:
-    case plugToolBuildSocketEventPayloadOperation:
-    case plugToolValidateClientTokenOperation:
-    case plugToolValidateAgentContextOperation:
-    case plugToolBuildSqlRequestOperation:
-    case plugToolParseSqlRowsOperation:
-    case plugToolGenerateAccessRequestSummaryOperation:
-      return executePlugToolsUtilityNode(context, config, operation);
-    case plugToolPublishSocketEventOperation:
-    case "publishEvent":
-    case plugToolWaitForSocketEventOperation:
-      return executePlugToolsSocketEventNode(context, config);
-    default:
-      throw new PlugValidationError(`Unsupported Plug tool operation: ${operation}`);
+  const executor = plugToolsOperationRegistry.get(operation);
+  if (!executor) {
+    throw new PlugValidationError(`Unsupported Plug tool operation: ${operation}`);
   }
+
+  return executor(context, config, operation);
 };

@@ -1,5 +1,6 @@
 import { io, type Socket } from "socket.io-client";
 
+import type { CustomSocketEventTransport } from "../../generated/shared/socket/customSocketEventSession";
 import { deriveSocketNamespaceUrl } from "../../generated/shared/utils/url";
 
 export interface SocketIoTransportLike {
@@ -12,7 +13,7 @@ export interface SocketIoTransportLike {
   emit(event: string, payload?: unknown): void;
 }
 
-class SocketIoTransport implements SocketIoTransportLike {
+class SocketIoTransport implements SocketIoTransportLike, CustomSocketEventTransport {
   constructor(private readonly socket: Socket) {}
 
   get id(): string | undefined {
@@ -74,3 +75,14 @@ export const createSocketIoTransport = (input: {
 export const createSocketIoTransportFromSocket = (
   socket: Socket,
 ): SocketIoTransportLike => new SocketIoTransport(socket);
+
+export const createTriggerSocketTransport = (input: {
+  readonly baseUrl: string;
+  readonly accessToken: string;
+}): CustomSocketEventTransport =>
+  createSocketIoTransport({
+    baseUrl: input.baseUrl,
+    accessToken: input.accessToken,
+  }) as CustomSocketEventTransport;
+
+export { SocketIoTransport as SocketIoCustomEventTransport };

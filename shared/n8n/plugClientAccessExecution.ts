@@ -1,24 +1,16 @@
-import type {
-  IDataObject,
-  IExecuteFunctions,
-  IHttpRequestOptions,
-  INodeExecutionData,
-} from "n8n-workflow";
-import { NodeOperationError } from "n8n-workflow";
+import type { IDataObject, IExecuteFunctions, INodeExecutionData } from "n8n-workflow";
 
-import type { PlugClientAuthCredentials } from "../contracts/api";
+import type { PlugClientAuthCredentials, PlugHttpRequester } from "../contracts/api";
 import type {
   ClientAccessExecutionResult,
   ClientAccessOperation,
   ClientAccessRequestStatus,
   ClientAgentStatus,
 } from "../contracts/client-access";
-import { DEFAULT_BASE_URL } from "../contracts/api";
 import { PlugValidationError } from "../contracts/errors";
 import { createExecutionSessionRunner } from "../auth/session";
 import { buildClientAccessOutputItems } from "../output/clientAccessOutput";
 import { executeWithPlugTransientRetry } from "./plugTransientRetry";
-import { serializeErrorForContinueOnFail } from "../output/errorOutput";
 import { collectAllPages } from "../rest/resourceClient";
 import {
   getClientAgent,
@@ -29,33 +21,16 @@ import {
   revokeClientAgentAccess,
   setClientAgentToken,
 } from "../rest/clientAccess";
-import { isRecord, parseStringListCollection } from "../utils/json";
+import { parseStringListCollection } from "../utils/json";
+import { buildN8nHttpRequester } from "./httpRequester";
+import { readPlugEmailPasswordCredentials } from "./plugCommandRequestBuilder";
+import { toOptionalPositiveInteger, toOptionalString } from "./plugExecutionParameters";
+import { executePerInputItem, toAccessNodeOperationError } from "./plugItemExecution";
 
 export interface PlugClientAccessNodeExecutionConfig {
   readonly credentialName?: string;
   readonly nodeDisplayName?: string;
 }
-
-const toOptionalString = (value: unknown): string | undefined => {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed === "" ? undefined : trimmed;
-};
-
-const toPositiveInteger = (value: unknown, label: string): number | undefined => {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    if (value === undefined || value === null || value === 0) {
-      return undefined;
-    }
-
-    throw new PlugValidationError(`${label} must be a positive number`);
-  }
-
-  return Math.trunc(value);
-};
 
 const toStatusFilter = <TStatus extends string>(
   value: unknown,
@@ -73,60 +48,6 @@ const toStatusFilter = <TStatus extends string>(
   return value as TStatus;
 };
 
-const buildHttpRequester = (
-  context: IExecuteFunctions,
-): import("../contracts/api").PlugHttpRequester => {
-  return async (options) => {
-    const requestOptions: IHttpRequestOptions = {
-      method: options.method,
-      url: options.url,
-      headers: options.headers,
-      ...(options.body !== undefined
-        ? {
-            body: options.body as NonNullable<IHttpRequestOptions["body"]>,
-          }
-        : {}),
-      timeout: options.timeoutMs,
-      returnFullResponse: true,
-      ignoreHttpStatusErrors: true,
-      json: true,
-    };
-
-    const response = await context.helpers.httpRequest(requestOptions);
-    const responseBody =
-      isRecord(response) && "body" in response ? response.body : response;
-    const responseHeaders =
-      isRecord(response) && isRecord(response.headers)
-        ? (response.headers as Record<string, string | string[] | undefined>)
-        : {};
-    const statusCode =
-      isRecord(response) && typeof response.statusCode === "number"
-        ? response.statusCode
-        : 200;
-
-    return {
-      statusCode,
-      headers: responseHeaders,
-      body: responseBody,
-    };
-  };
-};
-
-const readCredentials = async (
-  context: IExecuteFunctions,
-  config: PlugClientAccessNodeExecutionConfig,
-): Promise<PlugClientAuthCredentials> => {
-  const rawCredentials = await context.getCredentials(
-    config.credentialName ?? "plugDatabaseAccountApi",
-  );
-
-  return {
-    user: String(rawCredentials.user ?? ""),
-    password: String(rawCredentials.password ?? ""),
-    baseUrl: DEFAULT_BASE_URL,
-  };
-};
-
 const getIncludeMetadata = (context: IExecuteFunctions, itemIndex: number): boolean =>
   context.getNodeParameter("includePlugMetadata", itemIndex, true) as boolean;
 
@@ -134,7 +55,7 @@ const toNodeItems = (jsonItems: IDataObject[]): INodeExecutionData[] =>
   jsonItems.map((json) => ({ json }));
 
 const buildListClientAgentsResult = async (
-  requester: import("../contracts/api").PlugHttpRequester,
+  requester: PlugHttpRequester,
   sessionRunner: ReturnType<
     typeof createExecutionSessionRunner<PlugClientAuthCredentials>
   >,
@@ -147,8 +68,11 @@ const buildListClientAgentsResult = async (
     "Agent Status",
   );
   const search = toOptionalString(context.getNodeParameter("search", itemIndex, ""));
-  const page = toPositiveInteger(context.getNodeParameter("page", itemIndex, 1), "Page");
-  const pageSize = toPositiveInteger(
+  const page = toOptionalPositiveInteger(
+    context.getNodeParameter("page", itemIndex, 1),
+    "Page",
+  );
+  const pageSize = toOptionalPositiveInteger(
     context.getNodeParameter("pageSize", itemIndex, 50),
     "Page Size",
   );
@@ -196,7 +120,7 @@ const buildListClientAgentsResult = async (
 };
 
 const buildGetClientAgentResult = async (
-  requester: import("../contracts/api").PlugHttpRequester,
+  requester: PlugHttpRequester,
   sessionRunner: ReturnType<
     typeof createExecutionSessionRunner<PlugClientAuthCredentials>
   >,
@@ -218,7 +142,7 @@ const buildGetClientAgentResult = async (
 };
 
 const buildListAccessRequestsResult = async (
-  requester: import("../contracts/api").PlugHttpRequester,
+  requester: PlugHttpRequester,
   sessionRunner: ReturnType<
     typeof createExecutionSessionRunner<PlugClientAuthCredentials>
   >,
@@ -231,8 +155,11 @@ const buildListAccessRequestsResult = async (
     "Request Status",
   );
   const search = toOptionalString(context.getNodeParameter("search", itemIndex, ""));
-  const page = toPositiveInteger(context.getNodeParameter("page", itemIndex, 1), "Page");
-  const pageSize = toPositiveInteger(
+  const page = toOptionalPositiveInteger(
+    context.getNodeParameter("page", itemIndex, 1),
+    "Page",
+  );
+  const pageSize = toOptionalPositiveInteger(
     context.getNodeParameter("pageSize", itemIndex, 50),
     "Page Size",
   );
@@ -276,7 +203,7 @@ const buildListAccessRequestsResult = async (
 };
 
 const buildRequestAgentAccessResult = async (
-  requester: import("../contracts/api").PlugHttpRequester,
+  requester: PlugHttpRequester,
   sessionRunner: ReturnType<
     typeof createExecutionSessionRunner<PlugClientAuthCredentials>
   >,
@@ -305,7 +232,7 @@ const buildRequestAgentAccessResult = async (
 };
 
 const buildRevokeAgentAccessResult = async (
-  requester: import("../contracts/api").PlugHttpRequester,
+  requester: PlugHttpRequester,
   sessionRunner: ReturnType<
     typeof createExecutionSessionRunner<PlugClientAuthCredentials>
   >,
@@ -348,7 +275,7 @@ const buildRevokeAgentAccessResult = async (
 };
 
 const buildGetClientTokenResult = async (
-  requester: import("../contracts/api").PlugHttpRequester,
+  requester: PlugHttpRequester,
   sessionRunner: ReturnType<
     typeof createExecutionSessionRunner<PlugClientAuthCredentials>
   >,
@@ -371,7 +298,7 @@ const buildGetClientTokenResult = async (
 };
 
 const buildSetClientTokenResult = async (
-  requester: import("../contracts/api").PlugHttpRequester,
+  requester: PlugHttpRequester,
   sessionRunner: ReturnType<
     typeof createExecutionSessionRunner<PlugClientAuthCredentials>
   >,
@@ -412,7 +339,7 @@ const buildSetClientTokenResult = async (
 };
 
 const buildExecutionResult = async (
-  requester: import("../contracts/api").PlugHttpRequester,
+  requester: PlugHttpRequester,
   sessionRunner: ReturnType<
     typeof createExecutionSessionRunner<PlugClientAuthCredentials>
   >,
@@ -452,16 +379,17 @@ export const executePlugClientAccessNode = async (
   context: IExecuteFunctions,
   config: PlugClientAccessNodeExecutionConfig,
 ): Promise<INodeExecutionData[][]> => {
-  const sourceItems = context.getInputData();
-  const items =
-    sourceItems.length > 0 ? sourceItems : [{ json: {} } as INodeExecutionData];
-  const credentials = await readCredentials(context, config);
-  const requester = buildHttpRequester(context);
+  const credentials = await readPlugEmailPasswordCredentials(
+    context,
+    config.credentialName ?? "plugDatabaseAccountApi",
+  );
+  const requester = buildN8nHttpRequester(context);
   const sessionRunner = createExecutionSessionRunner(requester, credentials);
-  const outputItems: INodeExecutionData[] = [];
+  const nodeDisplayName = config.nodeDisplayName ?? "Plug Client Access";
 
-  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-    try {
+  return executePerInputItem(
+    context,
+    async (itemIndex) => {
       const { value: executionResult } = await executeWithPlugTransientRetry({
         execute: () => buildExecutionResult(requester, sessionRunner, context, itemIndex),
       });
@@ -470,35 +398,11 @@ export const executePlugClientAccessNode = async (
         getIncludeMetadata(context, itemIndex),
       );
 
-      outputItems.push(...toNodeItems(jsonItems as IDataObject[]));
-    } catch (error: unknown) {
-      if (context.continueOnFail()) {
-        outputItems.push({
-          json: {
-            ...items[itemIndex].json,
-            error: serializeErrorForContinueOnFail(error),
-          },
-          pairedItem: {
-            item: itemIndex,
-          },
-        });
-        continue;
-      }
-
-      const nodeError =
-        error instanceof Error || typeof error === "string"
-          ? error
-          : isRecord(error)
-            ? JSON.stringify(error)
-            : new Error(
-                `Unknown ${config.nodeDisplayName ?? "Plug Client Access"} error`,
-              );
-
-      throw new NodeOperationError(context.getNode(), nodeError, {
-        itemIndex,
-      });
-    }
-  }
-
-  return [outputItems];
+      return toNodeItems(jsonItems as IDataObject[]);
+    },
+    {
+      onError: (error, itemIndex) =>
+        toAccessNodeOperationError(context, error, itemIndex, nodeDisplayName),
+    },
+  );
 };

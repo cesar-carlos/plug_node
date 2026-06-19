@@ -36,6 +36,10 @@ const readTransportExecutionMetrics = (
     transport.connectedAfterMs = metrics.connectedAfterMs;
   }
 
+  if (metrics.serverTimings) {
+    transport.serverTimings = metrics.serverTimings;
+  }
+
   return Object.keys(transport).length > 0 ? transport : undefined;
 };
 

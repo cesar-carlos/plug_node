@@ -3,10 +3,7 @@ import { NodeOperationError } from "n8n-workflow";
 
 import type { JsonObject } from "../contracts/api";
 import { createExecutionSessionRunner } from "../auth/session";
-import {
-  serializeErrorForContinueOnFail,
-  toNodeFacingError,
-} from "../output/errorOutput";
+import { toNodeFacingError } from "../output/errorOutput";
 import { isRecord } from "../utils/json";
 import { buildN8nHttpRequester } from "./httpRequester";
 import {
@@ -21,6 +18,7 @@ import {
   readPlugClientCredentials,
   resolvePlugExecutionContext,
 } from "./plugCommandRequestBuilder";
+import { executePerInputItem } from "./plugItemExecution";
 import { executeBuiltCommandWithRetry } from "./plugTransportExecutor";
 
 const toNodeItems = (jsonItems: JsonObject[]): INodeExecutionData[] =>
@@ -51,13 +49,9 @@ export const executePlugSqlNode = async (
   context: IExecuteFunctions,
   config: PlugClientNodeExecutionConfig,
 ): Promise<INodeExecutionData[][]> => {
-  const sourceItems = context.getInputData();
-  const items =
-    sourceItems.length > 0 ? sourceItems : [{ json: {} } as INodeExecutionData];
   const credentials = await readPlugClientCredentials(context, config);
   const requester = buildN8nHttpRequester(context);
   const sessionRunner = createExecutionSessionRunner(requester, credentials);
-  const outputItems: INodeExecutionData[] = [];
 
   if (shouldCoalesceBatchInputItems(context, 0)) {
     const includeMetadata = getPlugIncludeMetadata(context, 0);
@@ -83,8 +77,9 @@ export const executePlugSqlNode = async (
     ];
   }
 
-  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-    try {
+  return executePerInputItem(
+    context,
+    async (itemIndex) => {
       const builtRequest = buildBuiltCommandRequest(
         context,
         itemIndex,
@@ -98,26 +93,13 @@ export const executePlugSqlNode = async (
         config,
         includeMetadata: getPlugIncludeMetadata(context, itemIndex),
       });
-      outputItems.push(...toNodeItems(jsonItems));
-    } catch (error: unknown) {
-      if (context.continueOnFail()) {
-        outputItems.push({
-          json: {
-            ...items[itemIndex].json,
-            error: serializeErrorForContinueOnFail(error),
-          },
-          pairedItem: {
-            item: itemIndex,
-          },
-        });
-        continue;
-      }
-
-      throw new NodeOperationError(context.getNode(), toNodeFacingError(error), {
-        itemIndex,
-      });
-    }
-  }
-
-  return [outputItems];
+      return toNodeItems(jsonItems);
+    },
+    {
+      onError: (error, itemIndex) =>
+        new NodeOperationError(context.getNode(), toNodeFacingError(error), {
+          itemIndex,
+        }),
+    },
+  );
 };

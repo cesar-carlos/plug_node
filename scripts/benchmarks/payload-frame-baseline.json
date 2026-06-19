@@ -1,0 +1,30 @@
+[
+  {
+    "name": "decode small PayloadFrame without gzip",
+    "iterations": 100,
+    "totalMs": 0.93,
+    "avgMs": 0.0093,
+    "opsPerSecond": 107273.1
+  },
+  {
+    "name": "decode large PayloadFrame with gzip",
+    "iterations": 100,
+    "totalMs": 83.22,
+    "avgMs": 0.8322,
+    "opsPerSecond": 1201.7
+  },
+  {
+    "name": "decode forced gzip PayloadFrame",
+    "iterations": 25,
+    "totalMs": 38.13,
+    "avgMs": 1.5251,
+    "opsPerSecond": 655.7
+  },
+  {
+    "name": "reject unsafe gzip inflation metadata",
+    "iterations": 100,
+    "totalMs": 1.55,
+    "avgMs": 0.0155,
+    "opsPerSecond": 64453.8
+  }
+]

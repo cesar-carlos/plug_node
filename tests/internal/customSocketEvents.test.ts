@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 
 import type {
   PlugHttpRequestOptions,
@@ -1372,5 +1372,74 @@ describe("custom socket events", () => {
       mimeType: "text/plain",
       sizeBytes: 5,
     });
+  });
+
+  it("emits subscribe keepalive touches for long-lived custom event sessions", async () => {
+    vi.useFakeTimers();
+    try {
+      const transport = new MockCustomEventTransport();
+      const sessionHandle = await startCustomSocketEventSession({
+        transport,
+        eventNames: ["client:custom.status.changed", "client:custom.invoice.created"],
+        ackTimeoutMs: 1000,
+        consumerIdleKeepaliveIntervalMs: 60_000,
+        onFatalError: () => undefined,
+        onEvent: () => undefined,
+      });
+
+      const subscribeEventsBefore = transport.emittedEvents.filter(
+        ({ event }) => event === "socket:event.subscribe",
+      ).length;
+      await vi.advanceTimersByTimeAsync(65_000);
+      const subscribeEventsAfter = transport.emittedEvents.filter(
+        ({ event }) => event === "socket:event.subscribe",
+      );
+
+      expect(subscribeEventsAfter.length).toBeGreaterThan(subscribeEventsBefore);
+      expect(subscribeEventsAfter.at(-1)?.payload).toEqual(
+        expect.objectContaining({
+          eventName: "client:custom.status.changed",
+        }),
+      );
+
+      await sessionHandle.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("emits agents:command keepalive touches for agent profile sessions", async () => {
+    vi.useFakeTimers();
+    try {
+      const transport = new MockCustomEventTransport();
+      const sessionHandle = await startAgentProfileUpdatedSession({
+        transport,
+        ackTimeoutMs: 1000,
+        agentId: "agent-1",
+        consumerIdleKeepaliveIntervalMs: 60_000,
+        onFatalError: () => undefined,
+        onEvent: () => undefined,
+      });
+
+      await vi.advanceTimersByTimeAsync(65_000);
+
+      expect(
+        transport.emittedEvents.some(({ event }) => event === "agents:command"),
+      ).toBe(true);
+      expect(
+        transport.emittedEvents.find(({ event }) => event === "agents:command")?.payload,
+      ).toEqual(
+        expect.objectContaining({
+          agentId: "agent-1",
+          command: expect.objectContaining({
+            method: "rpc.discover",
+          }),
+        }),
+      );
+
+      await sessionHandle.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

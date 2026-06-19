@@ -549,4 +549,23 @@ describe("createHttpError", () => {
     expect(error.description).toContain("Wait 7 second(s) before trying again.");
     expect(error.description).toContain("Rate limit exceeded");
   });
+
+  it("extracts retry timing from reset_at details", () => {
+    const resetAt = new Date(Date.now() + 5_000).toISOString();
+    const error = createHttpError(
+      429,
+      {
+        message: "Rate limit exceeded",
+        code: "RATE_LIMITED",
+        details: {
+          reset_at: resetAt,
+        },
+      },
+      {},
+    );
+
+    expect(error.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+    expect(error.retryAfterSeconds).toBeLessThanOrEqual(6);
+    expect(error.description).toMatch(/Wait \d+ second\(s\) before trying again\./);
+  });
 });
