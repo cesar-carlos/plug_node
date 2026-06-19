@@ -17,13 +17,10 @@ describe("executePerInputItem", () => {
       inputData: [{ json: { id: 1 } }, { json: { id: 2 } }, { json: { id: 3 } }],
     });
 
-    const result = await executePerInputItem(
-      context,
-      async (itemIndex, item) => {
-        callOrder.push(itemIndex);
-        return { json: { ...item.json, processed: true } };
-      },
-    );
+    const result = await executePerInputItem(context, async (itemIndex, item) => {
+      callOrder.push(itemIndex);
+      return { json: { ...item.json, processed: true } };
+    });
 
     expect(callOrder).toEqual([0, 1, 2]);
     expect(result[0].map((item) => item.json)).toEqual([

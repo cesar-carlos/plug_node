@@ -1,7 +1,11 @@
 import type { IExecuteFunctions, INodeExecutionData } from "n8n-workflow";
 
 import { parseOptionalJsonArray, parseOptionalJsonObject } from "../utils/json";
-import { toCollection, toOptionalBoolean, toOptionalPositiveNumber } from "./plugExecutionParameters";
+import {
+  toCollection,
+  toOptionalBoolean,
+  toOptionalPositiveNumber,
+} from "./plugExecutionParameters";
 import {
   isLikelyReadOnlySql,
   plugMaxParallelReadOnlyBatchItems,
@@ -231,9 +235,7 @@ export const resolvePlugSqlInputItemParallelism = (
   const operation = context.getNodeParameter("operation", 0) as string;
   const optionsCollection = sqlOptionsCollectionForOperation(operation);
   const options =
-    optionsCollection === undefined
-      ? {}
-      : toCollection(context, optionsCollection, 0);
+    optionsCollection === undefined ? {} : toCollection(context, optionsCollection, 0);
   const explicitValue = toOptionalPositiveNumber(options.maxParallelInputItems);
   const maxParallelExplicit = "maxParallelInputItems" in options;
   const hintsEnabled = toOptionalBoolean(options.autoPerformanceHints) ?? true;

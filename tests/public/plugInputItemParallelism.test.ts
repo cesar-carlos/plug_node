@@ -21,15 +21,11 @@ describe("plugInputItemParallelism", () => {
   });
 
   it("defaults to sequential execution unless parallelism is safe and enabled", () => {
-    expect(
-      resolveMaxParallelInputItems(false, 4, true, 3),
-    ).toBe(1);
-    expect(
-      resolveMaxParallelInputItems(true, undefined, false, 3),
-    ).toBe(1);
-    expect(
-      resolveMaxParallelInputItems(true, undefined, true, 3),
-    ).toBe(Math.min(3, plugMaxParallelInputItems, socketRestAgentMaxInflight));
+    expect(resolveMaxParallelInputItems(false, 4, true, 3)).toBe(1);
+    expect(resolveMaxParallelInputItems(true, undefined, false, 3)).toBe(1);
+    expect(resolveMaxParallelInputItems(true, undefined, true, 3)).toBe(
+      Math.min(3, plugMaxParallelInputItems, socketRestAgentMaxInflight),
+    );
   });
 
   it("caps explicit parallelism by hub inflight and item count", () => {

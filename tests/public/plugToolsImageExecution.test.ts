@@ -28,16 +28,18 @@ vi.mock("../../packages/n8n-nodes-plug-database/generated/shared/tools/image", (
   createThumbnail: vi.fn(async () => imageResult),
 }));
 
-const imageTools = await import(
-  "../../packages/n8n-nodes-plug-database/generated/shared/tools/image"
-);
+const imageTools =
+  await import("../../packages/n8n-nodes-plug-database/generated/shared/tools/image");
 
 describe("executePlugToolsImageNode", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  const runOperation = async (operation: string, imageOptions: Record<string, unknown>) => {
+  const runOperation = async (
+    operation: string,
+    imageOptions: Record<string, unknown>,
+  ) => {
     const input = Buffer.from("input-image");
     const context = createPlugToolsExecuteContext({
       binaryBuffer: input,

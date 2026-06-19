@@ -466,7 +466,10 @@ export const finalizeBuiltCommandRequest = (
       : {}),
     ...(channel === "socket" && config.supportsSocket
       ? (() => {
-          const streamPullWindowSize = resolveSocketStreamPullWindowSize(context, itemIndex);
+          const streamPullWindowSize = resolveSocketStreamPullWindowSize(
+            context,
+            itemIndex,
+          );
           const fastPath = resolveSocketFastPath(context, itemIndex);
           return {
             socketImplementation: resolveSocketImplementation(context),

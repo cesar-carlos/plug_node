@@ -16,7 +16,9 @@ const baselinePath = process.env.PLUG_BENCH_BASELINE ?? defaultBenchmarkBaseline
 const baseline = await readBenchmarkBaseline(baselinePath);
 const current = runPayloadFrameBenchmark();
 
-const encodeWithTraceId = current.find((entry) => entry.name === "encode PayloadFrame with traceId");
+const encodeWithTraceId = current.find(
+  (entry) => entry.name === "encode PayloadFrame with traceId",
+);
 const encodeOmitTraceId = current.find(
   (entry) => entry.name === "encode PayloadFrame omitTraceId",
 );

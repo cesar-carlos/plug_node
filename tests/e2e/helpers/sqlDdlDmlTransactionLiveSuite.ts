@@ -50,7 +50,8 @@ const updateAlphaSql = (table: string): string =>
 const commitProbeInsertSql = (table: string): string =>
   `INSERT INTO ${table} (Id, Name, Amount, CreatedAt) VALUES (${rowIds.commitProbe}, N'CommitProbe', 1.00, GETDATE())`;
 
-const countAllRowsSql = (table: string): string => `SELECT COUNT(*) AS RowCount FROM ${table}`;
+const countAllRowsSql = (table: string): string =>
+  `SELECT COUNT(*) AS RowCount FROM ${table}`;
 
 export const registerPlugSqlDdlDmlTransactionLiveE2E = (
   channel: SqlLiveChannel,
@@ -72,8 +73,13 @@ export const registerPlugSqlDdlDmlTransactionLiveE2E = (
         skip(ddlDisabledSkipReason);
       }
 
-      const { stepMaxMs, flowMaxMs, stressRowCount, stressInsertBatchSize, stressStepMaxMs } =
-        ddlConfig;
+      const {
+        stepMaxMs,
+        flowMaxMs,
+        stressRowCount,
+        stressInsertBatchSize,
+        stressStepMaxMs,
+      } = ddlConfig;
       const flowStartedAt = Date.now();
       tableName = createUniqueTableName();
       const table = qualifiedTableName(tableName);
@@ -93,7 +99,12 @@ export const registerPlugSqlDdlDmlTransactionLiveE2E = (
         const limitMs = options?.stepMaxMsOverride ?? stepMaxMs;
         assertStepTiming(stepLabel, step.elapsedMs, limitMs, step.output);
         if (options?.stressRowCount !== undefined && options.stressRowCount > 0) {
-          reportStressMetrics(stepLabel, step.elapsedMs, options.stressRowCount, step.output);
+          reportStressMetrics(
+            stepLabel,
+            step.elapsedMs,
+            options.stressRowCount,
+            step.output,
+          );
         }
         return step;
       };
@@ -144,9 +155,11 @@ export const registerPlugSqlDdlDmlTransactionLiveE2E = (
 
       let insertedRows: readonly Record<string, unknown>[];
       if (useBatchSelect) {
-        insertedRows = await selectRows("INSERT and SELECT rows", selectAllRowsSql(table), [
-          { sql: insertRowsSql(table) },
-        ]);
+        insertedRows = await selectRows(
+          "INSERT and SELECT rows",
+          selectAllRowsSql(table),
+          [{ sql: insertRowsSql(table) }],
+        );
       } else {
         await recordStep("INSERT rows", async () =>
           executeBatchStep({
@@ -161,7 +174,11 @@ export const registerPlugSqlDdlDmlTransactionLiveE2E = (
       }
 
       expect(insertedRows).toHaveLength(seedRowCount);
-      expect(insertedRows.map(readRowId)).toEqual([rowIds.alpha, rowIds.beta, rowIds.gamma]);
+      expect(insertedRows.map(readRowId)).toEqual([
+        rowIds.alpha,
+        rowIds.beta,
+        rowIds.gamma,
+      ]);
 
       if (stressRowCount > 0) {
         const stressInsertCommands = buildStressInsertCommands(
@@ -190,7 +207,9 @@ export const registerPlugSqlDdlDmlTransactionLiveE2E = (
           "SELECT COUNT after bulk INSERT",
           countAllRowsSql(table),
         );
-        expect(extractScalarFromRows(countedRows, "RowCount")).toBe(expectedRowCountAfterStress);
+        expect(extractScalarFromRows(countedRows, "RowCount")).toBe(
+          expectedRowCountAfterStress,
+        );
 
         const stressBulkUpdateSql = buildStressBulkUpdateSql(table, stressRowCount);
         await recordStep(
@@ -214,17 +233,18 @@ export const registerPlugSqlDdlDmlTransactionLiveE2E = (
           `SELECT TOP 1 Id, Amount FROM ${table} WHERE Id = ${ddlStressRowIdStart}`,
         );
         expect(stressSampleRows).toHaveLength(1);
-        expect(Number(stressSampleRows[0]?.Amount ?? stressSampleRows[0]?.amount)).toBeCloseTo(
-          (ddlStressRowIdStart % 100) + 0.5 + 0.01,
-          2,
-        );
+        expect(
+          Number(stressSampleRows[0]?.Amount ?? stressSampleRows[0]?.amount),
+        ).toBeCloseTo((ddlStressRowIdStart % 100) + 0.5 + 0.01, 2);
       }
 
       let updatedRows: readonly Record<string, unknown>[];
       if (useBatchSelect) {
-        updatedRows = await selectRows("UPDATE and SELECT alpha row", selectAlphaRowSql(table), [
-          { sql: updateAlphaSql(table) },
-        ]);
+        updatedRows = await selectRows(
+          "UPDATE and SELECT alpha row",
+          selectAlphaRowSql(table),
+          [{ sql: updateAlphaSql(table) }],
+        );
       } else {
         await recordStep("UPDATE row", async () =>
           executeBatchStep({
@@ -313,7 +333,9 @@ export const registerPlugSqlDdlDmlTransactionLiveE2E = (
               : {}),
           },
         );
-        expect(await selectRows("SELECT after DELETE", `SELECT Id FROM ${table}`)).toHaveLength(0);
+        expect(
+          await selectRows("SELECT after DELETE", `SELECT Id FROM ${table}`),
+        ).toHaveLength(0);
       } else {
         await recordStep(
           "DELETE all rows",
@@ -327,10 +349,14 @@ export const registerPlugSqlDdlDmlTransactionLiveE2E = (
             }),
           {
             stepMaxMsOverride: stressRowCount > 0 ? stressStepMaxMs : stepMaxMs,
-            ...(stressRowCount > 0 ? { stressRowCount: expectedRowCountAfterStress + 1 } : {}),
+            ...(stressRowCount > 0
+              ? { stressRowCount: expectedRowCountAfterStress + 1 }
+              : {}),
           },
         );
-        expect(await selectRows("SELECT after DELETE", `SELECT Id FROM ${table}`)).toHaveLength(0);
+        expect(
+          await selectRows("SELECT after DELETE", `SELECT Id FROM ${table}`),
+        ).toHaveLength(0);
       }
 
       await recordStep("DROP TABLE cleanup", async () =>

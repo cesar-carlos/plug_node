@@ -254,7 +254,9 @@ const parseDdlConfig = (): PlugE2EDdlConfig | undefined => {
   );
 
   if (flowMaxMs < stepMaxMs) {
-    throw new Error("PLUG_E2E_DDL_FLOW_MAX_MS must be greater than or equal to PLUG_E2E_DDL_STEP_MAX_MS.");
+    throw new Error(
+      "PLUG_E2E_DDL_FLOW_MAX_MS must be greater than or equal to PLUG_E2E_DDL_STEP_MAX_MS.",
+    );
   }
 
   if (stressStepMaxMs < stepMaxMs) {

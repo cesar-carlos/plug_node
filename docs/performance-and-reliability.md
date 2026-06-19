@@ -48,7 +48,7 @@ Relay command frames omit per-frame `traceId` on the hot path (aligned with hub 
 **Request Server Timings** (`requestServerTimings: true` in Socket Options) asks the hub to include server-side phase timings in relay responses when supported. With **Include Plug Metadata**, timings appear under `__plug.transport.serverTimings`:
 
 - `phasesMs` — hub bridge phases (`consumer_frame_decode_ms`, `agent_to_hub_ms`, `relay_forward_to_consumer_ms`, …).
-- `agentPhases.phasesMs` — agent sub-phases when the hub forwards `meta.agent_phases` (snake_case on the wire). When the hub merges agent timings into `phasesMs` with an `agent_` prefix, those keys appear in `phasesMs` directly.
+- `agentPhases.phasesMs` — agent sub-phases when the hub forwards `meta.agent_phases` (snake*case on the wire). When the hub merges agent timings into `phasesMs` with an `agent*`prefix, those keys appear in`phasesMs` directly.
 
 Enable Socket Options → **Request Server Timings** on relay or typeVersion 2 socket runs. Agent-side per-phase breakdown (`plug_agente` roadmap item 4) is optional and not required for hub timings to appear.
 

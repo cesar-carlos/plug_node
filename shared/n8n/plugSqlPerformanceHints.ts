@@ -87,7 +87,9 @@ const estimateBulkInsertJsonBytes = (
     return new TextEncoder().encode(JSON.stringify({ table, columns, rows })).length;
   }
 
-  const baseBytes = new TextEncoder().encode(JSON.stringify({ table, columns, rows: [] })).length;
+  const baseBytes = new TextEncoder().encode(
+    JSON.stringify({ table, columns, rows: [] }),
+  ).length;
   const sampleIndices = [0, Math.floor(rows.length / 2), rows.length - 1];
   const sampleRows = sampleIndices.map((index) => rows[index]);
   const sampleBytes = new TextEncoder().encode(

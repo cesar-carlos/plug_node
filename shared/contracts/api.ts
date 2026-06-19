@@ -15,9 +15,7 @@ export type PlugResponseMode =
   | "chunkItems"
   | "rawJsonRpc";
 
-export const isSocketAggregatedResponseMode = (
-  responseMode: PlugResponseMode,
-): boolean =>
+export const isSocketAggregatedResponseMode = (responseMode: PlugResponseMode): boolean =>
   responseMode === "aggregatedJson" || responseMode === "aggregatedSingleItem";
 export type PlugInputMode = "guided" | "advanced";
 export type PlugOperation =

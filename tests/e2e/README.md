@@ -86,13 +86,13 @@ Legacy overrides (used when set instead of Vendedor/Produto):
 
 ## Negative and multi-result probes
 
-| Variable                                  | Purpose                                                                        |
-| ----------------------------------------- | ------------------------------------------------------------------------------ |
-| `PLUG_E2E_DENIED_RESOURCE`                | Table name the client token **must not** read (required for authorization E2E) |
-| `PLUG_E2E_SQL_QUERY_UNAUTHORIZED`         | Built from denied resource if unset                                            |
-| `PLUG_E2E_SQL_QUERY_INVALID`              | Default: `SELECT FROM Cliente`                                                 |
+| Variable                                  | Purpose                                                                                 |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| `PLUG_E2E_DENIED_RESOURCE`                | Table name the client token **must not** read (required for authorization E2E)          |
+| `PLUG_E2E_SQL_QUERY_UNAUTHORIZED`         | Built from denied resource if unset                                                     |
+| `PLUG_E2E_SQL_QUERY_INVALID`              | Default: `SELECT FROM Cliente`                                                          |
 | `PLUG_E2E_SQL_QUERY_MULTI_RESULT_SUCCESS` | Default: `SELECT TOP 5 CodCliente FROM Cliente; SELECT TOP 5 CodVendedor FROM Vendedor` |
-| `PLUG_E2E_SQL_QUERY_MULTI_RESULT_MIXED`   | Default: narrow Cliente select + denied resource `SELECT *`                               |
+| `PLUG_E2E_SQL_QUERY_MULTI_RESULT_MIXED`   | Default: narrow Cliente select + denied resource `SELECT *`                             |
 
 ### Finding `PLUG_E2E_DENIED_RESOURCE`
 
@@ -108,7 +108,7 @@ If the unauthorized probe returns **success**, authorization tests **skip** with
 | **Multi Result** on one SQL string | `sql.execute` + `options.multi_result` | `PLUG_E2E_SQL_QUERY_MULTI_RESULT_*` |
 
 `multi_result` uses agent streaming (`executeMultiResultQueryStream`). Prefer **narrow column lists** (for example `CodCliente`, `CodVendedor`) instead of `SELECT *` on wide ERP tables; some DateTime columns fail streaming decode with `SELECT *`.
-| **Execute Batch** node             | `sql.executeBatch`                     | `PLUG_E2E_BATCH_COMMANDS_JSON`      |
+| **Execute Batch** node | `sql.executeBatch` | `PLUG_E2E_BATCH_COMMANDS_JSON` |
 
 Default batch JSON (read-only):
 
@@ -141,14 +141,14 @@ Set `PLUG_E2E_BULK_INSERT_JSON` to a full `sql.bulkInsert` params object (table,
 
 Full mutating SQL lifecycle against a unique staging table (`PlugE2E_DdlDml_*`). **Opt-in** — requires a client token that allows `CREATE TABLE`, `INSERT`, `UPDATE`, `DELETE`, and `DROP TABLE`.
 
-| Variable                              | Default  | Purpose                                              |
-| ------------------------------------- | -------- | ---------------------------------------------------- |
-| `PLUG_E2E_DDL_ENABLED`                | off      | Set to `1` to run DDL/DML lifecycle tests            |
-| `PLUG_E2E_DDL_STEP_MAX_MS`            | `30000`  | Per-step client timing limit (ms)                    |
-| `PLUG_E2E_DDL_FLOW_MAX_MS`            | `120000` | Total lifecycle timing limit (ms); auto-extended when stress rows are configured |
-| `PLUG_E2E_DDL_STRESS_ROW_COUNT`       | `500`    | Extra rows inserted/updated/deleted for moderate stress |
-| `PLUG_E2E_DDL_STRESS_INSERT_BATCH_SIZE` | `100`  | Rows per `INSERT` batch during stress phase          |
-| `PLUG_E2E_DDL_STRESS_STEP_MAX_MS`    | `60000`  | Per-step limit for bulk INSERT/UPDATE/DELETE         |
+| Variable                                | Default  | Purpose                                                                          |
+| --------------------------------------- | -------- | -------------------------------------------------------------------------------- |
+| `PLUG_E2E_DDL_ENABLED`                  | off      | Set to `1` to run DDL/DML lifecycle tests                                        |
+| `PLUG_E2E_DDL_STEP_MAX_MS`              | `30000`  | Per-step client timing limit (ms)                                                |
+| `PLUG_E2E_DDL_FLOW_MAX_MS`              | `120000` | Total lifecycle timing limit (ms); auto-extended when stress rows are configured |
+| `PLUG_E2E_DDL_STRESS_ROW_COUNT`         | `500`    | Extra rows inserted/updated/deleted for moderate stress                          |
+| `PLUG_E2E_DDL_STRESS_INSERT_BATCH_SIZE` | `100`    | Rows per `INSERT` batch during stress phase                                      |
+| `PLUG_E2E_DDL_STRESS_STEP_MAX_MS`       | `60000`  | Per-step limit for bulk INSERT/UPDATE/DELETE                                     |
 
 Flow (REST and Socket):
 

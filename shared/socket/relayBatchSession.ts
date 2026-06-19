@@ -58,9 +58,7 @@ const buildBatchMetrics = (
 
 export interface ExecuteRelayBatchCommandInput extends Omit<
   ExecuteRelayCommandInput,
-  | "command"
-  | "agentRecommendedStreamPullWindowSize"
-  | "agentMaxStreamPullWindowSize"
+  "command" | "agentRecommendedStreamPullWindowSize" | "agentMaxStreamPullWindowSize"
 > {
   readonly commands: readonly RpcSingleCommand[];
   readonly agentRecommendedStreamPullWindowSize?: number;
@@ -224,10 +222,7 @@ export const executeRelayBatchCommand = async (
 
           if (fastPath) {
             const clientRequestId = extractRpcBodyId(decoded.data);
-            if (
-              clientRequestId === undefined ||
-              !clientRequestIds.has(clientRequestId)
-            ) {
+            if (clientRequestId === undefined || !clientRequestIds.has(clientRequestId)) {
               return;
             }
 

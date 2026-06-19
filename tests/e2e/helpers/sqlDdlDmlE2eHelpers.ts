@@ -137,7 +137,9 @@ const socketTimingParameters = (channel: SqlLiveChannel): Record<string, unknown
       }
     : {};
 
-const readRpcResponse = (output: Record<string, unknown>): {
+const readRpcResponse = (
+  output: Record<string, unknown>,
+): {
   readonly success: boolean;
   readonly result?: Record<string, unknown>;
   readonly error?: Record<string, unknown>;
@@ -161,7 +163,9 @@ const readRpcResponse = (output: Record<string, unknown>): {
   };
 };
 
-export const extractSelectRows = (output: Record<string, unknown>): readonly Record<string, unknown>[] => {
+export const extractSelectRows = (
+  output: Record<string, unknown>,
+): readonly Record<string, unknown>[] => {
   if (Array.isArray(output.rows)) {
     return output.rows as readonly Record<string, unknown>[];
   }
