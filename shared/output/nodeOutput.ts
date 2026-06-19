@@ -1,10 +1,11 @@
-import type {
-  JsonObject,
-  NormalizedAgentRpcResponse,
-  NormalizedRpcBatchResponse,
-  NormalizedRpcSingleResponse,
-  PlugCommandTransportResult,
-  PlugResponseMode,
+import {
+  isSocketAggregatedResponseMode,
+  type JsonObject,
+  type NormalizedAgentRpcResponse,
+  type NormalizedRpcBatchResponse,
+  type NormalizedRpcSingleResponse,
+  type PlugCommandTransportResult,
+  type PlugResponseMode,
 } from "../contracts/api";
 import { PlugError } from "../contracts/errors";
 import { ensureSuccessfulNormalizedResponse } from "./rpcNormalization";
@@ -149,7 +150,7 @@ const buildSingleSuccessItems = (
     const hasRowsArray = Array.isArray(rows);
     const explicitRowCount = resultPayload.row_count ?? resultPayload.rowCount;
     const isEmptyAggregatedResult =
-      responseMode === "aggregatedJson" &&
+      isSocketAggregatedResponseMode(responseMode) &&
       ((hasRowsArray && rows.length === 0) || (!hasRowsArray && explicitRowCount === 0));
 
     if (isEmptyAggregatedResult) {
@@ -166,6 +167,19 @@ const buildSingleSuccessItems = (
     }
 
     if (hasRowsArray) {
+      if (responseMode === "aggregatedSingleItem") {
+        const rowCount =
+          typeof explicitRowCount === "number" ? explicitRowCount : rows.length;
+
+        return [
+          {
+            rowCount,
+            rows,
+            ...withOptionalMetadata(includeMetadata, metadata),
+          },
+        ];
+      }
+
       return rows.map((row, index) => ({
         ...(isRecord(row) ? row : { value: row }),
         ...withOptionalMetadata(includeMetadata, {

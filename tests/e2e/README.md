@@ -67,6 +67,7 @@ The job runs `npm run test:e2e:ci` and is marked `continue-on-error: true` so mi
 - Optional `sql.cancel` when `PLUG_E2E_CANCEL_EXECUTION_ID` or `PLUG_E2E_CANCEL_REQUEST_ID` is set
 - Mocked custom socket publish/wait (`custom-socket-events.e2e.test.ts`)
 - Optional bounded hub stress probe (`stress.e2e.test.ts`, off unless `PLUG_E2E_STRESS_ENABLED=1`)
+- Optional DDL/DML transaction lifecycle (`sql-ddl-dml-transaction.e2e.test.ts`, off unless `PLUG_E2E_DDL_ENABLED=1`)
 
 ## Smoke query variables
 
@@ -90,8 +91,8 @@ Legacy overrides (used when set instead of Vendedor/Produto):
 | `PLUG_E2E_DENIED_RESOURCE`                | Table name the client token **must not** read (required for authorization E2E) |
 | `PLUG_E2E_SQL_QUERY_UNAUTHORIZED`         | Built from denied resource if unset                                            |
 | `PLUG_E2E_SQL_QUERY_INVALID`              | Default: `SELECT FROM Cliente`                                                 |
-| `PLUG_E2E_SQL_QUERY_MULTI_RESULT_SUCCESS` | Default: `SELECT TOP 5 * FROM Cliente; SELECT TOP 5 * FROM Vendedor`           |
-| `PLUG_E2E_SQL_QUERY_MULTI_RESULT_MIXED`   | Default: success query + denied resource                                       |
+| `PLUG_E2E_SQL_QUERY_MULTI_RESULT_SUCCESS` | Default: `SELECT TOP 5 CodCliente FROM Cliente; SELECT TOP 5 CodVendedor FROM Vendedor` |
+| `PLUG_E2E_SQL_QUERY_MULTI_RESULT_MIXED`   | Default: narrow Cliente select + denied resource `SELECT *`                               |
 
 ### Finding `PLUG_E2E_DENIED_RESOURCE`
 
@@ -105,6 +106,8 @@ If the unauthorized probe returns **success**, authorization tests **skip** with
 | Mechanism                          | Hub method                             | Env / node                          |
 | ---------------------------------- | -------------------------------------- | ----------------------------------- |
 | **Multi Result** on one SQL string | `sql.execute` + `options.multi_result` | `PLUG_E2E_SQL_QUERY_MULTI_RESULT_*` |
+
+`multi_result` uses agent streaming (`executeMultiResultQueryStream`). Prefer **narrow column lists** (for example `CodCliente`, `CodVendedor`) instead of `SELECT *` on wide ERP tables; some DateTime columns fail streaming decode with `SELECT *`.
 | **Execute Batch** node             | `sql.executeBatch`                     | `PLUG_E2E_BATCH_COMMANDS_JSON`      |
 
 Default batch JSON (read-only):
@@ -133,6 +136,37 @@ When both are empty, cancel tests skip. Use ids from a long-running query you st
 ## Optional bulk insert E2E
 
 Set `PLUG_E2E_BULK_INSERT_JSON` to a full `sql.bulkInsert` params object (table, columns, rows, etc.). Use a **safe staging table** only. When unset, bulk insert E2E tests skip.
+
+## Optional DDL/DML lifecycle E2E
+
+Full mutating SQL lifecycle against a unique staging table (`PlugE2E_DdlDml_*`). **Opt-in** — requires a client token that allows `CREATE TABLE`, `INSERT`, `UPDATE`, `DELETE`, and `DROP TABLE`.
+
+| Variable                              | Default  | Purpose                                              |
+| ------------------------------------- | -------- | ---------------------------------------------------- |
+| `PLUG_E2E_DDL_ENABLED`                | off      | Set to `1` to run DDL/DML lifecycle tests            |
+| `PLUG_E2E_DDL_STEP_MAX_MS`            | `30000`  | Per-step client timing limit (ms)                    |
+| `PLUG_E2E_DDL_FLOW_MAX_MS`            | `120000` | Total lifecycle timing limit (ms); auto-extended when stress rows are configured |
+| `PLUG_E2E_DDL_STRESS_ROW_COUNT`       | `500`    | Extra rows inserted/updated/deleted for moderate stress |
+| `PLUG_E2E_DDL_STRESS_INSERT_BATCH_SIZE` | `100`  | Rows per `INSERT` batch during stress phase          |
+| `PLUG_E2E_DDL_STRESS_STEP_MAX_MS`    | `60000`  | Per-step limit for bulk INSERT/UPDATE/DELETE         |
+
+Flow (REST and Socket):
+
+1. `CREATE TABLE` with `Id`, `Name`, `Amount`, `CreatedAt`
+2. `INSERT` 3 seed rows, `SELECT` to verify
+3. **Stress phase (default 500 rows):** batched `INSERT`, `COUNT(*)` verify, bulk `UPDATE`, sample `SELECT`
+4. `UPDATE` one seed row, `SELECT` to verify
+5. `executeBatch` with `transaction: true` — failing batch rolls back an insert
+6. `executeBatch` with `transaction: true` — successful batch commits an insert
+7. `DELETE` all rows, `DROP TABLE` cleanup (also runs in `afterAll` on failure)
+
+Socket runs request **Request Server Timings** when supported; each step asserts client elapsed time and server phase totals when present. Bulk stress steps also log throughput (`rows/s`) and server phase breakdown to the console.
+
+Mutating steps use `sql.executeBatch` (not single `sql.execute`) because the hub rejects materialized DDL/DML responses with `result_too_large`. On Socket, verification `SELECT` statements run in the same batch as the preceding mutation so row reads stay consistent with the agent connection.
+
+```bash
+PLUG_E2E_DDL_ENABLED=1 npm run test:e2e -- tests/e2e/sql-ddl-dml-transaction.e2e.test.ts
+```
 
 ## Optional stress probe
 

@@ -137,6 +137,7 @@ export const executeRelayCommand = async (
       requestId: clientRequestId,
       compression: input.payloadFrameCompression ?? "default",
       signing: input.payloadFrameSigning,
+      omitTraceId: true,
     });
 
     const acceptedStatePromise = fastPath

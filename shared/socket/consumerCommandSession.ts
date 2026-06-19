@@ -3,6 +3,7 @@ import {
   DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
   SOCKET_PROTOCOL_VERSION,
   type ConsumerCommandNotificationResponse,
+  isSocketAggregatedResponseMode,
   type JsonObject,
   type NormalizedAgentRpcResponse,
   type PlugCommandTransportResult,
@@ -512,7 +513,7 @@ export const executeConsumerCommand = async (
         bufferedBytes += estimateConsumerWireBytes(payload, chunk);
         bufferedRows += countRows(chunk.rows);
 
-        if (input.responseMode === "aggregatedJson") {
+        if (isSocketAggregatedResponseMode(input.responseMode)) {
           const mergedResponse = tryMergeChunkRowsIntoConsumerResponse(
             normalizedResponse,
             chunk,
@@ -570,7 +571,7 @@ export const executeConsumerCommand = async (
 
         streamAggregation.state.streamCompleted = true;
         completePayload = complete;
-        if (input.responseMode === "aggregatedJson") {
+        if (isSocketAggregatedResponseMode(input.responseMode)) {
           normalizedResponse = removeStreamMarkerFromConsumerResponse(normalizedResponse);
         }
         plugLogger.info("transport.socket.command.complete", {
@@ -591,7 +592,7 @@ export const executeConsumerCommand = async (
           notification: false,
           ...(connectionReady ? { connectionReady } : {}),
           response:
-            input.responseMode === "aggregatedJson" && normalizedResponse
+            isSocketAggregatedResponseMode(input.responseMode) && normalizedResponse
               ? normalizedResponse
               : (rawResponsePayload as NormalizedAgentRpcResponse),
           rawResponsePayload,

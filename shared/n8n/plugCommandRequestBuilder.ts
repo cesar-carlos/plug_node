@@ -329,13 +329,17 @@ const resolveSocketStreamPullWindowSize = (
 ): number | undefined => {
   const socketOptions = toCollection(context, "socketOptions", itemIndex);
   if (!("streamPullWindowSize" in socketOptions)) {
-    return defaultSocketStreamPullWindowSize;
+    return undefined;
   }
 
   const raw = socketOptions.streamPullWindowSize;
+  if (raw === 0 || raw === "0") {
+    return undefined;
+  }
+
   const configured = toOptionalPositiveNumber(raw);
   if (configured === undefined) {
-    return defaultSocketStreamPullWindowSize;
+    return undefined;
   }
 
   return Math.min(maxSocketStreamPullWindowSize, Math.max(1, Math.floor(configured)));
@@ -377,8 +381,12 @@ const resolveSocketFastPath = (
   itemIndex: number,
 ): boolean | undefined => {
   const socketOptions = toCollection(context, "socketOptions", itemIndex);
-  const enabled = toOptionalBoolean(socketOptions.fastPath);
-  return enabled === true ? true : undefined;
+  if ("fastPath" in socketOptions) {
+    const enabled = toOptionalBoolean(socketOptions.fastPath);
+    return enabled === true ? true : undefined;
+  }
+
+  return context.getNode().typeVersion < 2 ? true : undefined;
 };
 
 const resolveSocketRequestServerTimings = (
@@ -412,12 +420,16 @@ const applySocketSqlAutoPerformanceHints = (
     return builtRequest;
   }
 
+  const existingOptions = command.params?.options;
+  if (existingOptions?.multi_result === true) {
+    return builtRequest;
+  }
+
   const sql = command.params?.sql;
   if (typeof sql !== "string" || !shouldAutoPreferDbStreaming(sql)) {
     return builtRequest;
   }
 
-  const existingOptions = command.params?.options;
   return {
     ...builtRequest,
     command: {
@@ -453,13 +465,17 @@ export const finalizeBuiltCommandRequest = (
       ? { requestServerTimings: true as const }
       : {}),
     ...(channel === "socket" && config.supportsSocket
-      ? {
-          socketImplementation: resolveSocketImplementation(context),
-          payloadFrameCompression: "default" as const,
-          bufferLimits: resolveSocketBufferLimits(context, itemIndex),
-          streamPullWindowSize: resolveSocketStreamPullWindowSize(context, itemIndex),
-          fastPath: resolveSocketFastPath(context, itemIndex),
-        }
+      ? (() => {
+          const streamPullWindowSize = resolveSocketStreamPullWindowSize(context, itemIndex);
+          const fastPath = resolveSocketFastPath(context, itemIndex);
+          return {
+            socketImplementation: resolveSocketImplementation(context),
+            payloadFrameCompression: "default" as const,
+            bufferLimits: resolveSocketBufferLimits(context, itemIndex),
+            ...(streamPullWindowSize !== undefined ? { streamPullWindowSize } : {}),
+            ...(fastPath === true ? { fastPath: true as const } : {}),
+          };
+        })()
       : {}),
     responseMode:
       resolvedOperation === "validateContext"

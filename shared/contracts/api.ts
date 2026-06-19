@@ -9,7 +9,16 @@ export const SOCKET_PROTOCOL_VERSION = "2026-05-14";
 
 export type PlugChannel = "rest" | "socket";
 export type PlugSocketImplementation = "agentsCommand" | "relay";
-export type PlugResponseMode = "aggregatedJson" | "chunkItems" | "rawJsonRpc";
+export type PlugResponseMode =
+  | "aggregatedJson"
+  | "aggregatedSingleItem"
+  | "chunkItems"
+  | "rawJsonRpc";
+
+export const isSocketAggregatedResponseMode = (
+  responseMode: PlugResponseMode,
+): boolean =>
+  responseMode === "aggregatedJson" || responseMode === "aggregatedSingleItem";
 export type PlugInputMode = "guided" | "advanced";
 export type PlugOperation =
   | "validateContext"
@@ -53,9 +62,16 @@ export interface PlugCredentialDefaults extends PlugClientAuthCredentials {
   readonly payloadSigningPreviousKeysJson?: string;
 }
 
+export interface PlugPhaseTimings {
+  readonly schemaVersion: number;
+  readonly phasesMs: Record<string, number>;
+}
+
 export interface PlugServerTimings {
   readonly schemaVersion: number;
   readonly phasesMs: Record<string, number>;
+  /** Agent-side sub-phases when the hub forwards `meta.agent_phases` or merges `agent_*` hub keys. */
+  readonly agentPhases?: PlugPhaseTimings;
 }
 
 export type PlugCredentials = PlugCredentialDefaults;

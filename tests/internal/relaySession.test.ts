@@ -1125,6 +1125,96 @@ describe("executeRelayCommand", () => {
     ).toBe(true);
   });
 
+  it("surfaces serverTimings and agent_phases when requestServerTimings is enabled", async () => {
+    class TimingsRelayTransport extends MockRelayTransport {
+      override emit(event: string, payload?: unknown): void {
+        this.emittedEvents.push({ event, payload });
+
+        if (event === "relay:conversation.start") {
+          queueMicrotask(() => {
+            this.dispatch("relay:conversation.started", {
+              success: true,
+              conversationId: "conversation-1",
+              agentId: "agent-1",
+            });
+          });
+          return;
+        }
+
+        if (event === "relay:rpc.request") {
+          queueMicrotask(() => {
+            this.dispatch(
+              "relay:rpc.response",
+              encodePayloadFrame(
+                {
+                  jsonrpc: "2.0",
+                  id: "client-request-1",
+                  result: { rows: [{ id: 1 }] },
+                  meta: {
+                    serverTimings: {
+                      schemaVersion: 1,
+                      phasesMs: {
+                        agent_to_hub_ms: 120.4,
+                      },
+                    },
+                    agent_phases: {
+                      schema_version: 1,
+                      phases_ms: {
+                        db_execute_ms: 95.2,
+                      },
+                    },
+                  },
+                },
+                { requestId: "hub-request-1", compression: "none" },
+              ),
+            );
+          });
+        }
+      }
+    }
+
+    const transport = new TimingsRelayTransport();
+    transport.connect();
+
+    const result = await executeRelayCommand({
+      transport,
+      session,
+      command: {
+        jsonrpc: "2.0",
+        method: "client_token.getPolicy",
+        id: "client-request-1",
+        params: { client_token: "client-token" },
+      },
+      responseMode: "aggregatedJson",
+      fastPath: true,
+      requestServerTimings: true,
+      managedTransport: true,
+      skipConversationEnd: true,
+    });
+
+    expect(
+      transport.emittedEvents.some(
+        (entry) =>
+          entry.event === "relay:rpc.request" &&
+          isRecord(entry.payload) &&
+          entry.payload.requestServerTimings === true,
+      ),
+    ).toBe(true);
+    expect(result.executionMetrics?.serverTimings).toEqual({
+      schemaVersion: 1,
+      phasesMs: {
+        agent_to_hub_ms: 120.4,
+      },
+      agentPhases: {
+        schemaVersion: 1,
+        phasesMs: {
+          db_execute_ms: 95.2,
+        },
+      },
+    });
+    expect(result.metrics?.serverTimings).toEqual(result.executionMetrics?.serverTimings);
+  });
+
   it("fails immediately when the relay socket disconnects during control events", async () => {
     const command: RpcSingleCommand = {
       jsonrpc: "2.0",

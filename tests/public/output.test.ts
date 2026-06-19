@@ -63,6 +63,199 @@ describe("buildNodeOutputItems", () => {
     });
   });
 
+  it("returns one item with rows[] for aggregated single item output", () => {
+    const result: PlugCommandTransportResult = {
+      channel: "rest",
+      agentId: "agent-1",
+      requestId: "request-1",
+      notification: false,
+      response: {
+        type: "single",
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            rows: [
+              { id: 1, name: "Alpha" },
+              { id: 2, name: "Beta" },
+            ],
+            row_count: 2,
+          },
+        },
+      },
+      raw: {
+        mode: "bridge",
+        agentId: "agent-1",
+        requestId: "request-1",
+        response: {
+          type: "single",
+          success: true,
+          item: {
+            id: "rpc-1",
+            success: true,
+            result: {
+              rows: [
+                { id: 1, name: "Alpha" },
+                { id: 2, name: "Beta" },
+              ],
+              row_count: 2,
+            },
+          },
+        },
+      },
+    };
+
+    const items = buildNodeOutputItems(result, "aggregatedSingleItem");
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      rowCount: 2,
+      rows: [
+        { id: 1, name: "Alpha" },
+        { id: 2, name: "Beta" },
+      ],
+      __plug: {
+        agentId: "agent-1",
+        requestId: "request-1",
+      },
+    });
+  });
+
+  it("returns one synthetic item when aggregated single item receives zero SQL rows", () => {
+    const result: PlugCommandTransportResult = {
+      channel: "rest",
+      agentId: "agent-1",
+      requestId: "request-1",
+      notification: false,
+      response: {
+        type: "single",
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            rows: [],
+            row_count: 0,
+          },
+        },
+      },
+      raw: {
+        mode: "bridge",
+        agentId: "agent-1",
+        requestId: "request-1",
+        response: {
+          type: "single",
+          success: true,
+          item: {
+            id: "rpc-1",
+            success: true,
+            result: {
+              rows: [],
+            },
+          },
+        },
+      },
+    };
+
+    const items = buildNodeOutputItems(result, "aggregatedSingleItem");
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      rowCount: 0,
+      rows: [],
+      __plug: {
+        emptyResult: true,
+      },
+    });
+  });
+
+  it("aggregates socket stream rows into one item for aggregated single item mode", () => {
+    const result: PlugCommandTransportResult = {
+      channel: "socket",
+      socketMode: "relay",
+      agentId: "agent-1",
+      requestId: "request-1",
+      notification: false,
+      conversationId: "conversation-1",
+      accepted: {
+        success: true,
+        conversationId: "conversation-1",
+        requestId: "request-1",
+      },
+      connectionReady: {
+        id: "connection-1",
+        message: "ready",
+        user: {
+          id: "client-1",
+        },
+      },
+      response: {
+        type: "single",
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            stream_id: "stream-1",
+            rows: [{ id: 1, name: "Alpha" }],
+          },
+        },
+      },
+      rawResponsePayload: {
+        stream_id: "stream-1",
+      },
+      chunkPayloads: [
+        {
+          rows: [{ id: 2, name: "Beta" }],
+        },
+      ],
+      completePayload: {
+        terminal_status: "completed",
+      },
+      rawResponseFrame: {
+        schemaVersion: "1.0",
+        enc: "json",
+        cmp: "none",
+        signed: false,
+        payload: {
+          event: "relay:rpc.response",
+        },
+      },
+      rawChunkFrames: [
+        {
+          schemaVersion: "1.0",
+          enc: "json",
+          cmp: "none",
+          signed: false,
+          payload: {
+            event: "relay:rpc.chunk",
+          },
+        },
+      ],
+      rawCompleteFrame: {
+        schemaVersion: "1.0",
+        enc: "json",
+        cmp: "none",
+        signed: false,
+        payload: {
+          event: "relay:rpc.complete",
+        },
+      },
+    };
+
+    const items = buildNodeOutputItems(result, "aggregatedSingleItem");
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      rowCount: 2,
+      rows: [
+        { id: 1, name: "Alpha" },
+        { id: 2, name: "Beta" },
+      ],
+    });
+  });
+
   it("returns one synthetic item when aggregated JSON receives row_count 0 without a rows array", () => {
     const result: PlugCommandTransportResult = {
       channel: "rest",
@@ -447,6 +640,67 @@ describe("buildNodeOutputItems", () => {
       transport: {
         attemptCount: 2,
         lastRetryDelayMs: 250,
+      },
+    });
+  });
+
+  it("includes serverTimings with agentPhases in __plug.transport when metadata is enabled", () => {
+    const result: PlugCommandTransportResult = {
+      channel: "socket",
+      socketMode: "relay",
+      agentId: "agent-1",
+      requestId: "request-1",
+      notification: false,
+      executionMetrics: {
+        serverTimings: {
+          schemaVersion: 1,
+          phasesMs: {
+            agent_to_hub_ms: 180.5,
+          },
+          agentPhases: {
+            schemaVersion: 1,
+            phasesMs: {
+              db_execute_ms: 142.5,
+            },
+          },
+        },
+      },
+      response: {
+        type: "single",
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            rows: [{ CodCliente: 1 }],
+          },
+        },
+      },
+      rawResponsePayload: {
+        jsonrpc: "2.0",
+        id: "rpc-1",
+        result: { rows: [{ CodCliente: 1 }] },
+      },
+      chunkPayloads: [],
+      rawChunkFrames: [],
+    };
+
+    const items = buildNodeOutputItems(result, "aggregatedJson", true);
+
+    expect(items[0].__plug).toMatchObject({
+      transport: {
+        serverTimings: {
+          schemaVersion: 1,
+          phasesMs: {
+            agent_to_hub_ms: 180.5,
+          },
+          agentPhases: {
+            schemaVersion: 1,
+            phasesMs: {
+              db_execute_ms: 142.5,
+            },
+          },
+        },
       },
     });
   });

@@ -20,21 +20,28 @@ describe("streamPullWindowPolicy", () => {
     ).toBe(16);
   });
 
-  it("clamps adaptive window size to hub max and agent recommendation", () => {
+  it("clamps explicit configured window to hub max while honoring configured over agent recommendation", () => {
     expect(
       resolveAdaptiveStreamPullWindowSize({
         configured: 64,
         agentRecommended: 8,
         fallback: 32,
       }),
-    ).toBe(8);
+    ).toBe(64);
 
     expect(
       resolveAdaptiveStreamPullWindowSize({
         configured: 2000,
         agentRecommended: 500,
       }),
-    ).toBe(500);
+    ).toBe(1000);
+
+    expect(
+      resolveAdaptiveStreamPullWindowSize({
+        agentRecommended: 8,
+        fallback: 32,
+      }),
+    ).toBe(8);
   });
 
   it("extracts max stream pull window hints", () => {

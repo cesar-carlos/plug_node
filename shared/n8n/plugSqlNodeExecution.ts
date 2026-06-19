@@ -18,6 +18,7 @@ import {
   readPlugClientCredentials,
   resolvePlugExecutionContext,
 } from "./plugCommandRequestBuilder";
+import { resolvePlugSqlInputItemParallelism } from "./plugInputItemParallelism";
 import { executePerInputItem } from "./plugItemExecution";
 import { executeBuiltCommandWithRetry } from "./plugTransportExecutor";
 
@@ -77,6 +78,9 @@ export const executePlugSqlNode = async (
     ];
   }
 
+  const sourceItems = context.getInputData();
+  const maxConcurrency = resolvePlugSqlInputItemParallelism(context, sourceItems);
+
   return executePerInputItem(
     context,
     async (itemIndex) => {
@@ -96,6 +100,7 @@ export const executePlugSqlNode = async (
       return toNodeItems(jsonItems);
     },
     {
+      maxConcurrency,
       onError: (error, itemIndex) =>
         new NodeOperationError(context.getNode(), toNodeFacingError(error), {
           itemIndex,

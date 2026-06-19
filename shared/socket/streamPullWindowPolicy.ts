@@ -119,11 +119,12 @@ export const resolveAdaptiveStreamPullWindowSize = (input: {
   const agentMax = input.agentMax
     ? clampStreamPullWindowSize(input.agentMax, hubMax)
     : hubMax;
-  const preferred = input.configured ?? input.agentRecommended ?? fallback;
-  const ceiling =
-    input.agentRecommended !== undefined
-      ? clampStreamPullWindowSize(input.agentRecommended, Math.min(agentMax, hubMax))
-      : Math.min(agentMax, hubMax);
+  const ceiling = Math.min(agentMax, hubMax);
 
+  if (input.configured !== undefined) {
+    return clampStreamPullWindowSize(input.configured, ceiling);
+  }
+
+  const preferred = input.agentRecommended ?? fallback;
   return clampStreamPullWindowSize(preferred, ceiling);
 };

@@ -190,6 +190,7 @@ export class RelaySocketExecutionManager {
           agentRecommendedStreamPullWindowSize:
             agentSession.agentRecommendedStreamPullWindowSize,
           agentMaxStreamPullWindowSize: agentSession.agentMaxStreamPullWindowSize,
+          fastPath: input.fastPath,
           requestServerTimings: input.requestServerTimings,
           managedTransport: true,
           reusedConversationId: agentSession.conversationId,

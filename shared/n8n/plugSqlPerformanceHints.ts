@@ -41,6 +41,10 @@ export const shouldAutoPreferDbStreaming = (sql: string): boolean => {
   }
 
   const cleanSql = splitSqlStatements(sql)[0].replace(/\s+/g, " ");
+  if (/\bwhere\s+1\s*=\s*0\b/i.test(cleanSql)) {
+    return false;
+  }
+
   const topMatch = /^\s*select\s+top\s+(?:\((\d+)\)|(\d+))/i.exec(cleanSql);
   if (topMatch) {
     const topN = Number(topMatch[1] ?? topMatch[2]);
@@ -74,7 +78,24 @@ const estimateBulkInsertJsonBytes = (
   table: string,
   columns: readonly { readonly name: string; readonly type: string }[],
   rows: readonly (readonly unknown[])[],
-): number => new TextEncoder().encode(JSON.stringify({ table, columns, rows })).length;
+): number => {
+  if (rows.length === 0) {
+    return new TextEncoder().encode(JSON.stringify({ table, columns, rows: [] })).length;
+  }
+
+  if (rows.length <= 50) {
+    return new TextEncoder().encode(JSON.stringify({ table, columns, rows })).length;
+  }
+
+  const baseBytes = new TextEncoder().encode(JSON.stringify({ table, columns, rows: [] })).length;
+  const sampleIndices = [0, Math.floor(rows.length / 2), rows.length - 1];
+  const sampleRows = sampleIndices.map((index) => rows[index]);
+  const sampleBytes = new TextEncoder().encode(
+    JSON.stringify({ table, columns, rows: sampleRows }),
+  ).length;
+  const sampleRowBytes = (sampleBytes - baseBytes) / sampleRows.length;
+  return Math.ceil((baseBytes + sampleRowBytes * rows.length) * 1.1);
+};
 
 export const assertBulkInsertWithinHubLimits = (
   table: string,

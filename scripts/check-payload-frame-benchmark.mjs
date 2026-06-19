@@ -16,8 +16,23 @@ const baselinePath = process.env.PLUG_BENCH_BASELINE ?? defaultBenchmarkBaseline
 const baseline = await readBenchmarkBaseline(baselinePath);
 const current = runPayloadFrameBenchmark();
 
+const encodeWithTraceId = current.find((entry) => entry.name === "encode PayloadFrame with traceId");
+const encodeOmitTraceId = current.find(
+  (entry) => entry.name === "encode PayloadFrame omitTraceId",
+);
+
 const baselineByName = new Map(baseline.map((entry) => [entry.name, entry]));
 const regressions = [];
+
+if (
+  encodeWithTraceId &&
+  encodeOmitTraceId &&
+  encodeOmitTraceId.avgMs >= encodeWithTraceId.avgMs
+) {
+  regressions.push(
+    `encode omitTraceId (${encodeOmitTraceId.avgMs}ms avg) must be faster than with traceId (${encodeWithTraceId.avgMs}ms avg)`,
+  );
+}
 
 for (const result of current) {
   const baselineEntry = baselineByName.get(result.name);

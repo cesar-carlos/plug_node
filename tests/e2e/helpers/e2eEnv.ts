@@ -16,6 +16,15 @@ export interface PlugE2EStressConfig {
   readonly channels: readonly PlugE2EStressChannel[];
 }
 
+export interface PlugE2EDdlConfig {
+  readonly enabled: boolean;
+  readonly stepMaxMs: number;
+  readonly flowMaxMs: number;
+  readonly stressRowCount: number;
+  readonly stressInsertBatchSize: number;
+  readonly stressStepMaxMs: number;
+}
+
 export interface PlugE2EConfig {
   readonly credentials: PlugCredentials;
   readonly socketCredentials: PlugCredentials;
@@ -33,6 +42,7 @@ export interface PlugE2EConfig {
   readonly cancelExecutionId?: string;
   readonly cancelRequestId?: string;
   readonly stress?: PlugE2EStressConfig;
+  readonly ddl?: PlugE2EDdlConfig;
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,7 +55,7 @@ const defaultVendedorQuery = "SELECT TOP 10 * FROM Vendedor";
 const defaultProdutoQuery = "SELECT TOP 10 * FROM Produto";
 const defaultInvalidSqlQuery = "SELECT FROM Cliente";
 const defaultMultiResultSuccessSqlQuery =
-  "SELECT TOP 5 * FROM Cliente; SELECT TOP 5 * FROM Vendedor";
+  "SELECT TOP 5 CodCliente FROM Cliente; SELECT TOP 5 CodVendedor FROM Vendedor";
 const defaultEmptySqlQuery = "SELECT * FROM Cliente WHERE 1=0";
 const defaultBatchCommandsJson =
   '[{"sql":"SELECT TOP 1 * FROM Cliente"},{"sql":"SELECT TOP 1 * FROM Vendedor"}]';
@@ -181,6 +191,88 @@ const parseTimeoutMs = (): number => {
   return parsed;
 };
 
+const defaultDdlStepMaxMs = 30_000;
+const defaultDdlFlowMaxMs = 120_000;
+const maxDdlFlowMaxMs = 600_000;
+const defaultDdlStressRowCount = 500;
+const maxDdlStressRowCount = 10_000;
+const defaultDdlStressInsertBatchSize = 100;
+const maxDdlStressInsertBatchSize = 1_000;
+const defaultDdlStressStepMaxMs = 60_000;
+
+const resolveDdlFlowMaxMs = (
+  configuredFlowMaxMs: number,
+  stressRowCount: number,
+  stressInsertBatchSize: number,
+): number => {
+  if (stressRowCount <= 0) {
+    return configuredFlowMaxMs;
+  }
+
+  const insertBatches = Math.ceil(stressRowCount / stressInsertBatchSize);
+  const stressBonusMs = insertBatches * 15_000 + 45_000;
+  return Math.max(configuredFlowMaxMs, defaultDdlFlowMaxMs + stressBonusMs);
+};
+
+const parseDdlConfig = (): PlugE2EDdlConfig | undefined => {
+  const enabledRaw = process.env.PLUG_E2E_DDL_ENABLED;
+  const enabled =
+    enabledRaw === "1" || enabledRaw?.toLowerCase() === "true" || enabledRaw === "yes";
+  if (!enabled) {
+    return undefined;
+  }
+
+  const stepMaxMs = parsePositiveIntEnv(
+    "PLUG_E2E_DDL_STEP_MAX_MS",
+    defaultDdlStepMaxMs,
+    maxDdlFlowMaxMs,
+  );
+  const configuredFlowMaxMs = parsePositiveIntEnv(
+    "PLUG_E2E_DDL_FLOW_MAX_MS",
+    defaultDdlFlowMaxMs,
+    maxDdlFlowMaxMs,
+  );
+  const stressRowCount = parsePositiveIntEnv(
+    "PLUG_E2E_DDL_STRESS_ROW_COUNT",
+    defaultDdlStressRowCount,
+    maxDdlStressRowCount,
+  );
+  const stressInsertBatchSize = parsePositiveIntEnv(
+    "PLUG_E2E_DDL_STRESS_INSERT_BATCH_SIZE",
+    defaultDdlStressInsertBatchSize,
+    maxDdlStressInsertBatchSize,
+  );
+  const stressStepMaxMs = parsePositiveIntEnv(
+    "PLUG_E2E_DDL_STRESS_STEP_MAX_MS",
+    defaultDdlStressStepMaxMs,
+    maxDdlFlowMaxMs,
+  );
+  const flowMaxMs = resolveDdlFlowMaxMs(
+    configuredFlowMaxMs,
+    stressRowCount,
+    stressInsertBatchSize,
+  );
+
+  if (flowMaxMs < stepMaxMs) {
+    throw new Error("PLUG_E2E_DDL_FLOW_MAX_MS must be greater than or equal to PLUG_E2E_DDL_STEP_MAX_MS.");
+  }
+
+  if (stressStepMaxMs < stepMaxMs) {
+    throw new Error(
+      "PLUG_E2E_DDL_STRESS_STEP_MAX_MS must be greater than or equal to PLUG_E2E_DDL_STEP_MAX_MS.",
+    );
+  }
+
+  return {
+    enabled: true,
+    stepMaxMs,
+    flowMaxMs,
+    stressRowCount,
+    stressInsertBatchSize,
+    stressStepMaxMs,
+  };
+};
+
 const getOptionalSqlQueries = (): readonly string[] => {
   const cliente = getOptionalQuery("PLUG_E2E_SQL_QUERY_CLIENTE", defaultClienteQuery);
   const vendedor =
@@ -215,7 +307,7 @@ const buildMultiResultMixedQuery = (deniedResource: string | undefined): string 
   }
 
   const denied = deniedResource ?? defaultDeniedResource;
-  return `SELECT TOP 5 * FROM Cliente; SELECT TOP 5 * FROM ${denied}`;
+  return `SELECT TOP 5 CodCliente FROM Cliente; SELECT TOP 5 * FROM ${denied}`;
 };
 
 export const getPlugE2EConfig = (): PlugE2EConfig => {
@@ -244,6 +336,7 @@ export const getPlugE2EConfig = (): PlugE2EConfig => {
 
   const deniedResource = getOptionalEnv("PLUG_E2E_DENIED_RESOURCE");
   const stress = parseStressConfig();
+  const ddl = parseDdlConfig();
 
   cachedConfig = {
     credentials,
@@ -285,6 +378,7 @@ export const getPlugE2EConfig = (): PlugE2EConfig => {
       ? { cancelRequestId: getOptionalEnv("PLUG_E2E_CANCEL_REQUEST_ID") }
       : {}),
     ...(stress ? { stress } : {}),
+    ...(ddl ? { ddl } : {}),
   };
 
   return cachedConfig;

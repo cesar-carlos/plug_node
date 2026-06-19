@@ -24,6 +24,7 @@ describe("plugSqlPerformanceHints", () => {
     expect(shouldAutoPreferDbStreaming("SELECT TOP 1000 * FROM Cliente")).toBe(true);
     expect(shouldAutoPreferDbStreaming("SELECT TOP 10 * FROM Cliente")).toBe(false);
     expect(shouldAutoPreferDbStreaming("SELECT * FROM Cliente")).toBe(true);
+    expect(shouldAutoPreferDbStreaming("SELECT * FROM Cliente WHERE 1=0")).toBe(false);
     expect(shouldAutoPreferDbStreaming("SELECT 1")).toBe(false);
     expect(
       shouldAutoPreferDbStreaming("UPDATE Cliente SET Nome = 'x' WHERE CodCliente = 1"),
@@ -65,6 +66,18 @@ describe("plugSqlPerformanceHints", () => {
     );
     expect(() => assertBulkInsertWithinHubLimits("dbo.Example", columns, rows)).toThrow(
       /split into batches/i,
+    );
+  });
+
+  it("estimates bulk insert byte limits without serializing every row", () => {
+    const columns = [{ name: "payload", type: "string" }];
+    const rows = Array.from({ length: 200 }, () => ["x".repeat(60_000)]);
+
+    expect(() => assertBulkInsertWithinHubLimits("dbo.Example", columns, rows)).toThrow(
+      PlugValidationError,
+    );
+    expect(() => assertBulkInsertWithinHubLimits("dbo.Example", columns, rows)).toThrow(
+      /exceeds the hub limit/i,
     );
   });
 });

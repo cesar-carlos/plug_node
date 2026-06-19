@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  PlugPhaseTimings,
   PlugServerTimings,
   RelayConnectionReadyPayload,
   RelayConversationStartedPayload,
@@ -260,33 +261,125 @@ export const assertRelayBatchAcceptedPayload = (
   });
 };
 
+const normalizePhasesMs = (value: unknown): Record<string, number> | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const phasesMs: Record<string, number> = {};
+  for (const [key, phaseValue] of Object.entries(value)) {
+    if (typeof phaseValue === "number" && Number.isFinite(phaseValue)) {
+      phasesMs[key] = phaseValue;
+    }
+  }
+
+  return Object.keys(phasesMs).length > 0 ? phasesMs : undefined;
+};
+
+const normalizePhaseTimingsEnvelope = (value: unknown): PlugPhaseTimings | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const phasesMs = normalizePhasesMs(value.phasesMs ?? value.phases_ms);
+  if (!phasesMs) {
+    return undefined;
+  }
+
+  const schemaVersion =
+    typeof value.schemaVersion === "number" && Number.isFinite(value.schemaVersion)
+      ? value.schemaVersion
+      : typeof value.schema_version === "number" && Number.isFinite(value.schema_version)
+        ? value.schema_version
+        : 1;
+
+  return { schemaVersion, phasesMs };
+};
+
+const mergeServerTimings = (
+  hubTimings: PlugPhaseTimings | undefined,
+  agentPhases: PlugPhaseTimings | undefined,
+): PlugServerTimings | undefined => {
+  if (!hubTimings && !agentPhases) {
+    return undefined;
+  }
+
+  if (hubTimings && agentPhases) {
+    return {
+      schemaVersion: hubTimings.schemaVersion,
+      phasesMs: hubTimings.phasesMs,
+      agentPhases,
+    };
+  }
+
+  if (hubTimings) {
+    return hubTimings;
+  }
+
+  return {
+    schemaVersion: agentPhases!.schemaVersion,
+    phasesMs: {},
+    agentPhases: agentPhases!,
+  };
+};
+
+const extractAgentPhases = (value: unknown): PlugPhaseTimings | undefined => {
+  const direct = normalizePhaseTimingsEnvelope(value);
+  if (direct) {
+    return direct;
+  }
+
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  return normalizePhaseTimingsEnvelope(value.agent_phases ?? value.agentPhases);
+};
+
+const extractNestedAgentPhases = (container: unknown): PlugPhaseTimings | undefined => {
+  if (!isRecord(container)) {
+    return undefined;
+  }
+
+  return extractAgentPhases(container.agent_phases ?? container.agentPhases);
+};
+
+const extractFromMeta = (meta: unknown): PlugServerTimings | undefined => {
+  if (!isRecord(meta)) {
+    return undefined;
+  }
+
+  const hubTimings = normalizePhaseTimingsEnvelope(meta.serverTimings);
+  const agentPhases =
+    extractAgentPhases(meta.agent_phases ?? meta.agentPhases) ??
+    extractNestedAgentPhases(meta.serverTimings);
+
+  return mergeServerTimings(hubTimings, agentPhases);
+};
+
 export const extractServerTimings = (payload: unknown): PlugServerTimings | undefined => {
   if (!isRecord(payload)) {
     return undefined;
   }
 
-  const direct = payload.serverTimings;
-  if (isRecord(direct) && isRecord(direct.phasesMs)) {
-    return direct as unknown as PlugServerTimings;
+  const topLevelHub = normalizePhaseTimingsEnvelope(payload.serverTimings);
+  const topLevelAgent = extractNestedAgentPhases(payload.serverTimings);
+  const fromTopLevel = mergeServerTimings(topLevelHub, topLevelAgent);
+  if (fromTopLevel) {
+    return fromTopLevel;
   }
 
-  const meta = payload.meta;
-  if (
-    isRecord(meta) &&
-    isRecord(meta.serverTimings) &&
-    isRecord(meta.serverTimings.phasesMs)
-  ) {
-    return meta.serverTimings as unknown as PlugServerTimings;
+  const fromMeta = extractFromMeta(payload.meta);
+  if (fromMeta) {
+    return fromMeta;
   }
 
   const response = payload.response;
-  if (
-    isRecord(response) &&
-    isRecord(response.meta) &&
-    isRecord(response.meta.serverTimings) &&
-    isRecord(response.meta.serverTimings.phasesMs)
-  ) {
-    return response.meta.serverTimings as unknown as PlugServerTimings;
+  if (isRecord(response)) {
+    const fromResponseMeta = extractFromMeta(response.meta);
+    if (fromResponseMeta) {
+      return fromResponseMeta;
+    }
   }
 
   return undefined;

@@ -367,6 +367,37 @@ describe("plugSqlGuidedCommands", () => {
     });
   });
 
+  it("does not apply auto prefer_db_streaming when multi_result is enabled", () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "client@example.com",
+        password: "secret",
+        baseUrl: "https://plug-server.example.com/api/v1",
+      },
+      parameters: {
+        channel: "socket",
+        sql: "SELECT * FROM Cliente",
+        namedParamsJson: "",
+        sqlOptions: {
+          autoPerformanceHints: true,
+          multiResult: true,
+        },
+      },
+      responses: [],
+      nodeTypeVersion: 2,
+    });
+
+    const built = finalizeBuiltCommandRequest(
+      buildGuidedSqlCommand(context, 0, executionContext),
+      context,
+      0,
+      { supportsSocket: true },
+      "executeSql",
+    );
+
+    expect(built.command.params?.options?.prefer_db_streaming).toBeUndefined();
+  });
+
   it("rejects bulk insert above hub row limits", () => {
     const rows = Array.from({ length: plugBulkInsertMaxRows + 1 }, (_, index) => [index]);
     const context = createMockExecuteContext({

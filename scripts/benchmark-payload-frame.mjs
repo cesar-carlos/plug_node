@@ -60,29 +60,61 @@ const measure = (name, fn, count = effectiveIterations) => {
   };
 };
 
-export const runPayloadFrameBenchmark = () => [
-  measure("decode small PayloadFrame without gzip", () => {
-    decodePayloadFrame(frames.smallNone);
-  }),
-  measure("decode large PayloadFrame with gzip", () => {
-    decodePayloadFrame(frames.largeGzip);
-  }),
-  measure(
-    "decode forced gzip PayloadFrame",
-    () => {
-      decodePayloadFrame(frames.forcedGzip);
-    },
-    Math.max(10, Math.floor(effectiveIterations / 4)),
-  ),
-  measure("reject unsafe gzip inflation metadata", () => {
-    try {
-      decodePayloadFrame(rejectedInflationFrame);
-    } catch {
-      return;
-    }
-    throw new Error("Expected unsafe PayloadFrame to be rejected");
-  }),
-];
+export const runPayloadFrameBenchmark = () => {
+  const commandPayload = { method: "sql.execute", params: { sql: "SELECT TOP 1 1" } };
+  const withTraceId = encodePayloadFrame(commandPayload, {
+    requestId: "bench-trace",
+    compression: "none",
+  });
+  const omitTraceId = encodePayloadFrame(commandPayload, {
+    requestId: "bench-omit-trace",
+    compression: "none",
+    omitTraceId: true,
+  });
+
+  return [
+    measure("encode PayloadFrame with traceId", () => {
+      encodePayloadFrame(commandPayload, {
+        requestId: "bench-trace",
+        compression: "none",
+      });
+    }),
+    measure("encode PayloadFrame omitTraceId", () => {
+      encodePayloadFrame(commandPayload, {
+        requestId: "bench-omit-trace",
+        compression: "none",
+        omitTraceId: true,
+      });
+    }),
+    measure("decode small PayloadFrame without gzip", () => {
+      decodePayloadFrame(frames.smallNone);
+    }),
+    measure("decode encode-with-traceId frame", () => {
+      decodePayloadFrame(withTraceId);
+    }),
+    measure("decode encode-omitTraceId frame", () => {
+      decodePayloadFrame(omitTraceId);
+    }),
+    measure("decode large PayloadFrame with gzip", () => {
+      decodePayloadFrame(frames.largeGzip);
+    }),
+    measure(
+      "decode forced gzip PayloadFrame",
+      () => {
+        decodePayloadFrame(frames.forcedGzip);
+      },
+      Math.max(10, Math.floor(effectiveIterations / 4)),
+    ),
+    measure("reject unsafe gzip inflation metadata", () => {
+      try {
+        decodePayloadFrame(rejectedInflationFrame);
+      } catch {
+        return;
+      }
+      throw new Error("Expected unsafe PayloadFrame to be rejected");
+    }),
+  ];
+};
 
 export const readBenchmarkBaseline = async (
   baselinePath = defaultBenchmarkBaselinePath,

@@ -326,9 +326,9 @@ export const plugSqlSocketAdvancedOptions: INodeProperties = {
       displayName: "Relay Fast Path",
       name: "fastPath",
       type: "boolean",
-      default: false,
+      default: true,
       description:
-        "Opt-in relay unary fast-path: skip relay:rpc.accepted on the happy path and route responses by JSON-RPC body id.",
+        "Relay unary fast-path: skip relay:rpc.accepted on the happy path and route responses by JSON-RPC body id. Enabled by default on typeVersion 1 relay nodes; disable only when the hub requires classic accepted correlation.",
     },
     {
       displayName: "Request Server Timings",

@@ -5,12 +5,14 @@ import {
   serializeErrorForContinueOnFail,
   toNodeFacingError,
 } from "../output/errorOutput";
+import { runWithBoundedConcurrency } from "../utils/boundedConcurrency";
 import { isRecord } from "../utils/json";
 
 export const emptyInputItem: INodeExecutionData = { json: {} };
 
 export interface ExecutePerInputItemOptions {
   readonly useEmptyInputWhenNoItems?: boolean;
+  readonly maxConcurrency?: number;
   readonly onError?: (error: unknown, itemIndex: number) => NodeOperationError | Error;
 }
 
@@ -31,24 +33,26 @@ export const executePerInputItem = async (
   const items =
     sourceItems.length > 0 ? sourceItems : useEmptyInput ? [emptyInputItem] : sourceItems;
   const outputItems: INodeExecutionData[] = [];
+  const maxConcurrency = Math.max(1, Math.trunc(options?.maxConcurrency ?? 1));
 
-  for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+  const processItem = async (itemIndex: number): Promise<INodeExecutionData[]> => {
     const item = items[itemIndex];
     try {
       const result = await executeItem(itemIndex, item);
-      outputItems.push(...toNodeItems(result));
+      return toNodeItems(result);
     } catch (error: unknown) {
       if (context.continueOnFail()) {
-        outputItems.push({
-          json: {
-            ...item.json,
-            error: serializeErrorForContinueOnFail(error),
+        return [
+          {
+            json: {
+              ...item.json,
+              error: serializeErrorForContinueOnFail(error),
+            },
+            pairedItem: {
+              item: itemIndex,
+            },
           },
-          pairedItem: {
-            item: itemIndex,
-          },
-        });
-        continue;
+        ];
       }
 
       const nodeError =
@@ -57,6 +61,21 @@ export const executePerInputItem = async (
           itemIndex,
         });
       throw nodeError;
+    }
+  };
+
+  if (maxConcurrency <= 1 || items.length <= 1) {
+    for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+      outputItems.push(...(await processItem(itemIndex)));
+    }
+  } else {
+    const slotResults = await runWithBoundedConcurrency(
+      items.length,
+      maxConcurrency,
+      processItem,
+    );
+    for (const slot of slotResults) {
+      outputItems.push(...slot);
     }
   }
 

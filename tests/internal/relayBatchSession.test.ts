@@ -8,6 +8,32 @@ import {
 } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/relayBatchSession";
 import { encodePayloadFrame } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/payloadFrameCodec";
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const session = {
+  credentials: {
+    user: "u",
+    password: "p",
+    baseUrl: "https://example.com/api/v1",
+  },
+  accessToken: "token",
+  refreshToken: "refresh",
+  loginResponse: {
+    accessToken: "token",
+    refreshToken: "refresh",
+    client: {
+      id: "client-1",
+      userId: "user-1",
+      email: "u@example.com",
+      name: "User",
+      lastName: "One",
+      status: "active",
+      role: "client",
+    },
+  },
+} as const;
+
 class MockRelayBatchTransport implements RelaySocketTransport {
   connected = false;
 
@@ -120,28 +146,7 @@ describe("executeRelayBatchCommand", () => {
 
     const results = await executeRelayBatchCommand({
       transport,
-      session: {
-        credentials: {
-          user: "u",
-          password: "p",
-          baseUrl: "https://example.com/api/v1",
-        },
-        accessToken: "token",
-        refreshToken: "refresh",
-        loginResponse: {
-          accessToken: "token",
-          refreshToken: "refresh",
-          client: {
-            id: "client-1",
-            userId: "user-1",
-            email: "u@example.com",
-            name: "User",
-            lastName: "One",
-            status: "active",
-            role: "client",
-          },
-        },
-      },
+      session,
       agentId: "agent-1",
       commands: [buildCommand("client-1"), buildCommand("client-2")],
       responseMode: "aggregatedJson",
@@ -166,32 +171,90 @@ describe("executeRelayBatchCommand", () => {
     await expect(
       executeRelayBatchCommand({
         transport,
-        session: {
-          credentials: {
-            user: "u",
-            password: "p",
-            baseUrl: "https://example.com/api/v1",
-          },
-          accessToken: "token",
-          refreshToken: "refresh",
-          loginResponse: {
-            accessToken: "token",
-            refreshToken: "refresh",
-            client: {
-              id: "client-1",
-              userId: "user-1",
-              email: "u@example.com",
-              name: "User",
-              lastName: "One",
-              status: "active",
-              role: "client",
-            },
-          },
-        },
+        session,
         agentId: "agent-1",
         commands,
         responseMode: "aggregatedJson",
       }),
     ).rejects.toThrow(/at most 32/i);
+  });
+
+  it("routes batch relay responses without relay:rpc.batch_accepted when fastPath is enabled", async () => {
+    class FastPathRelayBatchTransport extends MockRelayBatchTransport {
+      override emit(event: string, payload?: unknown): void {
+        this.emittedEvents.push({ event, payload });
+
+        if (event === "relay:conversation.start") {
+          queueMicrotask(() => {
+            this.dispatch("relay:conversation.started", {
+              success: true,
+              conversationId: "conversation-batch",
+              agentId: "agent-1",
+            });
+          });
+          return;
+        }
+
+        if (event === "relay:rpc.request.batch") {
+          queueMicrotask(() => {
+            for (const item of [
+              {
+                clientRequestId: "client-1",
+                requestId: "hub-1",
+                result: { rows: [{ id: 1 }] },
+              },
+              {
+                clientRequestId: "client-2",
+                requestId: "hub-2",
+                result: { rows: [{ id: 2 }] },
+              },
+            ]) {
+              this.dispatch(
+                "relay:rpc.response",
+                encodePayloadFrame(
+                  {
+                    jsonrpc: "2.0",
+                    id: item.clientRequestId,
+                    result: item.result,
+                  },
+                  { requestId: item.requestId, compression: "none" },
+                ),
+              );
+            }
+          });
+        }
+      }
+    }
+
+    const transport = new FastPathRelayBatchTransport();
+    transport.connect();
+
+    const results = await executeRelayBatchCommand({
+      transport,
+      session,
+      agentId: "agent-1",
+      commands: [buildCommand("client-1"), buildCommand("client-2")],
+      responseMode: "aggregatedJson",
+      fastPath: true,
+      managedTransport: true,
+      skipConversationEnd: true,
+    });
+
+    expect(results).toHaveLength(2);
+    expect(results[0]?.requestId).toBe("hub-1");
+    expect(results[1]?.requestId).toBe("hub-2");
+    expect(results[0]?.response.accepted).toBeUndefined();
+    expect(results[0]?.response.metrics?.fastPath).toBe(true);
+    expect(
+      transport.emittedEvents.some(
+        (entry) =>
+          entry.event === "relay:rpc.request.batch" &&
+          isRecord(entry.payload) &&
+          entry.payload.fastPath === true,
+      ),
+    ).toBe(true);
+    expect(
+      transport.emittedEvents.some((entry) => entry.event === "relay:rpc.batch_accepted"),
+    ).toBe(false);
   });
 });

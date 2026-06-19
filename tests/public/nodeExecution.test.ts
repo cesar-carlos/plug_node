@@ -414,6 +414,74 @@ describe("executePlugClientNode", () => {
     });
   });
 
+  it("dispatches read-only executeSql input items with bounded parallelism", async () => {
+    let inFlightCommands = 0;
+    let maxInFlightCommands = 0;
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeSql",
+        inputMode: "guided",
+        responseMode: "aggregatedJson",
+        includePlugMetadata: true,
+        sql: "SELECT TOP 1 * FROM Cliente",
+        namedParamsJson: "",
+        sqlOptions: {
+          autoPerformanceHints: false,
+          maxParallelInputItems: 2,
+        },
+      },
+      inputData: Array.from({ length: 4 }, (_, index) => ({ json: { row: index } })),
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        ...Array.from({ length: 4 }, (_, index) => ({
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-1",
+            requestId: `request-${index + 1}`,
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: `rpc-${index + 1}`,
+                success: true,
+                result: {
+                  rows: [{ row: index + 1 }],
+                },
+              },
+            },
+          },
+        })),
+      ],
+    });
+
+    const originalHttpRequest = context.helpers.httpRequest.bind(context.helpers);
+    context.helpers.httpRequest = vi.fn(async (options: { url?: string }) => {
+      if (typeof options.url === "string" && options.url.includes("/agents/commands")) {
+        inFlightCommands += 1;
+        maxInFlightCommands = Math.max(maxInFlightCommands, inFlightCommands);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        inFlightCommands -= 1;
+      }
+
+      return originalHttpRequest(options);
+    });
+
+    const result = await executePlugClientNode(context, {
+      supportsSocket: false,
+    });
+
+    expect(result[0]).toHaveLength(4);
+    expect(maxInFlightCommands).toBeGreaterThan(1);
+    expect(maxInFlightCommands).toBeLessThanOrEqual(2);
+  });
+
   it("builds guided SQL with named parameters from n8n expressions", async () => {
     const context = createMockExecuteContext({
       credentials,
@@ -1238,9 +1306,7 @@ describe("executePlugClientNode", () => {
       socketExecutor,
     });
 
-    expect(socketExecutor.mock.calls[0][0]).toMatchObject({
-      streamPullWindowSize: 256,
-    });
+    expect(socketExecutor.mock.calls[0][0]).not.toHaveProperty("streamPullWindowSize");
   });
 
   it("keeps socket workflows on relay for version 1 nodes without new metadata", async () => {

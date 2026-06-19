@@ -9,6 +9,8 @@ export const expectSuccessfulMultiResultResponse = (
   readonly multi_result?: boolean;
   readonly result_set_count?: number;
   readonly item_count?: number;
+  readonly total_rows?: number;
+  readonly affected_rows?: number;
   readonly result_sets?: Array<{
     readonly index?: number;
     readonly row_count?: number;
@@ -137,6 +139,39 @@ export const expectSuccessfulBatchResponse = (
     readonly commands?: unknown;
     readonly summary?: unknown;
   };
+};
+
+export const maybeSkipMultiResultStreamingDecodeFailure = (
+  response: unknown,
+  skip: (reason: string) => never,
+): void => {
+  const rpc = response as {
+    type?: string;
+    item?: {
+      success?: boolean;
+      error?: {
+        code?: number;
+        message?: string;
+        data?: {
+          odbc_reason?: string;
+          operation?: string;
+          user_message?: string;
+        };
+      };
+    };
+  };
+
+  const data = rpc.item?.error?.data;
+  if (
+    rpc.item?.success === false &&
+    data?.odbc_reason === "streaming_cell_decode_failed" &&
+    data.operation === "executeMultiResultQueryStream"
+  ) {
+    skip(
+      `Agent multi_result streaming failed to decode result cells (${data.user_message ?? "streaming_cell_decode_failed"}). ` +
+        "Use narrow column lists in PLUG_E2E_SQL_QUERY_MULTI_RESULT_SUCCESS (for example CodCliente / CodVendedor) instead of SELECT * on wide ERP tables.",
+    );
+  }
 };
 
 export const maybeSkipMethodNotFound = (

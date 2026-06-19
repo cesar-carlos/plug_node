@@ -1,6 +1,7 @@
 import {
   DEFAULT_RELAY_PULL_WINDOW,
   type JsonObject,
+  isSocketAggregatedResponseMode,
   type PlugResponseMode,
   type RelayRpcAcceptedSuccessPayload,
 } from "../contracts/api";
@@ -296,10 +297,9 @@ export const waitForRelayStreamAggregation = (
         chunkCount += 1;
         bufferedBytes += decoded.frame.originalSize;
         bufferedRows += countRows(decoded.data.rows);
-        const mergedResponse =
-          input.responseMode === "aggregatedJson"
-            ? tryMergeChunkRowsIntoRawRpcResponse(rawResponsePayload, decoded.data)
-            : undefined;
+        const mergedResponse = isSocketAggregatedResponseMode(input.responseMode)
+          ? tryMergeChunkRowsIntoRawRpcResponse(rawResponsePayload, decoded.data)
+          : undefined;
         if (mergedResponse !== undefined) {
           rawResponsePayload = removeStreamMarkerFromRawRpcResponse(mergedResponse);
         } else {

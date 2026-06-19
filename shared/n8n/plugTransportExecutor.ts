@@ -49,9 +49,13 @@ const executeBuiltRequest = async (
         payloadFrameSigning: resolvePayloadFrameSigning(session.credentials),
         responseMode: builtRequest.responseMode,
         bufferLimits: builtRequest.bufferLimits,
-        streamPullWindowSize: builtRequest.streamPullWindowSize,
-        fastPath: builtRequest.fastPath,
-        requestServerTimings: builtRequest.requestServerTimings,
+        ...(builtRequest.streamPullWindowSize !== undefined
+          ? { streamPullWindowSize: builtRequest.streamPullWindowSize }
+          : {}),
+        ...(builtRequest.fastPath === true ? { fastPath: true as const } : {}),
+        ...(builtRequest.requestServerTimings === true
+          ? { requestServerTimings: true as const }
+          : {}),
       });
     }
 

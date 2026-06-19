@@ -6,7 +6,7 @@ Guidance for running the Plug Database n8n node efficiently and safely against t
 
 | Scenario                               | Recommendation                                                                                        |
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Small reads, CRUD, smoke tests         | **REST** + **Aggregated JSON**                                                                        |
+| Small reads, CRUD, smoke tests         | **REST** + **Aggregated JSON** (per-row) or **Aggregated Single Item** (one item with `rows[]`)       |
 | Large `SELECT`                         | **Socket** (node typeVersion **2**) + **Prefer DB Streaming** + **Chunk Items** when needed           |
 | Several independent statements         | **Execute Batch** (`sql.executeBatch`)                                                                |
 | Several result sets in one SQL text    | **Execute SQL** + **Multi Result** (not batch)                                                        |
@@ -25,13 +25,38 @@ Socket typeVersion 2 reuses the consumer transport for all items in one node exe
 
 Defaults (per item): 512 chunks, 50,000 rows, 8 MB. Tune under **Socket Options** when streaming large reports, or use **Chunk Items** to avoid holding the full result in memory.
 
-`streamPullWindowSize` (0–1000) controls how many chunks are requested per pull window. Use **0** for adaptive mode (agent `recommendedStreamPullWindowSize`, clamped to 1000). When the agent does not advertise a recommendation, the internal fallback is **256**, aligned with the hub default.
+`streamPullWindowSize` (0–1000) controls how many chunks are requested per pull window. Use **0** (default) for adaptive mode: the node omits an explicit window and lets the transport apply the agent `recommendedStreamPullWindowSize`, clamped to hub/agent max (fallback **256** when no hint is present). Set an explicit value (for example **512**) to override the agent recommendation up to the hub ceiling.
+
+## Large result shaping (n8n output)
+
+**Aggregated JSON** (default) emits **one n8n item per SQL row** when `result.rows` is present — large `SELECT`s can dominate CPU and memory in the workflow even after efficient socket streaming.
+
+**Aggregated Single Item** emits **one n8n item** with `rowCount` and `rows[]` for SQL result sets. Use it when downstream nodes should process the full result set without per-row fan-out (for example a single Code node or HTTP request). Socket streaming still aggregates chunks in memory before output, same as Aggregated JSON.
+
+For large reads:
+
+- Prefer **Socket** + **Prefer DB Streaming** + **Chunk Items** response mode when you need bounded memory during transport, or
+- Use **Aggregated Single Item** when the full result fits in memory but you want one workflow item, or
+- Use pagination (`page` / `pageSize`) with a stable `ORDER BY`.
 
 ## Relay Fast Path
 
-Enable **Relay Fast Path** under **Socket Options** (`fastPath: true`) for relay transport workloads where the hub supports unary fast-path routing. This skips `relay:rpc.accepted` on the happy path and routes responses by JSON-RPC body `id`. Prefer it for cross-agent relay RPC and unary workloads where latency matters. See `plug_server/docs/relay_fastpath_study.md` for hub-side trade-offs.
+**Relay Fast Path** is **on by default** for typeVersion **1** relay nodes and in Socket Options (`fastPath: true`). It skips `relay:rpc.accepted` on the happy path and routes responses by JSON-RPC body `id`. Disable only when the hub requires classic accepted correlation. See `plug_server/docs/relay_fastpath_study.md` for hub-side trade-offs.
 
-**Request Server Timings** (`requestServerTimings: true` in Socket Options) asks the hub to include server-side phase timings in relay responses when supported.
+Relay command frames omit per-frame `traceId` on the hot path (aligned with hub high-throughput guidance); stream pulls already did this.
+
+**Request Server Timings** (`requestServerTimings: true` in Socket Options) asks the hub to include server-side phase timings in relay responses when supported. With **Include Plug Metadata**, timings appear under `__plug.transport.serverTimings`:
+
+- `phasesMs` — hub bridge phases (`consumer_frame_decode_ms`, `agent_to_hub_ms`, `relay_forward_to_consumer_ms`, …).
+- `agentPhases.phasesMs` — agent sub-phases when the hub forwards `meta.agent_phases` (snake_case on the wire). When the hub merges agent timings into `phasesMs` with an `agent_` prefix, those keys appear in `phasesMs` directly.
+
+Enable Socket Options → **Request Server Timings** on relay or typeVersion 2 socket runs. Agent-side per-phase breakdown (`plug_agente` roadmap item 4) is optional and not required for hub timings to appear.
+
+## Relay client request id (fast path)
+
+On relay, the JSON-RPC command `id` is the hub `client_request_id` used for idempotency and fast-path response routing (`body.id` echo). The node sets this from each command's JSON-RPC `id` (fresh per retry).
+
+**`clientRequestIdEcho: "v1"`** is a proposed hub ↔ agent handshake extension ([`plug_server` ADR 0009](https://github.com/cesar-carlos/plug_server/blob/main/docs/adrs/0009-client-request-id-echo.md)) that would let the agent preserve `body.id` end-to-end without hub rewrite. Consumers do not send this flag; no node change is required until hub and agent negotiate the extension.
 
 ## Auto Performance Hints
 

@@ -161,6 +161,42 @@ describe("RelaySocketExecutionManager", () => {
     });
   });
 
+  it("forwards fastPath to executeRelayBatchCommand for command arrays", async () => {
+    const { createRelaySocketCommandExecutor } =
+      await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/relaySocketExecutionManager");
+
+    const executor = createRelaySocketCommandExecutor();
+    const input = {
+      session: {
+        credentials: {
+          baseUrl: "https://plug-server.example.com/api/v1",
+          user: "u",
+          password: "p",
+        },
+        accessToken: "token-a",
+        loginResponse: {},
+      },
+      agentId: "agent-1",
+      command: [
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "sql.execute",
+          params: { sql: "SELECT 1" },
+        },
+      ],
+      responseMode: "aggregatedJson" as const,
+      fastPath: true as const,
+    };
+
+    await executor.execute(input);
+
+    expect(executeRelayBatchCommandMock).toHaveBeenCalledWith(
+      expect.objectContaining({ fastPath: true }),
+    );
+    executor.close();
+  });
+
   it("recreates the transport when the access token changes", async () => {
     const { createRelaySocketCommandExecutor } =
       await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/relaySocketExecutionManager");

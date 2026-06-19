@@ -85,13 +85,19 @@ export const buildPlugSqlResponseModeProperty = (
   type: "options",
   default: "aggregatedJson",
   description:
-    "Choose the shape of the node output. Use Aggregated JSON for most workflows and Chunk Items for large socket streams.",
+    "Choose the shape of the node output. Use Aggregated JSON for per-row items, Aggregated Single Item for one item with rows[], or Chunk Items for large socket streams.",
   options: [
     {
       name: "Aggregated JSON",
       value: "aggregatedJson",
       description:
         "Returns SQL rows as n8n items when possible, otherwise one JSON item.",
+    },
+    {
+      name: "Aggregated Single Item",
+      value: "aggregatedSingleItem",
+      description:
+        "Returns one n8n item with rowCount and rows[] for SQL result sets. Avoids per-row fan-out in downstream nodes.",
     },
     ...(supportsSocket
       ? [
@@ -161,5 +167,13 @@ export const plugSqlCommonAdvancedOptions = [
     default: false,
     description:
       "When enabled, asks Plug to include server-side phase timings in the response (REST, agents:command, or relay).",
+  },
+  {
+    displayName: "Max Parallel Input Items",
+    name: "maxParallelInputItems",
+    type: "number",
+    default: 0,
+    description:
+      "Max concurrent input items for read-only or idempotent operations. Use 0 for sequential (1). Auto Performance Hints may suggest parallelism when safe.",
   },
 ] as INodeProperties[];
