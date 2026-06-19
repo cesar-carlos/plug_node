@@ -23,7 +23,7 @@
     "changeset:status": "changeset status --verbose",
     "pack:check": "node ./scripts/check-packages.mjs && node ./scripts/diagnose-plug-surface.mjs --check && node ./scripts/smoke-install-packages.mjs",
     "diagnose:surface": "node ./scripts/diagnose-plug-surface.mjs",
-    "verify:surface": "node ./scripts/check-packages.mjs && node ./scripts/verify-plug-surface.mjs",
+    "verify:surface": "node ./scripts/verify-plug-surface.mjs",
     "verify:deps": "npm run sync-shared && depcruise --config .dependency-cruiser.js shared packages/n8n-nodes-plug-database/credentials packages/n8n-nodes-plug-database/nodes",
     "verify:doc-links": "node ./scripts/verify-doc-links.mjs",
     "scan:public": "npx @n8n/scan-community-package n8n-nodes-plug-database",
