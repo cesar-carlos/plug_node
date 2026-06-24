@@ -110,6 +110,8 @@ Essa operação é one-shot:
 6. tenta `socket:event.unsubscribe`
 7. fecha o socket
 
+> **Cuidado — race condition:** o listener só começa a receber o evento após o passo 4 ser confirmado pelo servidor (ACK de `socket:event.subscribed`). Se o publisher enviar o evento antes desse ACK chegar, o evento é perdido e o listener expirará por timeout. Para evitar isso, certifique-se de que o `Wait for Socket Event` esteja rodando antes de o publisher enviar o evento — ou use o `Socket Event Trigger` (que mantém a assinatura ativa de forma contínua) em cenários onde o publisher não pode ser ordenado.
+
 Campos:
 
 - `Event Name`: evento exato.

@@ -49,6 +49,41 @@ The server currently fans out custom socket events only to sockets connected to 
 
 Do not log payload JSON, binary base64, access tokens, refresh tokens, client tokens, passwords, SQL, or payload signing keys. The nodes only add safe metadata to outputs.
 
+## Connection model
+
+Each node execution that uses `Channel = Socket` opens a fresh Socket.IO connection and disconnects when the command completes. `ManagedSocketIoTransport` can reuse a transport within the same executor instance (same invocation scope), but there is **no persistent connection pool across executions**. Implications:
+
+- Every SQL command via Socket incurs a connect + `connection:ready` handshake (typically < 200 ms on LAN, higher on WAN).
+- When many executions run in parallel each holds its own connection for the duration of the command.
+- The `connectTimeoutMs` is always capped to `commandTimeoutMs`, so a very low `Timeout (MS)` on the node also constrains how long the client waits for `connection:ready`.
+- For high-frequency, low-latency use cases, prefer `Execute Batch` (single connection, multiple commands) over multiple individual executions, or use `Channel = REST` when sub-second latency is not critical.
+
+The `commandTimeoutMs` behaves as an **idle timer**, not a wall-clock deadline. It resets on every incoming event (chunk, response, stream pull ACK). A slow stream that produces one chunk every N seconds will keep resetting the timer as long as N < `commandTimeoutMs`. There is currently no separate maximum-total-duration limit at the transport layer.
+
+## Performance notes and known constraints
+
+### Capability probe and token rotation
+
+`ConsumerSocketExecutionManager` caches the `agents:command` capability check with a 60-second TTL. The cache key is `${namespaceUrl}:${accessToken}`. When the access token rotates (proactive renewal near `exp` or fallback login), the cache is invalidated and the next execution re-runs the probe (`rpc.discover`). This adds one extra round-trip after each token renewal. The token-in-key design is intentional: a new token may connect to a different server replica whose capability may differ. If all replicas are known to be homogeneous and stable, a future improvement could use `namespaceUrl` alone as the cache key to survive token rotation without re-probing.
+
+### Sequential subscribe and unsubscribe in `startCustomSocketEventSession`
+
+`startCustomSocketEventSession` subscribes to event names **one at a time**, awaiting the `socket:event.subscribed` ACK for each before emitting the next subscribe. For a trigger with N event names, startup latency is proportional to `N × roundTripMs`. Likewise, `unsubscribeBestEffort` (called on close) unsubscribes sequentially.
+
+**Known improvement opportunity:** emit all subscribe requests in parallel and await all ACKs concurrently. Each `waitForControlAck` already filters by `requestId` and `eventName`, so concurrent subscribes would not interfere. This would reduce trigger startup from O(N × RTT) to O(RTT). Implementing this requires care around error handling (partial failure cleanup) and test coverage for concurrent ACKs.
+
+### Chunk processing is serialized per session
+
+`consumerCommandSession` processes chunks through a `chunkHandlerChain` — each chunk's async work is chained as `.then()` on the previous. This serializes payload frame decoding, row merging, and buffer limit assertions. The design is intentional: it preserves chunk ordering and prevents concurrent mutations of the aggregated response. For very high-throughput streams where chunk decoding is the bottleneck, a future improvement could offload heavy decoding to a worker thread. In practice, the stream pull back-pressure mechanism limits the concurrency at the transport level before this becomes a bottleneck.
+
+### Buffer estimation on non-PayloadFrame wire messages
+
+`estimateConsumerWireBytes` uses a fast path when the wire message is a `PayloadFrame` envelope — it reads `originalSize` directly without any deserialization. If the server sends raw JSON responses (not wrapped in `PayloadFrame`), the fallback calls `JSON.stringify` + `Buffer.byteLength` on the decoded data. Maintain the fast path invariant: every new server-side endpoint that replies with `PayloadFrame` avoids the fallback cost. If adding a new response type that cannot use `PayloadFrame`, document the expected response size and consider whether the buffer limit check is still meaningful.
+
+### Stream row merge is append-in-place (intentional mutation)
+
+`tryMergeChunkRowsIntoConsumerResponse` and `tryMergeChunkRowsIntoRawRpcResponse` mutate the initial response's `rows` array by pushing chunk rows one at a time. This is O(n) without allocation overhead per chunk. The implementation notes in shared say "preserve the immutable pattern when extending the streaming path" — that applies to the response object wrapper, not the `rows` array, which is intentionally mutated for throughput. Do not refactor to `concat` or spread, as that would allocate a new array per chunk (quadratic memory in the number of chunks).
+
 ## Troubleshooting
 
 See [troubleshooting](./troubleshooting.md) for symptoms, error codes, and recommended actions.

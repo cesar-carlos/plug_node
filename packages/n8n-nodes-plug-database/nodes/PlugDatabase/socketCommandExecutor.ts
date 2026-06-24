@@ -114,10 +114,10 @@ export class ConsumerSocketExecutionManager {
 
     if (
       this.capabilityCacheKey === undefined ||
-      this.capabilityCacheKey !== `${namespaceUrl}:${accessToken}`
+      this.capabilityCacheKey !== namespaceUrl
     ) {
       this.capability = "unknown";
-      this.capabilityCacheKey = `${namespaceUrl}:${accessToken}`;
+      this.capabilityCacheKey = namespaceUrl;
       this.capabilityCheckedAtMs = 0;
       this.agentRecommendedStreamPullWindowSize = undefined;
       this.agentMaxStreamPullWindowSize = undefined;
@@ -133,7 +133,7 @@ export class ConsumerSocketExecutionManager {
       input.session.credentials.baseUrl,
       "/consumers",
     );
-    const capabilityKey = `${namespaceUrl}:${input.session.accessToken}`;
+    const capabilityKey = namespaceUrl;
     const cacheFresh =
       this.capabilityCacheKey === capabilityKey &&
       Date.now() - this.capabilityCheckedAtMs < capabilityTtlMs;

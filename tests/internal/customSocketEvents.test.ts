@@ -174,35 +174,104 @@ class RateLimitedSubscribeTransport extends MockCustomEventTransport {
 }
 
 class PartialSubscribeFailureTransport extends MockCustomEventTransport {
-  private subscribeCount = 0;
-
   override emit(event: string, payload?: unknown): void {
     this.emittedEvents.push({ event, payload });
     if (event === "socket:event.subscribe") {
-      this.subscribeCount += 1;
       const request = payload as {
         readonly requestId: string;
         readonly eventName: string;
       };
       queueMicrotask(() => {
-        if (this.subscribeCount === 1) {
+        if (request.eventName === "client:custom.invoice.created") {
           this.dispatch("socket:event.subscribed", {
-            success: true,
+            success: false,
             requestId: request.requestId,
-            data: { eventName: request.eventName, subscribed: true },
+            error: {
+              code: "SUBSCRIPTION_LIMIT_EXCEEDED",
+              message: "too many subscriptions",
+            },
           });
           return;
         }
 
         this.dispatch("socket:event.subscribed", {
-          success: false,
+          success: true,
           requestId: request.requestId,
-          error: {
-            code: "SUBSCRIPTION_LIMIT_EXCEEDED",
-            message: "too many subscriptions",
-          },
+          data: { eventName: request.eventName, subscribed: true },
         });
       });
+      return;
+    }
+
+    super.emit(event, payload);
+  }
+}
+
+class ParallelSubscribeOutOfOrderTransport extends MockCustomEventTransport {
+  private readonly pendingSubscribes: Array<{
+    readonly requestId: string;
+    readonly eventName: string;
+  }> = [];
+
+  override emit(event: string, payload?: unknown): void {
+    this.emittedEvents.push({ event, payload });
+    if (event === "socket:event.subscribe") {
+      const request = payload as {
+        readonly requestId: string;
+        readonly eventName: string;
+      };
+      this.pendingSubscribes.push({
+        requestId: request.requestId,
+        eventName: request.eventName,
+      });
+
+      if (this.pendingSubscribes.length >= 2) {
+        queueMicrotask(() => {
+          for (const subscribe of [...this.pendingSubscribes].reverse()) {
+            this.dispatch("socket:event.subscribed", {
+              success: true,
+              requestId: subscribe.requestId,
+              data: { eventName: subscribe.eventName, subscribed: true },
+            });
+          }
+        });
+      }
+      return;
+    }
+
+    super.emit(event, payload);
+  }
+}
+
+class ParallelUnsubscribeTransport extends MockCustomEventTransport {
+  readonly unsubscribeEmitOrder: string[] = [];
+
+  private readonly pendingUnsubscribes: Array<{
+    readonly requestId: string;
+    readonly eventName: string;
+  }> = [];
+
+  override emit(event: string, payload?: unknown): void {
+    this.emittedEvents.push({ event, payload });
+    if (event === "socket:event.unsubscribe") {
+      const request = payload as {
+        readonly requestId: string;
+        readonly eventName: string;
+      };
+      this.unsubscribeEmitOrder.push(request.eventName);
+      this.pendingUnsubscribes.push(request);
+
+      if (this.pendingUnsubscribes.length >= 2) {
+        queueMicrotask(() => {
+          for (const unsubscribe of this.pendingUnsubscribes) {
+            this.dispatch("socket:event.unsubscribed", {
+              success: true,
+              requestId: unsubscribe.requestId,
+              data: { eventName: unsubscribe.eventName, subscribed: false },
+            });
+          }
+        });
+      }
       return;
     }
 
@@ -1242,6 +1311,56 @@ describe("custom socket events", () => {
             "client:custom.status.changed",
       ),
     ).toBe(true);
+  });
+
+  it("subscribes to multiple event names in parallel and accepts out-of-order acks", async () => {
+    const transport = new ParallelSubscribeOutOfOrderTransport();
+
+    const sessionHandle = await startCustomSocketEventSession({
+      transport,
+      eventNames: ["client:custom.status.changed", "client:custom.invoice.created"],
+      ackTimeoutMs: 1000,
+      onFatalError: (error) => {
+        throw error;
+      },
+      onEvent: () => undefined,
+    });
+
+    const subscribeEvents = transport.emittedEvents.filter(
+      ({ event }) => event === "socket:event.subscribe",
+    );
+    expect(subscribeEvents).toHaveLength(2);
+    expect(sessionHandle.eventNames).toEqual([
+      "client:custom.status.changed",
+      "client:custom.invoice.created",
+    ]);
+
+    await sessionHandle.close();
+  });
+
+  it("emits all unsubscribe requests in parallel when closing a multi-event session", async () => {
+    const transport = new ParallelUnsubscribeTransport();
+
+    const sessionHandle = await startCustomSocketEventSession({
+      transport,
+      eventNames: ["client:custom.status.changed", "client:custom.invoice.created"],
+      ackTimeoutMs: 1000,
+      onFatalError: (error) => {
+        throw error;
+      },
+      onEvent: () => undefined,
+    });
+
+    await sessionHandle.close();
+
+    const unsubscribeEvents = transport.emittedEvents.filter(
+      ({ event }) => event === "socket:event.unsubscribe",
+    );
+    expect(unsubscribeEvents).toHaveLength(2);
+    expect(transport.unsubscribeEmitOrder).toEqual([
+      "client:custom.status.changed",
+      "client:custom.invoice.created",
+    ]);
   });
 
   it("rejects attachment payloads whose decoded base64 size does not match sizeBytes", () => {

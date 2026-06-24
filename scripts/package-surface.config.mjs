@@ -35,6 +35,8 @@ export const plugPackageSurface = [
       ],
       nodes: [
         "dist/nodes/PlugDatabase/PlugDatabase.node.js",
+        "dist/nodes/PlugMcpServer/PlugMcpServer.node.js",
+        "dist/nodes/PlugAiHub/PlugAiHub.node.js",
         "dist/nodes/PlugDatabaseSocketEventTrigger/PlugDatabaseSocketEventTrigger.node.js",
         "dist/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node.js",
       ],
@@ -44,6 +46,8 @@ export const plugPackageSurface = [
       ...allowedLegacyCredentialAliasPaths,
       "dist/credentials/PluraAiAutomationsApi.credentials.js",
       "dist/nodes/PlugDatabase/PlugDatabase.node.js",
+      "dist/nodes/PlugMcpServer/PlugMcpServer.node.js",
+      "dist/nodes/PlugAiHub/PlugAiHub.node.js",
       "dist/nodes/PlugDatabase/socketCommandExecutor.js",
       "dist/nodes/PlugDatabaseSocketEventTrigger/PlugDatabaseSocketEventTrigger.node.js",
       "dist/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node.js",

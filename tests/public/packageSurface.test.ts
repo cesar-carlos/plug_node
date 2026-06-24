@@ -45,6 +45,8 @@ describe("published Plug package surface", () => {
     ]);
     expect(manifest.n8n.nodes).toEqual([
       "dist/nodes/PlugDatabase/PlugDatabase.node.js",
+      "dist/nodes/PlugMcpServer/PlugMcpServer.node.js",
+      "dist/nodes/PlugAiHub/PlugAiHub.node.js",
       "dist/nodes/PlugDatabaseSocketEventTrigger/PlugDatabaseSocketEventTrigger.node.js",
       "dist/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node.js",
     ]);

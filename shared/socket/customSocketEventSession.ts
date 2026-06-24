@@ -268,9 +268,9 @@ export const startCustomSocketEventSession = async (
   input.transport.on(disconnectEvent, handleDisconnect);
 
   const unsubscribeBestEffort = async (): Promise<void> => {
-    for (const eventName of subscribed) {
-      try {
-        await waitForControlAck({
+    await Promise.allSettled(
+      [...subscribed].map((eventName) =>
+        waitForControlAck({
           transport: input.transport,
           requestEvent: unsubscribeEvent,
           responseEvent: unsubscribedEvent,
@@ -278,81 +278,95 @@ export const startCustomSocketEventSession = async (
           eventName,
           expectedSubscribed: false,
           timeoutMs,
-        });
-      } catch (error: unknown) {
-        plugLogger.warn("transport.socket.custom_event.unsubscribe_failed", {
-          eventName,
-          code: error instanceof PlugError ? error.code : undefined,
-        });
-      }
-    }
+        }).catch((error: unknown) => {
+          plugLogger.warn("transport.socket.custom_event.unsubscribe_failed", {
+            eventName,
+            code: error instanceof PlugError ? error.code : undefined,
+          });
+        }),
+      ),
+    );
+  };
+
+  const createEventHandler = (eventName: string): ((payload: unknown) => void) => {
+    return (payload: unknown): void => {
+      scheduleSocketEventTask(
+        input.scheduleEvent,
+        async () => {
+          const decoded = await decodePayloadFrameAsync<unknown>(payload, {
+            signing: withSigningPolicy(
+              input.payloadFrameSigning,
+              input.requirePayloadSignature,
+            ),
+          });
+          const event = assertCustomSocketEventFramePayload(decoded.data);
+          if (event.eventName !== eventName) {
+            throw new PlugValidationError(
+              "Custom socket event payload eventName does not match listener",
+            );
+          }
+          if (isDuplicateEventId(event.eventId, Date.now())) {
+            plugLogger.warn("transport.socket.custom_event.duplicate_ignored", {
+              eventName,
+              eventId: event.eventId,
+            });
+            return undefined;
+          }
+
+          await input.onEvent(event, {
+            eventName,
+            socketId: input.transport.id,
+            reconnectAttempt,
+            subscriptionCount: eventNames.length,
+            payloadFrameRequestId:
+              decoded.frame.requestId === null ? undefined : decoded.frame.requestId,
+          });
+        },
+        (error: unknown) => {
+          notifyFatal(
+            error instanceof PlugError
+              ? error
+              : new PlugError("Failed to process custom socket event.", {
+                  code: "SOCKET_CUSTOM_EVENT_PROCESSING_FAILED",
+                  technicalMessage: error instanceof Error ? error.message : undefined,
+                }),
+          );
+        },
+      );
+    };
   };
 
   try {
     for (const eventName of eventNames) {
-      const handler = (payload: unknown): void => {
-        scheduleSocketEventTask(
-          input.scheduleEvent,
-          async () => {
-            const decoded = await decodePayloadFrameAsync<unknown>(payload, {
-              signing: withSigningPolicy(
-                input.payloadFrameSigning,
-                input.requirePayloadSignature,
-              ),
-            });
-            const event = assertCustomSocketEventFramePayload(decoded.data);
-            if (event.eventName !== eventName) {
-              throw new PlugValidationError(
-                "Custom socket event payload eventName does not match listener",
-              );
-            }
-            if (isDuplicateEventId(event.eventId, Date.now())) {
-              plugLogger.warn("transport.socket.custom_event.duplicate_ignored", {
-                eventName,
-                eventId: event.eventId,
-              });
-              return undefined;
-            }
-
-            await input.onEvent(event, {
-              eventName,
-              socketId: input.transport.id,
-              reconnectAttempt,
-              subscriptionCount: eventNames.length,
-              payloadFrameRequestId:
-                decoded.frame.requestId === null ? undefined : decoded.frame.requestId,
-            });
-          },
-          (error: unknown) => {
-            notifyFatal(
-              error instanceof PlugError
-                ? error
-                : new PlugError("Failed to process custom socket event.", {
-                    code: "SOCKET_CUSTOM_EVENT_PROCESSING_FAILED",
-                    technicalMessage: error instanceof Error ? error.message : undefined,
-                  }),
-            );
-          },
-        );
-      };
-
+      const handler = createEventHandler(eventName);
       input.transport.on(eventName, handler);
       eventHandlers.set(eventName, handler);
+    }
 
-      await waitForControlAck({
-        transport: input.transport,
-        requestEvent: subscribeEvent,
-        responseEvent: subscribedEvent,
-        requestId: randomUUID(),
-        eventName,
-        expectedSubscribed: true,
-        timeoutMs,
-      });
+    const subscribeResults = await Promise.allSettled(
+      eventNames.map((eventName) =>
+        waitForControlAck({
+          transport: input.transport,
+          requestEvent: subscribeEvent,
+          responseEvent: subscribedEvent,
+          requestId: randomUUID(),
+          eventName,
+          expectedSubscribed: true,
+          timeoutMs,
+        }).then(() => {
+          subscribed.add(eventName);
+          plugLogger.info("transport.socket.custom_event.subscribed", {
+            eventName,
+          });
+        }),
+      ),
+    );
 
-      subscribed.add(eventName);
-      plugLogger.info("transport.socket.custom_event.subscribed", {
-        eventName,
-      });
+    const firstFailure = subscribeResults.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (firstFailure) {
+      throw firstFailure.reason;
     }
   } catch (error: unknown) {
     closing = true;

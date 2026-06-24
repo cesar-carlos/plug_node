@@ -58,6 +58,14 @@
 | `SOCKET_EVENT_LISTEN_TIMEOUT`               | Listener one-shot assinou, mas não recebeu evento.  | Publique depois do listener iniciar ou aumente `Listen Timeout (MS)`. |
 | `SOCKET_EVENT_BACKPRESSURE_LIMIT`           | Fila do trigger cheia com `Overflow Policy = Fail`. | Aumente fila/inflight, reduza volume ou escolha uma política de drop. |
 
+## Eventos Customizados — Problemas de Infraestrutura
+
+| Sintoma                                                                  | Causa provável                                                     | Ação                                                                                                                         |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Evento publicado mas listener não recebe nada (sem erro)                 | Publisher e listener em réplicas diferentes do Plug Server         | Configure adaptador Socket.IO distribuído no servidor, garanta afinidade de rota ou use publicação por REST como alternativa |
+| Evento processado mais de uma vez em workflows com múltiplos workers n8n | Deduplicação é local — cada worker tem sua própria memória         | Valide `eventId` contra store externo (banco/cache) antes de processar; ou concentre o trigger em um único worker            |
+| `SOCKET_EVENT_LISTEN_TIMEOUT` mesmo com o publisher enviando o evento    | Race condition: publisher enviou antes do subscribe ser confirmado | Garanta que o `Wait for Socket Event` rode antes do publisher, ou substitua por `Socket Event Trigger` contínuo              |
+
 <a id="socket-troubleshoot-hmac"></a>
 
 ## Assinatura HMAC

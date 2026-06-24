@@ -10,6 +10,7 @@ const createdSockets: MockSocket[] = [];
 let suppressProbeResponse = false;
 let suppressCommandResponse = false;
 let commandResponseRequestId: string | undefined;
+let probeEmitCount = 0;
 
 const readCommandRequestId = (payload: unknown): string | undefined =>
   typeof payload === "object" &&
@@ -82,6 +83,10 @@ class MockSocket {
 
       if (isProbe && suppressProbeResponse) {
         return;
+      }
+
+      if (isProbe) {
+        probeEmitCount += 1;
       }
 
       if (!isProbe && suppressCommandResponse) {
@@ -160,6 +165,7 @@ describe("ConsumerSocketExecutionManager", () => {
     suppressProbeResponse = false;
     suppressCommandResponse = false;
     commandResponseRequestId = undefined;
+    probeEmitCount = 0;
   });
 
   it("reuses one /consumers socket across multiple commands in the same execution", async () => {
@@ -241,6 +247,56 @@ describe("ConsumerSocketExecutionManager", () => {
       payloadFrameCompression: "default",
     });
 
+    expect(createdSockets).toHaveLength(2);
+    manager.close();
+  }, 15_000);
+
+  it("reuses capability probe cache across access token rotation within TTL", async () => {
+    const { ConsumerSocketExecutionManager } =
+      await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/socketCommandExecutor");
+    const manager = new ConsumerSocketExecutionManager();
+    const command = {
+      jsonrpc: "2.0" as const,
+      method: "client_token.getPolicy",
+      id: "request-1",
+      params: {
+        client_token: "client-token",
+      },
+    };
+
+    await manager.execute({
+      session,
+      agentId: "agent-1",
+      command,
+      responseMode: "aggregatedJson",
+      timeoutMs: 5000,
+      payloadFrameCompression: "default",
+    });
+
+    const rotatedSession: PlugSession = {
+      ...session,
+      accessToken: "access-2",
+      refreshToken: "refresh-2",
+      loginResponse: {
+        ...session.loginResponse,
+        accessToken: "access-2",
+        refreshToken: "refresh-2",
+      },
+    };
+
+    await manager.execute({
+      session: rotatedSession,
+      agentId: "agent-1",
+      command: {
+        ...command,
+        id: "request-2",
+      },
+      responseMode: "aggregatedJson",
+      timeoutMs: 5000,
+      payloadFrameCompression: "default",
+    });
+
+    expect(probeEmitCount).toBe(1);
     expect(createdSockets).toHaveLength(2);
     manager.close();
   }, 15_000);

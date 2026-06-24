@@ -56,18 +56,31 @@ O codec suporta:
 
 Na criação do frame:
 
-- `default` considera gzip quando o payload tem pelo menos 1024 bytes e economiza pelo menos 64 bytes.
-- `always` força gzip quando há payload.
+- `default` considera gzip quando o payload tem pelo menos **4096 bytes** e o resultado comprimido economiza pelo menos 64 bytes.
+- `always` força gzip quando há payload (sem threshold mínimo de tamanho).
 - `none` evita gzip.
 
 Limites locais:
 
-- entrada gzip: até 512 KiB
-- payload comprimido: até 10 MiB
-- payload decodificado: até 10 MiB
-- razão máxima de inflação: 20x
+- entrada gzip (para o codec aceitar comprimir): até 512 KiB
+- payload comprimido (wire): até 10 MiB
+- payload decodificado (após gunzip): até 10 MiB
+- razão máxima de inflação: **10x** (decodificado ÷ comprimido)
 
 Na decodificação, a assinatura HMAC é verificada antes de qualquer descompressão. Depois disso, `originalSize`, `compressedSize` e a razão esperada de inflação são validados antes do `gunzip`; o `gunzip` também roda com limite de saída de 10 MiB. Isso reduz o risco de payloads maliciosos inflarem demais no processo n8n.
+
+### Thresholds de async vs sync
+
+O codec usa a variante síncrona ou assíncrona do zlib dependendo do tamanho:
+
+| Operação      | Até (bytes) | Variante usada   |
+| ------------- | ----------- | ---------------- |
+| gzip encode   | < 128 KiB   | `gzipSync`       |
+| gzip encode   | ≥ 128 KiB   | `gzip` (async)   |
+| gunzip decode | < 64 KiB    | `gunzipSync`     |
+| gunzip decode | ≥ 64 KiB    | `gunzip` (async) |
+
+A variante síncrona bloqueia o event loop do Node.js durante a operação. Para payloads menores que os thresholds acima, o custo é suficientemente baixo para que o overhead de criação de Promise e agendamento não compense. Para payloads maiores, a variante assíncrona libera o event loop durante a compressão/descompressão.
 
 <a id="assinatura-hmac"></a>
 

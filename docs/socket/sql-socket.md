@@ -93,12 +93,38 @@ Se `Chunk Items` for usado em uma combinação que não produz stream, a execuç
 
 Para streams grandes, o runtime aplica limites locais:
 
-- máximo de itens de chunk em buffer
-- máximo de linhas em buffer
-- máximo de bytes agregados
-- janela máxima de pull de stream
+| Limite                  | Valor padrão | Unidade         |
+| ----------------------- | ------------ | --------------- |
+| `maxBufferedChunkItems` | 512          | chunks          |
+| `maxBufferedRows`       | 50 000       | linhas SQL      |
+| `maxBufferedBytes`      | 8 MiB        | bytes estimados |
+| Janela máxima de pull   | 1 000        | chunks por pull |
+
+Quando qualquer limite é ultrapassado, a execução falha com `SOCKET_BUFFER_LIMIT`. As ações recomendadas são: reduzir `Max Rows` na query, paginar o resultado ou usar `Chunk Items`.
 
 Esses limites evitam que um workflow consuma memória indefinidamente quando o agente retorna muito dado ou quando o consumidor demora para processar chunks.
+
+### Janela de pull adaptiva
+
+O tamanho da janela de pull não é fixo. O runtime lê as dicas de janela enviadas pelo servidor no `connection:ready` (`recommendedStreamPullWindowSize`, `maxStreamPullWindowSize`) e ajusta o tamanho automaticamente. A prioridade é:
+
+1. Valor configurado manualmente no node (quando disponível)
+2. Valor recomendado pelo servidor (do `connection:ready`)
+3. Máximo permitido pelo servidor (teto)
+4. Padrão local como fallback
+
+O teto absoluto do cliente é 1 000 chunks por pull. Quando o servidor envia um `maxStreamPullWindowSize` menor, esse valor vence.
+
+## Timeouts
+
+O node trabalha com dois timeouts distintos:
+
+- **`commandTimeoutMs`** — tempo máximo aguardando a resposta completa após o comando ser enviado. Configurado via `Timeout (MS)` no node.
+- **`connectTimeoutMs`** — tempo máximo aguardando o `connection:ready`. O valor padrão é 10 s, mas é **sempre limitado ao `commandTimeoutMs`**. Se `Timeout (MS)` for 5 s, o connect timeout também é 5 s, não 10 s.
+
+> **Idle timer, não wall-clock:** o timer de comando é um _idle timer_ que se reinicia a cada evento recebido (chunk, resposta, pull ACK). Um stream lento que envia um chunk a cada 29 s com `Timeout = 30 s` nunca expira, porque cada chunk reinicia o contador. O `commandTimeoutMs` representa o tempo máximo de silêncio, não a duração total da operação.
+
+Para streams muito longos, se quiser um limite de duração total, aplique-o fora do node (por exemplo, via nó `Wait` ou lógica de abort no workflow).
 
 ## Fallback
 

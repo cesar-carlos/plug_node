@@ -85,7 +85,7 @@ Campos:
 - `Deduplicate Events`: ignora eventos customizados repetidos com o mesmo `eventId`.
 - `Deduplication TTL (MS)`: tempo em memória para lembrar IDs já emitidos. Padrão `300000`.
 
-A deduplicação é local ao processo n8n. Se houver múltiplas instâncias n8n, cada uma tem sua própria memória.
+A deduplicação é local ao processo n8n. Se houver múltiplas instâncias n8n, **cada instância mantém sua própria memória de IDs**. Em deploys com múltiplos workers n8n (queue mode ou horizontally scaled), o mesmo evento pode ser processado por cada instância que estiver conectada ao mesmo namespace — deduplicação local não elimina duplicatas entre instâncias. Para garantir entrega única em clusters, use uma chave de idempotência na lógica de negócio do workflow (por exemplo, verificar `eventId` contra um banco de dados externo antes de processar).
 
 ## Assinatura de Payload
 
@@ -154,6 +154,10 @@ Quando habilitado, frames recebidos precisam trazer assinatura HMAC SHA-256 vál
   }
 }
 ```
+
+## Limitação cross-replica
+
+O servidor propaga eventos customizados apenas para sockets conectados à **mesma réplica do Plug Server**. Em deploys com múltiplas réplicas sem adaptador Socket.IO distribuído, um publisher conectado à réplica A não alcança listeners conectados à réplica B. Se o seu deploy precisar de entrega cross-replica, use uma infraestrutura que garanta afinidade de rota ou configure o Plug Server com adaptador Socket.IO distribuído (Redis Adapter ou equivalente). Em deploys de réplica única esse cenário não se aplica.
 
 ## Boas Práticas
 

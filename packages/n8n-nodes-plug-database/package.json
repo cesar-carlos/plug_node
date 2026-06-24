@@ -64,6 +64,8 @@
     ],
     "nodes": [
       "dist/nodes/PlugDatabase/PlugDatabase.node.js",
+      "dist/nodes/PlugMcpServer/PlugMcpServer.node.js",
+      "dist/nodes/PlugAiHub/PlugAiHub.node.js",
       "dist/nodes/PlugDatabaseSocketEventTrigger/PlugDatabaseSocketEventTrigger.node.js",
       "dist/nodes/PluraAiAutomationsTrigger/PluraAiAutomationsTrigger.node.js"
     ]
