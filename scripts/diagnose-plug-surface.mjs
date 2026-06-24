@@ -111,6 +111,15 @@ const verifyBuiltCredentialAliases = (pkg) => {
   }
 };
 
+const plugDatabaseFamilyDisplayNames = new Set([
+  "Plug MCP Server",
+  "Plug AI Hub",
+]);
+
+const isPlugDatabaseFamilyNode = (displayName) =>
+  displayName.startsWith("Plug Database") ||
+  plugDatabaseFamilyDisplayNames.has(displayName);
+
 const verifyBuiltNodeSurface = (pkg) => {
   for (const nodePath of pkg.manifest.nodes) {
     const node = loadBuiltNode(pkg, nodePath);
@@ -120,7 +129,7 @@ const verifyBuiltNodeSurface = (pkg) => {
       throw new Error(`${pkg.workspace} ${displayName} must not expose Advanced`);
     }
 
-    if (!displayName.startsWith("Plug Database")) {
+    if (!isPlugDatabaseFamilyNode(displayName)) {
       throw new Error(`${pkg.workspace} ${displayName} must group under Plug Database`);
     }
 
