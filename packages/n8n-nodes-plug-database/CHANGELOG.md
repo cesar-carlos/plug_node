@@ -1,5 +1,11 @@
 # n8n-nodes-plug-database
 
+## 3.3.0
+
+### Minor Changes
+
+- 77e7f48: Add Plug MCP Server and Plug AI Hub nodes for governed AI capability exposure via MCP-style tools/list and tools/call contracts.
+
 ## 3.2.0
 
 ### Minor Changes
