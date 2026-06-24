@@ -111,10 +111,7 @@ const verifyBuiltCredentialAliases = (pkg) => {
   }
 };
 
-const plugDatabaseFamilyDisplayNames = new Set([
-  "Plug MCP Server",
-  "Plug AI Hub",
-]);
+const plugDatabaseFamilyDisplayNames = new Set(["Plug MCP Server", "Plug AI Hub"]);
 
 const isPlugDatabaseFamilyNode = (displayName) =>
   displayName.startsWith("Plug Database") ||
