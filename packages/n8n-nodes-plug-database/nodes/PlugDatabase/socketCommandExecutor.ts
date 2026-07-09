@@ -67,18 +67,13 @@ const readSingleCommandId = (
 const logRelayFallback = (
   input: Parameters<PlugSocketExecutor>[0],
   relayInput: Parameters<PlugSocketExecutor>[0],
-  fallbackReason: "probe_timeout" | "agents_command_timeout",
 ): void => {
   plugLogger.warn("transport.socket.manager.relay_fallback", {
     socketMode: "relay",
     agentId: input.agentId,
-    fallbackReason,
+    fallbackReason: "probe_timeout",
     originalCommandId: readSingleCommandId(input.command),
     relayCommandId: readSingleCommandId(relayInput.command),
-    doubleExecutionRisk:
-      fallbackReason === "agents_command_timeout"
-        ? "The original agents:command may still have completed on the server. Relay retry uses a new command ID; prefer idempotent operations or verify server state before retrying side effects."
-        : undefined,
   });
 };
 
@@ -289,7 +284,7 @@ export class ConsumerSocketExecutionManager {
         agentId: input.agentId,
       });
       const relayInput = buildRelayFallbackInput(input);
-      logRelayFallback(input, relayInput, "probe_timeout");
+      logRelayFallback(input, relayInput);
       this.managedTransport.dispose();
       return options.fallbackExecutor(relayInput);
     }
@@ -332,17 +327,8 @@ export class ConsumerSocketExecutionManager {
         code: error instanceof PlugError ? error.code : undefined,
       });
 
-      if (
-        error instanceof PlugTimeoutError &&
-        !Array.isArray(input.command) &&
-        options?.fallbackExecutor
-      ) {
-        const relayInput = buildRelayFallbackInput(input);
-        logRelayFallback(input, relayInput, "agents_command_timeout");
-        this.managedTransport.dispose();
-        return options.fallbackExecutor(relayInput);
-      }
-
+      // Do not fall back to relay after agents:command was already emitted: the hub may
+      // still complete the original request, and a second dispatch risks double-execution.
       if (error instanceof PlugTimeoutError && Array.isArray(input.command)) {
         throw new PlugValidationError(
           "Execute Batch over Socket requires a Plug server that returns correlated agents:command responses. Use REST or upgrade the server.",

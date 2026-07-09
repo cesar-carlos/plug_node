@@ -11,6 +11,7 @@ import { PlugValidationError } from "../contracts/errors";
 import { createExecutionSessionRunner } from "../auth/session";
 import { buildClientAccessOutputItems } from "../output/clientAccessOutput";
 import { executeWithPlugTransientRetry } from "./plugTransientRetry";
+import { clientAccessAllowsTransientRetry } from "./plugAccessTransientRetry";
 import { collectAllPages } from "../rest/resourceClient";
 import {
   getClientAgent,
@@ -390,9 +391,15 @@ export const executePlugClientAccessNode = async (
   return executePerInputItem(
     context,
     async (itemIndex) => {
-      const { value: executionResult } = await executeWithPlugTransientRetry({
-        execute: () => buildExecutionResult(requester, sessionRunner, context, itemIndex),
-      });
+      const operation = context.getNodeParameter(
+        "operation",
+        itemIndex,
+      ) as ClientAccessOperation;
+      const execute = () =>
+        buildExecutionResult(requester, sessionRunner, context, itemIndex);
+      const executionResult = clientAccessAllowsTransientRetry(operation)
+        ? (await executeWithPlugTransientRetry({ execute })).value
+        : await execute();
       const jsonItems = buildClientAccessOutputItems(
         executionResult,
         getIncludeMetadata(context, itemIndex),

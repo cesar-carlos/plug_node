@@ -13,6 +13,7 @@ import {
 import {
   createExecutionSessionRunner,
   createHttpError,
+  isRefreshableAuthErrorData,
   isSessionRefreshableError,
   loginClient,
   refreshClientSession,
@@ -227,6 +228,25 @@ describe("auth session runner", () => {
     ]);
 
     expect(refreshCalls).toBe(1);
+  });
+
+  it("treats TOKEN_EXPIRED without HTTP status as refreshable", () => {
+    expect(
+      isRefreshableAuthErrorData({
+        code: "TOKEN_EXPIRED",
+      }),
+    ).toBe(true);
+    expect(
+      isRefreshableAuthErrorData({
+        code: "INVALID_TOKEN",
+        message: "invalid token",
+      }),
+    ).toBe(true);
+    expect(
+      isRefreshableAuthErrorData({
+        code: "ACCOUNT_BLOCKED",
+      }),
+    ).toBe(false);
   });
 
   it("refreshes proactively when the access token is near expiry", async () => {
@@ -548,6 +568,23 @@ describe("createHttpError", () => {
     });
     expect(error.description).toContain("Wait 7 second(s) before trying again.");
     expect(error.description).toContain("Rate limit exceeded");
+  });
+
+  it("parses Retry-After HTTP-date header values", () => {
+    const retryAt = new Date(Date.now() + 4_000).toUTCString();
+    const error = createHttpError(
+      429,
+      {
+        message: "Rate limit exceeded",
+        code: "RATE_LIMITED",
+      },
+      {
+        "retry-after": retryAt,
+      },
+    );
+
+    expect(error.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+    expect(error.retryAfterSeconds).toBeLessThanOrEqual(5);
   });
 
   it("extracts retry timing from reset_at details", () => {

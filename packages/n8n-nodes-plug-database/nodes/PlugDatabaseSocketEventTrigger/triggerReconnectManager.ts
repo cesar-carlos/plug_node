@@ -104,11 +104,13 @@ export class TriggerReconnectManager {
 
   scheduleReconnect(error: PlugError, connect: () => Promise<void>): void {
     if (this.closed || !this.config.reconnectOnDisconnect || !error.retryable) {
+      this.reconnecting = false;
       this.config.onFatalError(error);
       return;
     }
 
     if (this.recordReconnectFailureAndIsCircuitOpen()) {
+      this.reconnecting = false;
       this.config.onFatalError(createReconnectCircuitOpenError(error.message));
       return;
     }
@@ -117,6 +119,7 @@ export class TriggerReconnectManager {
       this.config.maxReconnectAttempts > 0 &&
       this.reconnectAttempts >= this.config.maxReconnectAttempts
     ) {
+      this.reconnecting = false;
       this.config.onFatalError(
         new PlugError("Plug socket reconnect attempts were exhausted.", {
           code: "SOCKET_RECONNECT_EXHAUSTED",

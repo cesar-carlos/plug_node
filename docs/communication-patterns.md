@@ -9,21 +9,35 @@
 5. Execute commands through `/agents/commands`.
 6. Normalize JSON-RPC responses into n8n-friendly JSON output.
 
-## Socket relay flow
+## Socket command flow
 
 `Plug Database` opens a Socket.IO connection to `/consumers` for the execution only when `Channel = Socket`.
 
-Flow:
+### typeVersion 2 (default) — `agents:command`
 
 1. Login and obtain tokens.
 2. Connect to `/consumers`.
-3. Wait for `connection:ready`.
-4. Start a relay conversation.
-5. Send a single relay RPC request.
-6. Collect response, chunks, and completion payloads.
-7. Decode binary frames and gzip payloads.
+3. Wait for `connection:ready` (PayloadFrame).
+4. Optionally probe capability with `rpc.discover` (cached ~60s per namespace URL).
+5. Emit `agents:command` with the JSON-RPC body (same shape as REST `POST /agents/commands`).
+6. Collect `agents:command_response`, stream chunks, and completion; pull stream windows as needed.
+7. Decode PayloadFrame / gzip payloads.
 8. Normalize the final response to JSON.
-9. Close the conversation and socket.
+9. Disconnect (or reuse the transport within the same node execution).
+
+If the capability probe times out on a **single** command, the node may fall back to relay **before** emitting the real command. After `agents:command` has been sent, timeouts are **not** retried on relay (avoids double-execution).
+
+### typeVersion 1 / relay fallback — `relay:*`
+
+1. Login and obtain tokens.
+2. Connect to `/consumers` and wait for `connection:ready`.
+3. Start a relay conversation (`relay:conversation.start`).
+4. Send `relay:rpc.request` (optional `fastPath` for unary non-streaming).
+5. Collect response, chunks, and completion; pull stream windows as needed.
+6. Decode PayloadFrame / gzip payloads and normalize to JSON.
+7. End the conversation and disconnect.
+
+Normative Socket guides: [docs/socket/sql-socket.md](./socket/sql-socket.md) and [docs/hub-contract-alignment.md](./hub-contract-alignment.md).
 
 ## Custom Socket Events
 

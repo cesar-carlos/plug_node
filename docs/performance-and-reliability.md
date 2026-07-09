@@ -41,7 +41,9 @@ For large reads:
 
 ## Relay Fast Path
 
-**Relay Fast Path** is **on by default** for typeVersion **1** relay nodes and in Socket Options (`fastPath: true`). It skips `relay:rpc.accepted` on the happy path and routes responses by JSON-RPC body `id`. Disable only when the hub requires classic accepted correlation. See `plug_server/docs/relay_fastpath_study.md` for hub-side trade-offs.
+**Relay Fast Path** is **on by default** for typeVersion **1** relay nodes and in Socket Options (`fastPath: true`). It skips `relay:rpc.accepted` on the happy path and routes responses by JSON-RPC body `id`. Disable only when the hub requires classic accepted correlation. See `plug_server/docs/studies/relay_fastpath_study.md` for hub-side trade-offs.
+
+The node **automatically omits** `fastPath` when the command is streaming-capable (`prefer_db_streaming`, `multi_result`, or `sql.executeBatch`), even if Socket Options leave the toggle on — the hub rejects that combination with `VALIDATION_ERROR`.
 
 Relay command frames omit per-frame `traceId` on the hot path (aligned with hub high-throughput guidance); stream pulls already did this.
 
@@ -87,7 +89,9 @@ The node automatically retries **up to three attempts** (initial + 2 retries) fo
 - `executeSql`, `executeBatch`, `bulkInsertSql`, `cancelSql`
 - `validateContext`, `discoverRpc`, `getAgentProfile`, `getClientTokenPolicy`
 
-Retries apply to rate limits (`429`, RPC `-32013`), temporary unavailability (`503`), timeouts, and other `PlugError.retryable` cases. The node does **not** retry validation errors, auth failures, `replay_detected` (`-32014`), or `method_not_found`.
+Retries apply to rate limits (`429`, RPC `-32013`), temporary unavailability (`503`), REST timeouts, and other `PlugError.retryable` cases. The node does **not** retry validation errors, auth failures, `replay_detected` (`-32014`), or `method_not_found`.
+
+**Socket command timeouts are not retried.** After `agents:command` or `relay:rpc.request` has been emitted, an idle timeout means the hub may still complete the original request; a fresh JSON-RPC `id` would risk double-execution. Increase Request Timeout or use Idempotency Key for intentional retries at the workflow level.
 
 On retry, the node issues a **fresh JSON-RPC `id`** (and fresh socket `client_request_id` on relay fallback) so the hub replay guard does not block the retry. Keep **Idempotency Key** set when workflows must dedupe agent-side work.
 

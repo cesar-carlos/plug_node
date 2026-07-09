@@ -5,6 +5,9 @@ import { isRecord } from "../utils/json";
 /** Number of retries after the first attempt (3 executions total). */
 export const MAX_TRANSIENT_RETRIES = 2;
 
+/** Cap Retry-After / exponential backoff so a single n8n item cannot block for minutes. */
+export const MAX_RETRY_DELAY_MS = 60_000;
+
 const sqlOperations = new Set<PlugOperation>([
   "executeSql",
   "executeBatch",
@@ -93,11 +96,14 @@ export const computeRetryDelayMs = (error: PlugError, attemptNumber: number): nu
     Number.isFinite(error.retryAfterSeconds) &&
     error.retryAfterSeconds > 0
   ) {
-    return Math.max(0, Math.ceil(error.retryAfterSeconds * 1000));
+    return Math.min(
+      MAX_RETRY_DELAY_MS,
+      Math.max(0, Math.ceil(error.retryAfterSeconds * 1000)),
+    );
   }
 
   const baseDelayMs = Math.min(5000, 250 * 2 ** attemptNumber);
-  return applyRetryBackoffJitter(baseDelayMs);
+  return Math.min(MAX_RETRY_DELAY_MS, applyRetryBackoffJitter(baseDelayMs));
 };
 
 /** Retries transient REST failures using the same policy as metadata hub calls. */
@@ -166,6 +172,8 @@ export const shouldRetryPlugOperation = (input: {
   readonly operation: PlugOperation;
   readonly error: unknown;
   readonly attemptNumber: number;
+  /** When true, idle/command timeouts are not retried (command may already be in flight). */
+  readonly channel?: "rest" | "socket";
 }): boolean => {
   if (input.attemptNumber >= MAX_TRANSIENT_RETRIES) {
     return false;
@@ -180,7 +188,9 @@ export const shouldRetryPlugOperation = (input: {
   }
 
   if (input.error instanceof PlugTimeoutError) {
-    return true;
+    // Socket timeouts often mean the hub already accepted the command; a fresh
+    // JSON-RPC id would double-execute. REST timeouts remain safe to retry.
+    return input.channel !== "socket";
   }
 
   if (!(input.error instanceof PlugError)) {

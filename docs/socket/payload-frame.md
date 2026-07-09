@@ -57,12 +57,12 @@ O codec suporta:
 Na criação do frame:
 
 - `default` considera gzip quando o payload tem pelo menos **4096 bytes** e o resultado comprimido economiza pelo menos 64 bytes.
-- `always` força gzip quando há payload (sem threshold mínimo de tamanho).
+- `always` força gzip quando há payload (sem threshold mínimo de tamanho), **desde que** o payload original caiba no teto de entrada gzip (512 KiB). Acima desse teto o frame permanece `cmp: "none"` para evitar compressão síncrona/assíncrona de buffers enormes no processo n8n.
 - `none` evita gzip.
 
 Limites locais:
 
-- entrada gzip (para o codec aceitar comprimir): até 512 KiB
+- entrada gzip (para o codec aceitar comprimir): até 512 KiB — aplica-se também a `always`
 - payload comprimido (wire): até 10 MiB
 - payload decodificado (após gunzip): até 10 MiB
 - razão máxima de inflação: **10x** (decodificado ÷ comprimido)

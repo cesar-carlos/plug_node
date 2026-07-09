@@ -342,9 +342,11 @@ export const toPlugErrorFromRpcItem = (
       code: `RPC_${item.error.code}`,
       correlationId,
       retryable:
-        typeof errorData.retryable === "boolean"
-          ? errorData.retryable
-          : item.error.code === -32013,
+        item.error.code === -32013
+          ? true
+          : typeof errorData.retryable === "boolean"
+            ? errorData.retryable
+            : retryAfterSeconds !== undefined,
       retryAfterSeconds,
       description: buildRpcDescription(item.error, errorData, retryAfterSeconds),
       details: {

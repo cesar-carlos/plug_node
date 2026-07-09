@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  abortStreamPull,
   beginStreamPull,
   createStreamAggregationController,
   finishStreamPull,
@@ -40,5 +41,27 @@ describe("streamAggregationState", () => {
 
     expect(scheduled).toHaveLength(1);
     await scheduled[0]?.();
+  });
+
+  it("ignores credit accounting until an active stream id is set", () => {
+    const controller = createStreamAggregationController();
+    controller.state.streamCreditsRemaining = 2;
+
+    controller.recordChunkReceived();
+    expect(controller.state.streamCreditsRemaining).toBe(2);
+    expect(controller.state.pendingChunksDuringPull).toBe(0);
+  });
+
+  it("rolls back in-flight pull state on abortStreamPull", () => {
+    const controller = createStreamAggregationController();
+    controller.setActiveStreamId("stream-1");
+    beginStreamPull(controller.state);
+    controller.state.pendingChunksDuringPull = 1;
+
+    abortStreamPull(controller.state);
+
+    expect(controller.state.streamPullInFlight).toBe(false);
+    expect(controller.state.pullCount).toBe(0);
+    expect(controller.state.pendingChunksDuringPull).toBe(1);
   });
 });

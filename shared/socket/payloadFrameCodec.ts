@@ -225,7 +225,9 @@ const signFrame = (
     signature: {
       alg: signatureAlgorithm,
       value,
-      ...(signing?.keyId && signing.keyId.trim() !== "" ? { key_id: signing.keyId } : {}),
+      ...(signing?.keyId && signing.keyId.trim() !== ""
+        ? { key_id: signing.keyId.trim() }
+        : {}),
     },
   };
 };

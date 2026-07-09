@@ -213,5 +213,5 @@ Client Access calls share the same error contract as the rest of the node — se
 
 - `401` — the client session expired; the node will refresh and retry once for safe operations.
 - `403` — the agent owner blocked or removed access; no automatic retry.
-- `429` — request throttled; honor `Retry-After`.
+- `429` / `503` — transient retries apply only to **safe/idempotent** operations (`list*`, `get*`). Mutations (`requestAgentAccess`, `revokeAgentAccess`, `setClientToken`) are not auto-retried on timeout/overload to avoid duplicate side effects.
 - `COLLECT_PAGES_LIMIT_EXCEEDED` — list operations stop after 100 pages. Use `Page` and `Page Size` to paginate manually for very large workspaces.

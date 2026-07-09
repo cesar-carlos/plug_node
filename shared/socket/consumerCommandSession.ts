@@ -78,6 +78,7 @@ import {
   beginStreamPull,
   createStreamAggregationController,
   finishStreamPull,
+  abortStreamPull,
   shouldSkipStreamPull,
 } from "./streamAggregationState";
 import { extractServerTimings } from "./relaySessionNormalization";
@@ -355,8 +356,9 @@ export const executeConsumerCommand = async (
           streamAggregation.state,
           nextWindowSize,
         );
-      } finally {
-        streamAggregation.state.streamPullInFlight = false;
+      } catch (error: unknown) {
+        abortStreamPull(streamAggregation.state);
+        throw error;
       }
 
       if (shouldRequestAdditionalWindow && !streamAggregation.state.streamCompleted) {

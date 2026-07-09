@@ -72,7 +72,7 @@ describe("toPlugErrorFromRpcItem", () => {
       code: "RPC_-32013",
       correlationId: "corr-2",
       retryAfterSeconds: 2,
-      retryable: false,
+      retryable: true,
       technicalMessage: "rate_limited",
     });
     expect(error.description).toBe("Wait 2 second(s) before retrying this operation.");

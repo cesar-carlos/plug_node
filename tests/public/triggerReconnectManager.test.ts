@@ -107,6 +107,25 @@ describe("TriggerReconnectManager", () => {
     expect(onFatalError).toHaveBeenCalledWith(fatalError);
   });
 
+  it("clears reconnecting after a fatal runtime error so later errors can be handled", async () => {
+    const { manager, onFatalError } = createManager();
+    const fatalError = new PlugError("Account blocked.", {
+      code: "ACCOUNT_BLOCKED",
+      retryable: false,
+    });
+    const closeSession = vi.fn(async () => undefined);
+
+    await manager.handleRuntimeError(fatalError, vi.fn(), closeSession);
+
+    expect(onFatalError).toHaveBeenCalledWith(fatalError);
+    expect(manager.isReconnecting()).toBe(false);
+
+    await manager.handleRuntimeError(retryableSocketError, vi.fn(async () => undefined), closeSession);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(closeSession).toHaveBeenCalledTimes(2);
+  });
+
   it("closes the session before scheduling a runtime reconnect", async () => {
     const { manager } = createManager();
     const connect = vi.fn(async () => undefined);

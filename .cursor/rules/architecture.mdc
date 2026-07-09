@@ -20,12 +20,9 @@ alwaysApply: true
 - Package-local Socket.IO adapters may add transport wiring, but socket protocol decisions still belong in shared modules instead of being embedded in the node file.
 - Credential values are the single source of truth for `user`, `password`, `agentId`, and `clientToken` in v1.
 - Prefer guided operations first and keep advanced JSON-RPC support behind explicit parameters instead of making raw payloads the default UX.
-- Socket support must follow the documented relay flow only:
-  - `connection:ready`
-  - `relay:conversation.start`
-  - `relay:rpc.request`
-  - `relay:rpc.response`
-  - `relay:rpc.chunk`
-  - `relay:rpc.complete`
-  - `relay:rpc.stream.pull`
+- Socket support on `/consumers` has two command paths:
+  - **typeVersion 2 (default):** `agents:command` (+ stream chunk/complete/pull), with PayloadFrame decode on outbound events
+  - **typeVersion 1 / capability-probe fallback:** relay conversation (`relay:conversation.*`, `relay:rpc.*`, stream pull)
+- Do not fall back to relay after `agents:command` has already been emitted (double-execution risk).
+- Omit relay `fastPath` for streaming-capable commands (`prefer_db_streaming`, `multi_result`, `sql.executeBatch`).
 - Normalize transport differences inside the shared core. n8n-facing outputs should be JSON-oriented and consistent across REST and SOCKET where possible.

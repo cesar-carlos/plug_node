@@ -11,6 +11,7 @@ import {
   executeWithPlugTransientRetry,
   getPlugOperationRetryKind,
   isReplayDetectedPlugError,
+  MAX_RETRY_DELAY_MS,
   MAX_TRANSIENT_RETRIES,
   shouldRetryPlugOperation,
   sleepMs,
@@ -105,7 +106,7 @@ describe("plugTransientRetry", () => {
     ).toBe(false);
   });
 
-  it("retries PlugTimeoutError for SQL operations", () => {
+  it("retries PlugTimeoutError for SQL operations on REST", () => {
     expect(
       shouldRetryPlugOperation({
         operation: "executeSql",
@@ -117,7 +118,26 @@ describe("plugTransientRetry", () => {
       shouldRetryPlugOperation({
         operation: "executeSql",
         error: new PlugTimeoutError("timed out"),
+        attemptNumber: 0,
+        channel: "rest",
+      }),
+    ).toBe(true);
+    expect(
+      shouldRetryPlugOperation({
+        operation: "executeSql",
+        error: new PlugTimeoutError("timed out"),
         attemptNumber: MAX_TRANSIENT_RETRIES,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not retry PlugTimeoutError for SQL operations on Socket", () => {
+    expect(
+      shouldRetryPlugOperation({
+        operation: "executeSql",
+        error: new PlugTimeoutError("timed out"),
+        attemptNumber: 0,
+        channel: "socket",
       }),
     ).toBe(false);
   });
@@ -131,6 +151,16 @@ describe("plugTransientRetry", () => {
 
     expect(computeRetryDelayMs(error, 0)).toBe(3000);
     expect(computeRetryDelayMs(error, 1)).toBe(3000);
+  });
+
+  it("caps Retry-After delays at MAX_RETRY_DELAY_MS", () => {
+    const error = new PlugError("rate limited", {
+      code: "RATE_LIMITED",
+      retryable: true,
+      retryAfterSeconds: 600,
+    });
+
+    expect(computeRetryDelayMs(error, 0)).toBe(MAX_RETRY_DELAY_MS);
   });
 
   it("applies exponential backoff with jitter when retryAfterSeconds is absent", () => {

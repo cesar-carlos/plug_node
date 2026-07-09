@@ -367,69 +367,34 @@ describe("ConsumerSocketExecutionManager", () => {
     executor.close();
   });
 
-  it("falls back to relay when a single command only receives uncorrelated responses", async () => {
+  it("does not fall back to relay after agents:command times out (avoids double-execution)", async () => {
     commandResponseRequestId = "stale-request";
     const { createSocketCommandExecutor } =
       await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/socketCommandExecutor");
-    const fallbackExecutor = vi.fn(async (input) => ({
-      channel: "socket" as const,
-      socketMode: "relay" as const,
-      agentId: input.agentId,
-      requestId: "relay-request-1",
-      notification: false as const,
-      conversationId: "conversation-1",
-      accepted: {
-        success: true as const,
-        conversationId: "conversation-1",
-        requestId: "relay-request-1",
-      },
-      connectionReady: {
-        id: "socket-legacy-1",
-        message: "ready",
-        user: { id: "client-1" },
-      },
-      response: {
-        type: "single" as const,
-        success: true,
-        item: {
-          id: "rpc-1",
-          success: true,
-          result: {
-            policy: "approved",
-          },
-        },
-      },
-      rawResponsePayload: {
-        policy: "approved",
-      },
-      chunkPayloads: [],
-      rawResponseFrame: {
-        payload: {
-          event: "relay:rpc.response",
-        },
-      },
-      rawChunkFrames: [],
-    }));
+    const { PlugTimeoutError } =
+      await import("../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors");
+    const fallbackExecutor = vi.fn();
     const executor = createSocketCommandExecutor(fallbackExecutor);
 
-    const result = await executor.execute({
-      session,
-      agentId: "agent-1",
-      command: {
-        jsonrpc: "2.0",
-        method: "client_token.getPolicy",
-        id: "request-1",
-        params: {
-          client_token: "client-token",
+    await expect(
+      executor.execute({
+        session,
+        agentId: "agent-1",
+        command: {
+          jsonrpc: "2.0",
+          method: "client_token.getPolicy",
+          id: "request-1",
+          params: {
+            client_token: "client-token",
+          },
         },
-      },
-      responseMode: "aggregatedJson",
-      timeoutMs: 25,
-      payloadFrameCompression: "default",
-    });
+        responseMode: "aggregatedJson",
+        timeoutMs: 25,
+        payloadFrameCompression: "default",
+      }),
+    ).rejects.toBeInstanceOf(PlugTimeoutError);
 
-    expect(result.socketMode).toBe("relay");
-    expect(fallbackExecutor).toHaveBeenCalledTimes(1);
+    expect(fallbackExecutor).not.toHaveBeenCalled();
     executor.close();
   }, 15_000);
 

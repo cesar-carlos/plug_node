@@ -103,10 +103,12 @@ export const isRefreshableAuthErrorData = (input: {
     return true;
   }
 
-  if (input.statusCode === 403) {
-    return (
-      REFRESHABLE_AUTH_ERROR_CODES.has(code) || hasRefreshableAuthMessage(input.message)
-    );
+  // Socket app:error / connect_error often carry TOKEN_EXPIRED without HTTP status.
+  if (
+    REFRESHABLE_AUTH_ERROR_CODES.has(code) ||
+    hasRefreshableAuthMessage(input.message)
+  ) {
+    return input.statusCode === undefined || input.statusCode === 403;
   }
 
   return false;

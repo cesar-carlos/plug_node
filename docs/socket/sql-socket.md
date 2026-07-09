@@ -53,11 +53,15 @@ sequenceDiagram
 
 ## Correlação de comando
 
-Cada `agents:command` enviado pelo node inclui um `requestId` no envelope. Para comandos únicos com `command.id` preenchido, o node usa `String(command.id)` como `requestId`; para notificações, probes e batch, o node gera um UUID local. `clientRequestId` é enviado com o mesmo valor para facilitar compatibilidade durante a transição.
+O body validado pelo hub para `agents:command` é o mesmo `AgentCommandBody` do REST (`agentId`, `command`, `timeoutMs`, `pagination`, `payloadFrameCompression`, `requestServerTimings`). A correlação no hub usa o `id` JSON-RPC de `command` (ecoado como `requestId` nas respostas).
 
-O runtime só aceita `agents:command_response`, `agents:command_stream_chunk`, `agents:command_stream_complete` e `agents:stream_pull_response` que correspondem ao `requestId` e ao `streamId` ativos. Respostas atrasadas ou pertencentes a outra execução são ignoradas.
+O node envia campos extras no envelope Socket (`protocolVersion`, `requestId`, `clientRequestId`) para correlação local e marcação de protocolo do cliente. O schema Zod do hub **ignora** esses campos (não fazem parte do contrato normativo); o runtime do node usa `requestId`/`clientRequestId` para filtrar respostas atrasadas ou de outras execuções.
 
-Para comando único, se um servidor antigo não ecoar a correlação esperada, o node pode cair para o fluxo legado de relay. Para `Execute Batch`, o servidor precisa responder com `requestId` correlacionado no transporte `agents:command`; caso contrário, use REST ou atualize o servidor.
+Para comandos únicos com `command.id` preenchido, o node usa `String(command.id)` como `requestId` local; para notificações, probes e batch, gera um UUID. `clientRequestId` é enviado com o mesmo valor.
+
+O runtime só aceita `agents:command_response`, `agents:command_stream_chunk`, `agents:command_stream_complete` e `agents:stream_pull_response` que correspondem ao `requestId` e ao `streamId` ativos.
+
+Para comando único, se o **probe** de capability (`rpc.discover`) falhar por timeout, o node pode cair para relay **antes** de emitir o comando real. Depois que `agents:command` já foi enviado, timeout **não** faz fallback para relay (evita double-execution). Para `Execute Batch`, o servidor precisa responder com correlação no transporte `agents:command`; caso contrário, use REST ou atualize o servidor.
 
 ## Contrato mínimo do servidor
 
@@ -65,8 +69,8 @@ Para compatibilidade com `agents:command`, o servidor deve cumprir estes pontos:
 
 | Evento                           | Requisito                                                                                                                                                              |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agents:command`                 | Receber envelope com `protocolVersion`, `requestId`, `clientRequestId`, `agentId`, `command`, `timeoutMs` e `payloadFrameCompression`.                                 |
-| `agents:command_response`        | Ecoar `requestId` no sucesso; em stream, também enviar `streamId`. Falhas devem incluir `error.code` e `error.message`, e podem incluir `requestId` quando disponível. |
+| `agents:command`                 | Aceitar o body REST (`agentId`, `command`, …). Campos extras do cliente (`protocolVersion`, `requestId`, `clientRequestId`) podem ser ignorados.                       |
+| `agents:command_response`        | Ecoar `requestId` no sucesso (tipicamente o `command.id`); em stream, também enviar `streamId`. Falhas devem incluir `error.code` e `error.message`.                   |
 | `agents:stream_pull`             | Receber `requestId`, `streamId` e `windowSize`.                                                                                                                        |
 | `agents:stream_pull_response`    | Ecoar `requestId`, `streamId` e `windowSize` positivo no sucesso.                                                                                                      |
 | `agents:command_stream_chunk`    | Enviar `request_id` e `stream_id` do stream ativo.                                                                                                                     |
@@ -128,7 +132,7 @@ Para streams muito longos, se quiser um limite de duração total, aplique-o for
 
 ## Fallback
 
-O node prefere `agents:command` para `Channel = Socket`. Para fluxos de comando único, quando o servidor não responde ao transporte novo ou não devolve resposta correlacionada, a implementação pode usar o fluxo legado de relay. `Execute Batch` via Socket exige `agents:command` com correlação por `requestId`; se o servidor não suportar, use REST ou atualize o servidor.
+O node prefere `agents:command` para `Channel = Socket` (typeVersion 2). Fallback para relay ocorre **somente** quando o probe de capability falha (timeout em `rpc.discover`) **antes** de emitir o comando real. Timeout ou resposta não correlacionada **depois** de `agents:command` propaga o erro — não há segundo dispatch via relay. `Execute Batch` via Socket exige `agents:command` com correlação; se o servidor não suportar, use REST ou atualize o servidor.
 
 ## Metadados de Saída
 

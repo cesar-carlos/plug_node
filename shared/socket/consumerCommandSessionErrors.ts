@@ -9,10 +9,20 @@ export const createConsumerConnectError = (payload: unknown): PlugError =>
     retryDescription: "Run the node again to create a fresh socket connection.",
   });
 
+const sharedSocketAppErrorRetryableCodes = [
+  "CONSUMER_SOCKET_INITIALIZATION_FAILED",
+  "CONSUMER_IDLE_TIMEOUT",
+  "ROOM_JOIN_FAILED",
+  "SOCKET_APP_ERROR",
+] as const;
+
 export const createConsumerSocketAppError = (payload: unknown): PlugError =>
   createSocketApplicationError(payload, {
     refreshDescription:
       "The Plug session will be refreshed before retrying the socket operation.",
+    namespaceDeprecatedDescription:
+      "Use the /consumers namespace for Plug Database socket commands.",
+    retryableCodes: sharedSocketAppErrorRetryableCodes,
   });
 
 export const createConsumerDisconnectError = (reason: unknown): PlugError =>

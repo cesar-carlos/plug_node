@@ -82,11 +82,13 @@ export const matchesConsumerStreamPayload = (
     return false;
   }
 
-  return (
-    activeStreamId === undefined ||
-    typeof payload.stream_id !== "string" ||
-    payload.stream_id === activeStreamId
-  );
+  // Require an active stream id before accepting chunks so credit accounting
+  // and pull windows stay consistent with agents:command_response.
+  if (activeStreamId === undefined) {
+    return false;
+  }
+
+  return typeof payload.stream_id !== "string" || payload.stream_id === activeStreamId;
 };
 
 export const requestConsumerStreamPull = async (

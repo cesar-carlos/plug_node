@@ -182,5 +182,5 @@ User Access calls share the same error contract as the rest of the node — see 
 - `401` — the user session expired; the node will refresh and retry once for safe operations.
 - `403` — the user does not own the agent or has been suspended; no automatic retry.
 - `404` — the request id no longer exists (already decided or expired); inspect `raw` for the server message.
-- `429` — request throttled; honor `Retry-After`.
+- `429` / `503` — transient retries apply only to **safe/idempotent** list operations. Mutations (`approveAccessRequest`, `rejectAccessRequest`, `revokeAgentClientAccess`) are not auto-retried on timeout/overload to avoid duplicate side effects.
 - `COLLECT_PAGES_LIMIT_EXCEEDED` — list operations stop after 100 pages. Use `Page` and `Page Size` to paginate manually for very large catalogs.

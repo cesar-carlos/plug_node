@@ -45,6 +45,7 @@ import {
   type SocketBufferLimits,
 } from "./streamCommandSessionCommon";
 import {
+  abortStreamPull,
   beginStreamPull,
   createStreamAggregationController,
   finishStreamPull,
@@ -229,8 +230,9 @@ export const waitForRelayStreamAggregation = (
             streamAggregation.state,
             nextWindowSize,
           );
-        } finally {
-          streamAggregation.state.streamPullInFlight = false;
+        } catch (error: unknown) {
+          abortStreamPull(streamAggregation.state);
+          throw error;
         }
 
         if (shouldRequestAdditionalWindow && !streamAggregation.state.streamCompleted) {
@@ -290,6 +292,11 @@ export const waitForRelayStreamAggregation = (
           signing: input.payloadFrameSigning,
         });
         if (!(await matchesRequestId(decoded.frame.requestId, decoded.data))) {
+          ignoredChunks += 1;
+          return;
+        }
+
+        if (!streamAggregation.state.activeStreamId) {
           ignoredChunks += 1;
           return;
         }

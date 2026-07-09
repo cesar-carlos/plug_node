@@ -64,13 +64,11 @@ The `commandTimeoutMs` behaves as an **idle timer**, not a wall-clock deadline. 
 
 ### Capability probe and token rotation
 
-`ConsumerSocketExecutionManager` caches the `agents:command` capability check with a 60-second TTL. The cache key is `${namespaceUrl}:${accessToken}`. When the access token rotates (proactive renewal near `exp` or fallback login), the cache is invalidated and the next execution re-runs the probe (`rpc.discover`). This adds one extra round-trip after each token renewal. The token-in-key design is intentional: a new token may connect to a different server replica whose capability may differ. If all replicas are known to be homogeneous and stable, a future improvement could use `namespaceUrl` alone as the cache key to survive token rotation without re-probing.
+`ConsumerSocketExecutionManager` caches the `agents:command` capability check with a 60-second TTL. The cache key is the `/consumers` **namespace URL** only (not the access token). Token rotation recreates the Socket.IO transport via `ManagedSocketIoTransport`, but a fresh capability probe is skipped while the TTL is still valid for that URL. Homogeneous replicas share the same capability surface; if replicas can diverge, shorten the TTL or force a reconnect that clears the manager.
 
-### Sequential subscribe and unsubscribe in `startCustomSocketEventSession`
+### Parallel subscribe and unsubscribe in `startCustomSocketEventSession`
 
-`startCustomSocketEventSession` subscribes to event names **one at a time**, awaiting the `socket:event.subscribed` ACK for each before emitting the next subscribe. For a trigger with N event names, startup latency is proportional to `N × roundTripMs`. Likewise, `unsubscribeBestEffort` (called on close) unsubscribes sequentially.
-
-**Known improvement opportunity:** emit all subscribe requests in parallel and await all ACKs concurrently. Each `waitForControlAck` already filters by `requestId` and `eventName`, so concurrent subscribes would not interfere. This would reduce trigger startup from O(N × RTT) to O(RTT). Implementing this requires care around error handling (partial failure cleanup) and test coverage for concurrent ACKs.
+`startCustomSocketEventSession` emits all `socket:event.subscribe` requests concurrently and awaits their ACKs with `Promise.allSettled`. On close, `unsubscribeBestEffort` likewise unsubscribes in parallel. Each `waitForControlAck` filters by `requestId` and `eventName`, so concurrent control messages do not interfere. Startup latency is therefore O(RTT) rather than O(N × RTT).
 
 ### Chunk processing is serialized per session
 

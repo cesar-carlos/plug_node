@@ -33,9 +33,15 @@ export const createStreamAggregationController = (): StreamAggregationController
       state.activeStreamId = streamId;
     },
     recordChunkReceived(): void {
-      if (state.activeStreamId && state.streamPullInFlight) {
+      // Ignore credit accounting until the stream id is known; early chunks that
+      // arrive before agents:command_response would otherwise skip the window.
+      if (!state.activeStreamId) {
+        return;
+      }
+
+      if (state.streamPullInFlight) {
         state.pendingChunksDuringPull += 1;
-      } else if (state.activeStreamId && state.streamCreditsRemaining > 0) {
+      } else if (state.streamCreditsRemaining > 0) {
         state.streamCreditsRemaining -= 1;
       }
     },
@@ -62,6 +68,16 @@ export const createStreamAggregationController = (): StreamAggregationController
 export const beginStreamPull = (state: StreamAggregationState): void => {
   state.streamPullInFlight = true;
   state.pullCount += 1;
+};
+
+export const abortStreamPull = (state: StreamAggregationState): void => {
+  if (!state.streamPullInFlight) {
+    return;
+  }
+
+  state.streamPullInFlight = false;
+  state.pullCount = Math.max(0, state.pullCount - 1);
+  // Keep pendingChunksDuringPull so a later successful pull still subtracts them.
 };
 
 export const finishStreamPull = (

@@ -6,6 +6,26 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 ## [Unreleased]
 
+### Fixed
+
+- Stop falling back from timed-out `agents:command` to relay (and stop transient-retrying Socket command timeouts) to avoid double-execution when the hub may still complete the original request.
+- Omit relay `fastPath` automatically for streaming-capable commands (`prefer_db_streaming`, `multi_result`, `sql.executeBatch`) so the hub does not reject the combination.
+- Treat socket auth codes such as `TOKEN_EXPIRED` / `INVALID_TOKEN` as refreshable even when `statusCode` is omitted on `app:error` / `connect_error`.
+- Require an active stream id before accepting stream chunks and roll back in-flight pull accounting on pull failure (consumer and relay), preventing credit-window stalls.
+- Clear the Socket Event Trigger `reconnecting` flag on fatal reconnect paths so later disconnects are not ignored.
+- Limit Client/User Access transient HTTP retries to safe list/get operations; mutations (approve/revoke/set-token/request-access) are no longer blind-retried on 503/timeout.
+- Map n8n HTTP timeouts / connection aborts to `PlugTimeoutError` so REST transient retries match documented behavior.
+- Parse `Retry-After` HTTP-date values and cap retry delays at 60 seconds.
+- Treat RPC `-32013` rate limits as retryable even when the agent sets `data.retryable: false`.
+- Align consumer/relay `app:error` retryable codes with custom-event sessions (idle timeout, init failed, room join).
+- Trim PayloadFrame HMAC `key_id` on encode to match verify-side trimming.
+
+### Changed
+
+- Documented Socket typeVersion 2 (`agents:command`) vs relay fallback, hub contract paths, capability-cache key (`namespaceUrl`), PayloadFrame `always` + 512 KiB gzip input cap, and Access/SQL retry safety notes.
+- Updated architecture rule to describe both `/consumers` command paths (`agents:command` and `relay:*`).
+- GitHub Actions now repairs Linux optional native bindings before running `npm run verify`.
+
 ### Documentation
 
 - Reorganized `docs/socket`: slimmer `examples.md` (canonical JSON under `docs/socket/examples/`), cross-links between guides, optional glossary, post-import checklist, and automated relative link verification (`npm run verify:doc-links`).
@@ -17,10 +37,6 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 - Repository automation with CI, contribution templates, CODEOWNERS, and security guidance.
 - Changesets-based version control, release workflow, and versioning documentation.
 - Compatibility aliases for legacy Plug credential names: `plugDatabaseApi`, `plugDatabaseAdvancedApi`, `plugDatabaseClientApi`, and `plugDatabaseUserApi` now extend `plugDatabaseAccountApi`.
-
-### Changed
-
-- GitHub Actions now repairs Linux optional native bindings before running `npm run verify`.
 
 ## [0.1.0] - 2026-05-01
 

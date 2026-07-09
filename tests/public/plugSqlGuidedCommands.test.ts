@@ -398,6 +398,106 @@ describe("plugSqlGuidedCommands", () => {
     expect(built.command.params?.options?.prefer_db_streaming).toBeUndefined();
   });
 
+  it("omits relay fastPath when prefer_db_streaming is enabled on typeVersion 1", () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "client@example.com",
+        password: "secret",
+        baseUrl: "https://plug-server.example.com/api/v1",
+      },
+      parameters: {
+        channel: "socket",
+        sql: "SELECT * FROM Cliente",
+        namedParamsJson: "",
+        sqlOptions: {
+          preferDbStreaming: true,
+        },
+        socketOptions: {
+          fastPath: true,
+        },
+      },
+      responses: [],
+      nodeTypeVersion: 1,
+    });
+
+    const built = finalizeBuiltCommandRequest(
+      buildGuidedSqlCommand(context, 0, executionContext),
+      context,
+      0,
+      { supportsSocket: true },
+      "executeSql",
+    );
+
+    expect(built.command.params?.options).toMatchObject({
+      prefer_db_streaming: true,
+    });
+    expect(built.fastPath).toBeUndefined();
+  });
+
+  it("keeps relay fastPath default on typeVersion 1 for non-streaming SQL", () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "client@example.com",
+        password: "secret",
+        baseUrl: "https://plug-server.example.com/api/v1",
+      },
+      parameters: {
+        channel: "socket",
+        sql: "SELECT TOP 1 * FROM Cliente",
+        namedParamsJson: "",
+        sqlOptions: {
+          autoPerformanceHints: false,
+        },
+      },
+      responses: [],
+      nodeTypeVersion: 1,
+    });
+
+    const built = finalizeBuiltCommandRequest(
+      buildGuidedSqlCommand(context, 0, executionContext),
+      context,
+      0,
+      { supportsSocket: true },
+      "executeSql",
+    );
+
+    expect(built.fastPath).toBe(true);
+  });
+
+  it("omits relay fastPath when multi_result is enabled even if Socket Options request it", () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "client@example.com",
+        password: "secret",
+        baseUrl: "https://plug-server.example.com/api/v1",
+      },
+      parameters: {
+        channel: "socket",
+        sql: "SELECT * FROM Cliente",
+        namedParamsJson: "",
+        sqlOptions: {
+          multiResult: true,
+          autoPerformanceHints: false,
+        },
+        socketOptions: {
+          fastPath: true,
+        },
+      },
+      responses: [],
+      nodeTypeVersion: 1,
+    });
+
+    const built = finalizeBuiltCommandRequest(
+      buildGuidedSqlCommand(context, 0, executionContext),
+      context,
+      0,
+      { supportsSocket: true },
+      "executeSql",
+    );
+
+    expect(built.fastPath).toBeUndefined();
+  });
+
   it("rejects bulk insert above hub row limits", () => {
     const rows = Array.from({ length: plugBulkInsertMaxRows + 1 }, (_, index) => [index]);
     const context = createMockExecuteContext({

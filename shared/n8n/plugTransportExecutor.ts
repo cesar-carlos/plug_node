@@ -162,6 +162,7 @@ export const executeBuiltCommandWithRetry = async (input: {
           operation: builtRequest.operation,
           error,
           attemptNumber,
+          channel: builtRequest.channel,
         })
       ) {
         throw error;

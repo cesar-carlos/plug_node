@@ -6,14 +6,14 @@ This document summarizes how the `n8n-nodes-plug-database` package aligns with t
 
 When working side-by-side with `plug_server`, read these first:
 
-| Topic                              | Server doc                                           |
-| ---------------------------------- | ---------------------------------------------------- |
-| REST bridge and JSON-RPC commands  | `plug_server/docs/api_rest_bridge.md`                |
-| Client / User / Agent access rules | `plug_server/docs/client_agent_business_rules.md`    |
-| Relay `relay:*` on `/consumers`    | `plug_server/docs/socket_relay_protocol.md`          |
-| Consumer SDK and channel choice    | `plug_server/docs/socket_client_sdk.md`              |
-| Rate limits and quotas             | `plug_server/docs/limits/limites_acesso_e_quotas.md` |
-| Hub ↔ agent sync checklist         | `plug_server/docs/communication_sync_plug_agente.md` |
+| Topic                              | Server doc                                                      |
+| ---------------------------------- | --------------------------------------------------------------- |
+| REST bridge and JSON-RPC commands  | `plug_server/docs/api/api_rest_bridge.md`                       |
+| Client / User / Agent access rules | `plug_server/docs/api/client_agent_business_rules.md`           |
+| Relay `relay:*` on `/consumers`    | `plug_server/docs/socket/socket_relay_protocol.md`              |
+| Consumer SDK and channel choice    | `plug_server/docs/socket/socket_client_sdk.md`                  |
+| Rate limits and quotas             | `plug_server/docs/limits/limites_acesso_e_quotas.md`            |
+| Hub ↔ agent sync checklist         | `plug_server/docs/plug_agente/communication_sync_plug_agente.md` |
 
 OpenAPI on a running hub: `GET /docs` and `GET /docs.json` under `/api/v1`.
 
@@ -27,7 +27,7 @@ REST is the channel for auth, catalog, and CRUD. Command execution can use:
 | `agents:command` on `/consumers` | `Channel = Socket`, node **typeVersion 2** (default) | Progressive chunks via `agents:command_stream_*`     |
 | `relay:*` on `/consumers`        | Socket **typeVersion 1** or fallback                 | Conversation-scoped; `client_request_id` idempotency |
 
-The node prefers `agents:command` for Socket on typeVersion 2. Single-command flows may fall back to relay when the server does not correlate responses.
+The node prefers `agents:command` for Socket on typeVersion 2. Relay fallback runs only when the **capability probe** fails (before the real command is emitted). Timeouts after `agents:command` has been sent are **not** retried on relay, to avoid double-execution on the hub.
 
 ## Behaviors that affect n8n workflows
 
@@ -78,7 +78,7 @@ Cache login tokens in long-running workflows (see server limits doc).
 | `options.prefer_db_streaming`          | Prefer DB Streaming (SQL options) + Auto Performance Hints on Socket         |
 | `options.execution_mode`               | Managed / Preserve                                                           |
 | `options.multi_result`                 | Multi Result                                                                 |
-| `fastPath` (relay)                     | Socket Options → Relay Fast Path (default on typeVersion 1); unary and batch |
+| `fastPath` (relay)                     | Socket Options → Relay Fast Path (default on typeVersion 1); auto-omitted for streaming-capable commands |
 | `requestServerTimings`                 | Socket Options; hub phases in `__plug.transport.serverTimings`               |
 | `meta.agent_phases` (agent sub-phases) | Parsed when hub forwards nested timings; `agentPhases` in metadata           |
 | `clientRequestIdEcho` (extension)      | **Gap** — hub/agent handshake only; node uses JSON-RPC `id` as today         |

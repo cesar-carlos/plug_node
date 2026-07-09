@@ -2,10 +2,20 @@ import { PlugError } from "../contracts/errors";
 import { createSocketApplicationError, createSocketConnectError } from "./socketErrors";
 import { createSocketControlError } from "./socketControlErrors";
 
+const sharedSocketAppErrorRetryableCodes = [
+  "CONSUMER_SOCKET_INITIALIZATION_FAILED",
+  "CONSUMER_IDLE_TIMEOUT",
+  "ROOM_JOIN_FAILED",
+  "SOCKET_APP_ERROR",
+] as const;
+
 export const createRelaySocketAppError = (payload: unknown): PlugError =>
   createSocketApplicationError(payload, {
     refreshDescription:
       "The Plug session will be refreshed before retrying the socket operation.",
+    namespaceDeprecatedDescription:
+      "Use the /consumers namespace for Plug Database socket commands.",
+    retryableCodes: sharedSocketAppErrorRetryableCodes,
   });
 
 export const createRelayConnectError = (payload: unknown): PlugError =>

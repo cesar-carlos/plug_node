@@ -376,10 +376,42 @@ const resolveRequestServerTimings = (
   return resolveSocketRequestServerTimings(context, itemIndex);
 };
 
+/**
+ * Hub rejects `fastPath` on streaming-capable methods (prefer_db_streaming,
+ * multi_result, sql.executeBatch). See plug_server socket_client_sdk.md.
+ */
+const isStreamingCapableSqlCommand = (command: RpcSingleCommand): boolean => {
+  if (command.method === "sql.executeBatch") {
+    return true;
+  }
+
+  if (command.method !== "sql.execute") {
+    return false;
+  }
+
+  const options = command.params.options;
+  return options?.prefer_db_streaming === true || options?.multi_result === true;
+};
+
+const commandIncompatibleWithRelayFastPath = (
+  command: BuiltCommandRequest["command"],
+): boolean => {
+  if (Array.isArray(command)) {
+    return command.some(isStreamingCapableSqlCommand);
+  }
+
+  return isStreamingCapableSqlCommand(command);
+};
+
 const resolveSocketFastPath = (
   context: IExecuteFunctions,
   itemIndex: number,
+  command: BuiltCommandRequest["command"],
 ): boolean | undefined => {
+  if (commandIncompatibleWithRelayFastPath(command)) {
+    return undefined;
+  }
+
   const socketOptions = toCollection(context, "socketOptions", itemIndex);
   if ("fastPath" in socketOptions) {
     const enabled = toOptionalBoolean(socketOptions.fastPath);
@@ -464,35 +496,35 @@ export const finalizeBuiltCommandRequest = (
     ...(resolveRequestServerTimings(context, itemIndex, resolvedOperation, channel)
       ? { requestServerTimings: true as const }
       : {}),
-    ...(channel === "socket" && config.supportsSocket
-      ? (() => {
-          const streamPullWindowSize = resolveSocketStreamPullWindowSize(
-            context,
-            itemIndex,
-          );
-          const fastPath = resolveSocketFastPath(context, itemIndex);
-          return {
-            socketImplementation: resolveSocketImplementation(context),
-            payloadFrameCompression: "default" as const,
-            bufferLimits: resolveSocketBufferLimits(context, itemIndex),
-            ...(streamPullWindowSize !== undefined ? { streamPullWindowSize } : {}),
-            ...(fastPath === true ? { fastPath: true as const } : {}),
-          };
-        })()
-      : {}),
     responseMode:
       resolvedOperation === "validateContext"
         ? "aggregatedJson"
         : getPlugResponseMode(context, itemIndex),
   };
 
-  return applySocketSqlAutoPerformanceHints(
+  const withHints = applySocketSqlAutoPerformanceHints(
     withChannel,
     context,
     itemIndex,
     withChannel.channel,
     resolvedOperation,
   );
+
+  if (channel !== "socket" || !config.supportsSocket) {
+    return withHints;
+  }
+
+  const streamPullWindowSize = resolveSocketStreamPullWindowSize(context, itemIndex);
+  const fastPath = resolveSocketFastPath(context, itemIndex, withHints.command);
+
+  return {
+    ...withHints,
+    socketImplementation: resolveSocketImplementation(context),
+    payloadFrameCompression: "default" as const,
+    bufferLimits: resolveSocketBufferLimits(context, itemIndex),
+    ...(streamPullWindowSize !== undefined ? { streamPullWindowSize } : {}),
+    ...(fastPath === true ? { fastPath: true as const } : {}),
+  };
 };
 
 export const buildBuiltCommandRequest = (

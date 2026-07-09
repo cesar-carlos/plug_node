@@ -23,8 +23,24 @@ const parseRetryAfterSeconds = (value: string | undefined): number | undefined =
     return undefined;
   }
 
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    return undefined;
+  }
+
+  const parsed = Number(trimmed);
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return parsed;
+  }
+
+  // RFC 7231 HTTP-date form (e.g. Wed, 09 Jul 2026 21:00:00 GMT)
+  const targetTimestamp = Date.parse(trimmed);
+  if (!Number.isFinite(targetTimestamp)) {
+    return undefined;
+  }
+
+  const deltaMs = targetTimestamp - Date.now();
+  return deltaMs > 0 ? Math.max(1, Math.ceil(deltaMs / 1000)) : 1;
 };
 
 const parseResetAtToSeconds = (value: unknown): number | undefined => {
