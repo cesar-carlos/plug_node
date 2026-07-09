@@ -1,6 +1,7 @@
 import type { IExecuteFunctions } from "n8n-workflow";
 
 import type { SystemPromptConfig } from "../../generated/shared/mcp/contracts";
+import { filterForbiddenCapabilityNames } from "../../generated/shared/mcp/forbiddenCapabilities";
 import { parseOptionalJsonArray } from "../../generated/shared/utils/json";
 
 const normalizeJsonParameter = (value: unknown, fallback = ""): string => {
@@ -15,13 +16,31 @@ const normalizeJsonParameter = (value: unknown, fallback = ""): string => {
   return JSON.stringify(value);
 };
 
+const normalizeMaxToolCallsPerTurn = (value: unknown): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 3;
+  }
+
+  const truncated = Math.trunc(parsed);
+  if (truncated < 1) {
+    return 1;
+  }
+
+  if (truncated > 20) {
+    return 20;
+  }
+
+  return truncated;
+};
+
 export const readSystemPromptConfig = (
   context: IExecuteFunctions,
   itemIndex = 0,
 ): SystemPromptConfig => ({
   identity: String(context.getNodeParameter("identity", itemIndex, "")),
   scope: String(context.getNodeParameter("scope", itemIndex, "")),
-  maxToolCallsPerTurn: Number(
+  maxToolCallsPerTurn: normalizeMaxToolCallsPerTurn(
     context.getNodeParameter("maxToolCallsPerTurn", itemIndex, 3),
   ),
   sensitiveDataRules: String(
@@ -44,5 +63,7 @@ export const readForbiddenCapabilityNames = (
       normalizeJsonParameter(rawValue, "[]"),
       "Forbidden Capability Names JSON",
     ) ?? [];
-  return entries.filter((entry): entry is string => typeof entry === "string");
+  return filterForbiddenCapabilityNames(
+    entries.filter((entry): entry is string => typeof entry === "string"),
+  );
 };

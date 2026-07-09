@@ -1,35 +1,37 @@
-# Plug MCP Hub — Planejamento
+# Plug MCP Hub
 
-Esta pasta documenta o levantamento, objetivos e planejamento de implementação do **Plug MCP Hub**: a camada que expõe nós Plug como capacidades de negócio consumíveis por agentes de IA.
+Esta pasta documenta o **Plug MCP Hub**: a camada que expõe nós Plug como capacidades de negócio consumíveis por agentes de IA.
 
-## Contexto
+## Status da implementação
 
-O `plug_node` já entrega execução SQL, tools, Socket e acesso via REST ao `plug_server`. O que falta é a **camada semântica** entre "nó técnico de SQL" e "capability de negócio para IA" — de forma que quem constrói o fluxo não precise repetir configuração em cada workflow e a IA receba um catálogo estruturado, seguro e governado.
+| Fase | Status | Notas |
+| ---- | ------ | ----- |
+| Proto-V1 (`usableAsTool`) | Disponível | Sem governance centralizada |
+| V1 (MCP Server + AI Hub) | **Implementado (parcial)** | Registry JSON inline; SQL + Tools; governance básica |
+| V2 / V3 | Planejado | Ver [roadmap.md](./roadmap.md) |
 
 ## Documentos
 
-| Documento                                    | Conteúdo                                            |
-| -------------------------------------------- | --------------------------------------------------- |
-| [overview.md](./overview.md)                 | Problema, visão, conceitos principais               |
-| [architecture.md](./architecture.md)         | Camadas, componentes e responsabilidades            |
-| [capability-nodes.md](./capability-nodes.md) | Como modelar nós Plug como capabilities             |
-| [ai-hub-rules.md](./ai-hub-rules.md)         | Regras de comportamento, guardrails e system prompt |
-| [roadmap.md](./roadmap.md)                   | Fases de implementação V1, V2 e V3                  |
+| Documento | Conteúdo |
+| --------- | -------- |
+| [overview.md](./overview.md) | Problema, visão, conceitos principais |
+| [architecture.md](./architecture.md) | Camadas, componentes e responsabilidades |
+| [capability-nodes.md](./capability-nodes.md) | Como modelar capabilities (SQL base + params) |
+| [ai-hub-rules.md](./ai-hub-rules.md) | Regras de comportamento, guardrails e system prompt |
+| [roadmap.md](./roadmap.md) | Fases V1, V2 e V3 |
 
 ## Relação com o pacote atual
 
-O MCP Hub **não substitui** o `Plug Database`. Ele adiciona a camada de orquestração semântica acima dos nós existentes:
+O MCP Hub **não substitui** o `Plug Database`. Ele adiciona a camada de orquestração semântica acima do transporte existente:
 
 ```
-IA
+IA / AI Agent
  ↓
-Plug MCP Hub  ←  este planejamento
+Plug AI Hub (system prompt + limites)  +  Plug MCP Server (tools/list | tools/call)
  ↓
-Plug Database (plug_node)
+shared/mcp + shared/n8n/mcpCapabilityExecution
  ↓
-plug_server hub
- ↓
-Agente ERP
+plug_server hub → Agente ERP
 ```
 
-Nenhum contrato de transporte, auth ou validação existente é alterado. O hub MCP delega toda execução aos nós Plug já testados e publicados.
+Na V1, as capabilities são definidas em `capabilityDefinitionsJson` no nó **Plug MCP Server** (SQL embutido ou Tools). A execução reutiliza o stack Plug (auth, REST/Socket, guided SQL). Nós filhos no canvas como providers ficam para evolução futura.

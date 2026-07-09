@@ -18,7 +18,7 @@ const capabilityDefinitionsProperty: INodeProperties = {
   default: "[]",
   required: true,
   description:
-    "Array of capability definitions with semantic contract, governance, and SQL execution config.",
+    "Array of capability definitions with semantic contract, governance, and SQL/Tools execution config. V1 uses inline definitions (not child-node wiring).",
 };
 
 const buildOperationProperties = (): INodeProperties[] => [
@@ -91,6 +91,40 @@ const buildOperationProperties = (): INodeProperties[] => [
     description:
       "Conversation session identifier for audit correlation. Leave empty to auto-generate.",
   },
+  {
+    displayName: "Forbidden Capability Names JSON",
+    name: "forbiddenCapabilityNamesJson",
+    type: "json",
+    default: "[]",
+    description:
+      "Capability names excluded from tools/list and rejected on tools/call for this agent profile. Wire from Plug AI Hub when available.",
+  },
+  {
+    displayName: "Max Tool Calls Per Turn",
+    name: "maxToolCallsPerTurn",
+    type: "number",
+    default: 0,
+    displayOptions: {
+      show: {
+        operation: ["call"],
+      },
+    },
+    description:
+      "Optional hard limit for tool calls in the current turn. Set 0 to disable. Wire from Plug AI Hub when available.",
+  },
+  {
+    displayName: "Tool Call Count",
+    name: "toolCallCount",
+    type: "number",
+    default: 0,
+    displayOptions: {
+      show: {
+        operation: ["call"],
+      },
+    },
+    description:
+      "Current tool-call count for this turn (including this call). Used with Max Tool Calls Per Turn.",
+  },
   capabilityDefinitionsProperty,
   {
     displayName: "Agent ID",
@@ -103,6 +137,9 @@ const buildOperationProperties = (): INodeProperties[] => [
     displayName: "Client Token",
     name: "clientToken",
     type: "string",
+    typeOptions: {
+      password: true,
+    },
     default: "",
     description: "Optional client token override for capability execution.",
   },

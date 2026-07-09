@@ -36,7 +36,12 @@ const buildAiHubProperties = (): INodeProperties[] => [
     name: "maxToolCallsPerTurn",
     type: "number",
     default: 3,
-    description: "Maximum number of tool calls allowed for each user message.",
+    typeOptions: {
+      minValue: 1,
+      maxValue: 20,
+    },
+    description:
+      "Maximum number of tool calls allowed for each user message (1–20). Wire this value into Plug MCP Server for hard enforcement.",
   },
   {
     displayName: "Sensitive Data Rules",
@@ -66,7 +71,7 @@ const buildAiHubProperties = (): INodeProperties[] => [
     type: "json",
     default: "[]",
     description:
-      "Capability names that must never be exposed to the agent, such as administration tools.",
+      "Capability names that must never be exposed to the agent. Wire this array into Plug MCP Server Forbidden Capability Names JSON.",
   },
 ];
 

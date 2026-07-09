@@ -85,4 +85,14 @@ describe("mcp registry", () => {
       ]),
     ).toThrow("Duplicate capability name: consultar_cliente");
   });
+
+  it("should omit forbidden capability names from tools/list", () => {
+    const registry = buildRegistry([
+      sampleCapability("consultar_cliente"),
+      sampleCapability("saldo_estoque"),
+    ]);
+
+    const tools = listCapabilities(registry, ["consultar_cliente"]);
+    expect(tools.map((tool) => tool.name)).toEqual(["saldo_estoque"]);
+  });
 });

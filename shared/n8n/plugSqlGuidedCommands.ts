@@ -103,6 +103,42 @@ const validateSafeMutationSql = (sql: string, fieldLabel: string): void => {
   );
 };
 
+const mutatingSqlLeadPattern =
+  /^(insert|update|delete|merge|drop|alter|create|truncate|exec|execute|grant|revoke)\b/;
+
+/**
+ * MCP capability SQL must be read-only. Rejects any statement that is not a
+ * leading SELECT / WITH ... SELECT after comments and string literals are stripped.
+ */
+export const assertSqlIsReadOnly = (sql: string, fieldLabel: string): void => {
+  const cleanStatements = stripSqlCommentsAndStrings(sql)
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter((statement) => statement !== "");
+
+  if (cleanStatements.length === 0) {
+    throw new PlugValidationError(`${fieldLabel} must contain a SELECT statement.`);
+  }
+
+  for (const statement of cleanStatements) {
+    const normalized = statement.replace(/\s+/g, " ").trim().toLowerCase();
+    if (mutatingSqlLeadPattern.test(normalized)) {
+      throw new PlugValidationError(
+        `${fieldLabel} must be read-only SELECT. Mutating or DDL statements are not allowed for MCP capabilities.`,
+      );
+    }
+
+    const isSelect = normalized.startsWith("select");
+    const isCteSelect =
+      normalized.startsWith("with ") && /\bselect\b/.test(normalized);
+    if (!isSelect && !isCteSelect) {
+      throw new PlugValidationError(
+        `${fieldLabel} must be a SELECT (or WITH ... SELECT) statement.`,
+      );
+    }
+  }
+};
+
 export const validateGuidedSql = (
   sql: string,
   params: JsonObject | undefined,

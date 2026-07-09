@@ -1,12 +1,48 @@
 import type { CapabilityDefinition, GovernanceResult } from "./contracts";
 
-const isActiveFilter = (value: unknown): boolean =>
-  value !== null && value !== undefined && value !== "";
+const isActiveFilter = (value: unknown): boolean => {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim() !== "";
+  }
+
+  if (typeof value === "boolean") {
+    // Boolean filters are only active when explicitly true.
+    return value === true;
+  }
+
+  return true;
+};
 
 const hasActiveFilter = (
   params: Readonly<Record<string, unknown>>,
   filterNames: readonly string[],
 ): boolean => filterNames.some((name) => isActiveFilter(params[name]));
+
+export const resolveEffectiveMaxRows = (
+  capability: CapabilityDefinition,
+  params: Readonly<Record<string, unknown>>,
+): number => {
+  const governanceMax = capability.governance.maxRows;
+  const executionMax =
+    capability.executionConfig.providerType === "sql"
+      ? capability.executionConfig.maxRows
+      : governanceMax;
+
+  const limitParam = params.limite ?? params.limit;
+  let requested = Math.min(governanceMax, executionMax);
+  if (limitParam !== null && limitParam !== undefined) {
+    const limitValue = typeof limitParam === "number" ? limitParam : Number(limitParam);
+    if (Number.isFinite(limitValue) && limitValue > 0) {
+      requested = Math.min(requested, Math.trunc(limitValue));
+    }
+  }
+
+  return Math.max(1, requested);
+};
 
 export const enforceGovernance = (
   capability: CapabilityDefinition,

@@ -1,4 +1,3 @@
-import { PlugError } from "../contracts/errors";
 import { isRecord } from "../utils/json";
 import type { McpCallResponse } from "./contracts";
 
@@ -85,34 +84,3 @@ export const buildMcpError = (input: {
   },
   isError: true,
 });
-
-export const mapThrownErrorToFriendlyMessage = (error: unknown): string => {
-  if (error instanceof PlugError) {
-    if (error.code === "PLUG_VALIDATION_ERROR") {
-      return "The provided parameters are not valid for this capability.";
-    }
-    if (error.code === "PLUG_TIMEOUT") {
-      return "The query took longer than expected. Please try again.";
-    }
-    if (error.statusCode === 403) {
-      return "Access is not authorized for this capability.";
-    }
-    if (error.statusCode === 429) {
-      return "Too many requests in sequence. Please wait a moment.";
-    }
-    const reason = error.details?.reason;
-    if (reason === "agent_offline" || reason === "agent_disconnected_at_dispatch") {
-      return "The ERP system is temporarily unavailable. Please try again shortly.";
-    }
-    if (reason === "denied_resources") {
-      return "This capability is not authorized for the current access profile.";
-    }
-    return error.message;
-  }
-
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "An unexpected error occurred while executing the capability.";
-};

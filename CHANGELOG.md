@@ -8,6 +8,12 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 ### Fixed
 
+- Harden Plug MCP Hub: enforce SELECT-only SQL capabilities, unify effective `maxRows` for hub + truncation metadata, filter forbidden/admin capabilities on `tools/list` and `tools/call`, map unmapped Plug errors to generic friendly messages (no technical leak), treat boolean `false` / whitespace as inactive governance filters, and return MCP error envelopes (with audit) for forbidden capabilities and tool-call budget overruns.
+- Enable Tools provider execution in MCP Server V1 via shared Plug Tools dispatch (with single-call input isolation).
+- Clamp AI Hub `maxToolCallsPerTurn` to 1–20 and wire forbidden capability names / tool-call budget fields on MCP Server for workflow enforcement.
+
+### Fixed (socket / transport)
+
 - Stop falling back from timed-out `agents:command` to relay (and stop transient-retrying Socket command timeouts) to avoid double-execution when the hub may still complete the original request.
 - Omit relay `fastPath` automatically for streaming-capable commands (`prefer_db_streaming`, `multi_result`, `sql.executeBatch`) so the hub does not reject the combination.
 - Treat socket auth codes such as `TOKEN_EXPIRED` / `INVALID_TOKEN` as refreshable even when `statusCode` is omitted on `app:error` / `connect_error`.
@@ -22,6 +28,7 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 ### Changed
 
+- Align `docs/mcp-hub` with the implemented V1 model (inline `capabilityDefinitionsJson`, shared transport execution, audit on node output, Tools support).
 - Documented Socket typeVersion 2 (`agents:command`) vs relay fallback, hub contract paths, capability-cache key (`namespaceUrl`), PayloadFrame `always` + 512 KiB gzip input cap, and Access/SQL retry safety notes.
 - Updated architecture rule to describe both `/consumers` command paths (`agents:command` and `relay:*`).
 - GitHub Actions now repairs Linux optional native bindings before running `npm run verify`.

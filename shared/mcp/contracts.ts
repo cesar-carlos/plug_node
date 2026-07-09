@@ -23,16 +23,12 @@ export interface SqlCapabilityExecutionConfig {
   readonly sql: string;
   readonly channel: "rest" | "socket";
   readonly maxRows: number;
-  readonly agentId?: string;
-  readonly clientToken?: string;
 }
 
 export interface ToolsCapabilityExecutionConfig {
   readonly providerType: "tools";
   readonly operation: string;
   readonly staticParams?: Readonly<Record<string, unknown>>;
-  readonly agentId?: string;
-  readonly clientToken?: string;
 }
 
 export type CapabilityExecutionConfig =

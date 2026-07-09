@@ -36,4 +36,29 @@ describe("mcp auditLogger", () => {
     });
     expect(entry.timestamp).toBe(new Date(1_000).toISOString());
   });
+
+  it("should redact nested sensitive keys", () => {
+    const entry = buildAuditEntry({
+      capability: "consultar_cliente",
+      params: {
+        nested: {
+          access_token: "secret",
+          nome: "Joao",
+        },
+      },
+      context: {
+        userId: "user-1",
+        sessionId: "session-1",
+      },
+      startedAt: 1_000,
+      finishedAt: 1_100,
+    });
+
+    expect(entry.params).toEqual({
+      nested: {
+        access_token: "[redacted]",
+        nome: "Joao",
+      },
+    });
+  });
 });

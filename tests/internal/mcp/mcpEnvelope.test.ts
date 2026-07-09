@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { PlugTimeoutError, PlugValidationError } from "../../../shared/contracts/errors";
 import {
   buildMcpCallResponse,
   buildMcpError,
   extractPlugExecutionResult,
-  mapThrownErrorToFriendlyMessage,
 } from "../../../shared/mcp/envelope";
 import { mapPlugErrorToFriendlyMessage } from "../../../shared/mcp/errorMapper";
+import { PlugTimeoutError, PlugValidationError } from "../../../shared/contracts/errors";
 
 describe("mcp envelope", () => {
   it("should detect empty results from plug metadata", () => {
@@ -60,7 +59,7 @@ describe("mcp envelope", () => {
   });
 });
 
-describe("mcp errorMapper", () => {
+describe("mcp errorMapper via envelope consumers", () => {
   it("should map plug validation errors to friendly messages", () => {
     expect(
       mapPlugErrorToFriendlyMessage(new PlugValidationError("Named param missing")),
@@ -79,7 +78,5 @@ describe("mcp errorMapper", () => {
         }),
       ),
     ).toBe("The ERP system is temporarily unavailable. Please try again shortly.");
-
-    expect(mapThrownErrorToFriendlyMessage(new Error("Unexpected"))).toBe("Unexpected");
   });
 });

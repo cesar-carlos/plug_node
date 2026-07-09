@@ -38,32 +38,34 @@ O AI Hub **não executa SQL nem chama o hub** diretamente. Ele delega ao MCP Ser
 
 ### Plug MCP Server (Camada 2)
 
-Nó n8n que implementa o protocolo MCP e mantém o registry de capabilities.
+Nó n8n que implementa o contrato MCP-style (`tools/list` / `tools/call`) e mantém o registry de capabilities.
 
 Responsabilidades:
 
 - Registrar as capabilities disponíveis no fluxo (`tools/list`)
 - Executar a capability solicitada pela IA (`tools/call`)
-- Validar parâmetros antes de delegar ao nó de consulta
-- Aplicar governance: filtros obrigatórios, limites de registros, campos proibidos
+- Validar parâmetros antes de executar
+- Aplicar governance: filtros obrigatórios, limites de registros, mascaramento de colunas
+- Bloquear capabilities de administração (`clientAccess` / `userAccess`) e nomes proibidos por perfil
+- Opcionalmente enforcer `maxToolCallsPerTurn` quando o workflow informar a contagem do turno
 - Registrar auditoria de cada execução: capability, parâmetros, usuário, duração, resultado
-- Expor resources estáticos: glossário ERP, políticas, manual de operação
+- Expor resources estáticos: glossário ERP, políticas, manual de operação (**V2**)
 
-O MCP Server **não sabe SQL** e **não acessa o banco diretamente**. Ele delega para os nós de consulta.
+Na V1 o registry vem de `capabilityDefinitionsJson` (definições inline). O MCP Server **não monta SQL dinamicamente a partir da IA** — o SQL base (ou a operação Tools) é fixo na definição. A execução passa por `shared/n8n/mcpCapabilityExecution`, que reutiliza auth/transporte Plug.
 
-### Nós de Consulta Plug Database (Camada 3)
+### Providers de capability (Camada 3) — V1
 
-Instâncias pré-configuradas de `Plug Database` ligadas ao MCP Server como providers de capability.
+Cada entrada do registry representa uma capability de negócio. Contém:
 
-Cada nó representa uma única capability de negócio. Contém:
+- Contrato semântico (`whenToUse` / `whenNotToUse` / parâmetros)
+- Governance (`maxRows`, filtros obrigatórios, `maskedColumns`)
+- `executionConfig`:
+  - **SQL:** SQL base fixo com named params, channel REST/Socket, `maxRows`
+  - **Tools:** operação Plug Tools (ex.: `validateCpfCnpj`, `publishSocketEvent`) + `staticParams` opcionais
 
-- SQL base fixo com named params (`:codCliente`, `:limite`, etc.)
-- Resource, Operation e Channel configurados pelo autor
-- Client token e Agent ID da credencial
-- Limite de registros (`Max Rows`, `TOP` no SQL)
-- Nome de negócio descritivo no canvas
+A IA nunca vê SQL, tokens ou configuração interna. Vê apenas o contrato semântico publicado em `tools/list`.
 
-A IA nunca vê a configuração interna do nó. Vê apenas o contrato semântico publicado pelo MCP Server.
+> Nota: wiring de nós `Plug Database` filhos no canvas como providers permanece no roadmap; a V1 usa definições JSON no MCP Server.
 
 ### Infraestrutura existente (Camada 4)
 
@@ -94,15 +96,14 @@ Usuário pergunta: "Quais títulos vencidos tem o cliente João?"
 4. IA escolhe: consultar_cliente + contas_receber_vencidas
 5. IA chama tools/call: consultar_cliente { nomeCliente: "%João%" }
 6. MCP Server valida params
-7. MCP Server delega ao nó "Consultar Cliente"
-8. Nó executa SQL base com :nomeCliente
+7. MCP Server executa a capability SQL via shared transport
+8. SQL base roda com :nomeCliente (SELECT-only, guided params)
 9. plug_node → plug_server → ERP → retorna CodCliente: 42
 10. IA chama tools/call: contas_receber_vencidas { codCliente: 42, limite: 50 }
-11. MCP Server valida params
-12. MCP Server delega ao nó "Contas a Receber Vencidas"
-13. Nó executa SQL base com :codCliente, :limite
-14. Resultado volta para a IA
-15. IA formula resposta em linguagem natural
+11. MCP Server valida params + governance (maxRows unificado)
+12. MCP Server executa a capability
+13. Envelope `content` + `meta` (+ `audit` no output do nó) volta para o workflow
+14. IA formula resposta em linguagem natural
 ```
 
 ## Responsabilidades por camada — tabela
@@ -113,9 +114,10 @@ Usuário pergunta: "Quais títulos vencidos tem o cliente João?"
 | Regras de uso de ferramentas       | X      |            |                |                |
 | Listagem de capabilities           |        | X          |                |                |
 | Validação de parâmetros de negócio |        | X          |                |                |
-| Filtros obrigatórios               |        | X          | X              |                |
+| Filtros obrigatórios               |        | X          | X (SQL base)   |                |
 | Auditoria de execução              |        | X          |                |                |
-| SQL base e named params            |        |            | X              |                |
+| SQL base e named params            |        |            | X (definição)  |                |
+| SELECT-only / Tools allowlist      |        | X          | X              |                |
 | Limite de registros (MAX ROWS)     |        | X          | X              |                |
 | Autenticação no hub                |        |            |                | X              |
 | Rate limit e quotas                |        |            |                | X              |
@@ -188,10 +190,19 @@ Regras do envelope:
 - `content[0].text` contém os dados em JSON string ou mensagem amigável quando zero linhas
 - `meta.truncated: true` quando `rowCount === maxRows` — sinaliza à IA que há mais registros não retornados
 - `meta.emptyResult: true` quando `__plug.emptyResult` do nó — a IA informa ao usuário que não há registros
-- Erros do Plug chegam ao MCP Server como exceção; o MCP converte para `isError: true` com mensagem amigável
+- Erros do Plug chegam ao MCP Server como exceção; o MCP converte para `isError: true` com mensagem amigável (sem mensagens técnicas cruas)
 - Dados de credencial, tokens e campos internos do Plug nunca aparecem no `content`
+- O nó também emite `audit` no mesmo item de saída para o workflow; **não** encaminhe `audit` ao modelo — use apenas `content` + `meta` como contrato da IA
 
 A IA usa `meta.truncated` para oferecer ao usuário a opção de refinar o filtro quando o resultado foi cortado.
+
+### maxRows efetivo
+
+O limite enviado ao hub e usado em `meta.truncated` é:
+
+`min(governance.maxRows, executionConfig.maxRows, limite|limit informado pela IA)`
+
+Isso evita sinalização inconsistente de truncamento quando os dois `maxRows` da definição divergem.
 
 ## Propagação de contexto para auditoria
 

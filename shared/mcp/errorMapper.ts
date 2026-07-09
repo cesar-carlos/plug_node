@@ -1,8 +1,11 @@
 import { PlugError } from "../contracts/errors";
 import { isRecord } from "../utils/json";
 
+const GENERIC_UNEXPECTED_MESSAGE =
+  "An unexpected error occurred while executing the capability.";
+
 const HTTP_STATUS_MESSAGES: Readonly<Record<number, string>> = {
-  401: "Session expired. The query will be retried automatically.",
+  401: "Authentication failed for this capability. Check credentials or session and try again.",
   403: "Access is not authorized for this capability.",
   429: "Too many requests in sequence. Please wait a moment.",
 };
@@ -41,16 +44,28 @@ export const mapPlugErrorToFriendlyMessage = (error: unknown): string => {
       return PLUG_CODE_MESSAGES[error.code];
     }
 
-    return error.message;
+    return GENERIC_UNEXPECTED_MESSAGE;
   }
 
   if (error instanceof Error) {
-    return error.message;
+    const message = error.message.trim();
+    if (
+      message.startsWith("Capability ") ||
+      message.startsWith("At least one business filter") ||
+      message.startsWith("Result limit cannot exceed") ||
+      message.startsWith("Unknown parameter") ||
+      message.startsWith("Parameter ") ||
+      message.includes("tool calls per turn")
+    ) {
+      return message;
+    }
+
+    return GENERIC_UNEXPECTED_MESSAGE;
   }
 
   if (isRecord(error) && typeof error.message === "string") {
-    return error.message;
+    return GENERIC_UNEXPECTED_MESSAGE;
   }
 
-  return "An unexpected error occurred while executing the capability.";
+  return GENERIC_UNEXPECTED_MESSAGE;
 };

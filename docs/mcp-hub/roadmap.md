@@ -49,29 +49,34 @@ Proto-V1 é descartável. O aprendizado obtido informa a implementação do Plug
 
 **Objetivo:** IA usa capacidades de negócio reais via nós Plug, com governança básica e auditoria.
 
+**Status:** implementado no pacote (`PlugMcpServer`, `PlugAiHub`, `shared/mcp/*`). Providers V1 usam definições JSON inline no MCP Server (não wiring de nós filhos no canvas).
+
 ### Componentes
 
 **Nó: Plug MCP Server**
 
-- Registry de capabilities: lista de nós filhos conectados com seus contratos
-- Protocolo `tools/list`: retorna capabilities disponíveis com schema de parâmetros
-- Protocolo `tools/call`: recebe chamada da IA, valida params, delega ao nó filho, retorna resultado
+- Registry de capabilities via `capabilityDefinitionsJson`
+- Protocolo `tools/list`: retorna capabilities disponíveis com schema de parâmetros (omite admin + nomes proibidos)
+- Protocolo `tools/call`: valida params, aplica governance, executa SQL/Tools via shared transport, retorna envelope
 - Validação de parâmetros: tipo, obrigatoriedade, range de limite
+- SELECT-only para SQL; Tools via `executePlugToolsResource`
 - Recusa com filtro ausente: se a capability exige ao menos um filtro e nenhum foi passado
-- Log de auditoria: capability, params, usuário (quando disponível), timestamp, duração, resultado
-- Contrato de erro padronizado: mapeia erros do Plug para mensagens amigáveis
+- `maxRows` efetivo unificado (`governance` ∩ `executionConfig` ∩ `limite`)
+- Log de auditoria no output do nó: capability, params sanitizados, usuário, timestamp, duração, resultado
+- Contrato de erro padronizado: mapeia erros do Plug para mensagens amigáveis (sem leak técnico)
+- Enforcement opcional de `maxToolCallsPerTurn` quando o workflow informa a contagem
 
 **Nó: Plug AI Hub**
 
 - Configuração de system prompt com blocos fixos de identidade, regras e limitações
 - Campo de escopo configurável por instância
-- Limite de tool calls por turno
-- Conexão com o Plug MCP Server como fonte de capabilities
+- Limite de tool calls por turno (1–20) + `forbiddenCapabilityNames` para wiring no MCP Server
+- Não executa capabilities; emite configuração para o AI Agent / MCP Server
 
-**Capability nodes (providers V1)**
+**Capability providers V1**
 
-- `Plug Database > Resource = SQL > Execute SQL` com guided SQL
-- `Plug Database > Resource = Tools` para ações auxiliares (PDF, eventos, validações)
+- SQL: `executionConfig.providerType = "sql"` com guided SQL + SELECT-only
+- Tools: `executionConfig.providerType = "tools"` (ex.: validar CPF/CNPJ, publicar evento)
 
 ### Capabilities piloto
 
@@ -90,16 +95,17 @@ Implementar e validar as seguintes capabilities antes de abrir para produção:
 
 ### Critérios de conclusão da V1
 
-- [ ] Plug MCP Server implementado como nó n8n no pacote
-- [ ] `tools/list` retorna capabilities com schema correto
-- [ ] `tools/call` delega e retorna resultado normalizado
-- [ ] Validação de params rejeita antes de chamar o banco
-- [ ] Audit log registra toda execução
-- [ ] Capabilities piloto funcionais e testadas
-- [ ] System prompt template documentado e validado
-- [ ] Testado com: zero linhas, permissão negada, param faltando, agente offline
-- [ ] Nenhuma capability de administração exposta ao agente
-- [ ] Documentação de como criar novos capability nodes publicada
+- [x] Plug MCP Server implementado como nó n8n no pacote
+- [x] `tools/list` retorna capabilities com schema correto
+- [x] `tools/call` executa e retorna resultado normalizado (SQL + Tools)
+- [x] Validação de params rejeita antes de chamar o banco
+- [x] Audit log registra toda execução (campo `audit` no output do nó)
+- [ ] Capabilities piloto funcionais e testadas em produção
+- [x] System prompt template documentado e validado
+- [x] Testado com: param faltando, governance, forbidden admin, tools call, SQL call
+- [x] Nenhuma capability de administração exposta ao agente
+- [x] Documentação de como criar novos capability nodes publicada
+- [ ] Wiring automático AI Hub → MCP Server (hoje manual via expressões n8n)
 
 ### O que não entra na V1
 

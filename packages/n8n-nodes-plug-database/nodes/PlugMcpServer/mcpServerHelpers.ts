@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import type { IExecuteFunctions } from "n8n-workflow";
-import { NodeOperationError } from "n8n-workflow";
 
 import type {
   AuditContext,
@@ -10,7 +9,10 @@ import type {
   GovernanceConfig,
   ParamSchema,
 } from "../../generated/shared/mcp/contracts";
-import { FORBIDDEN_CAPABILITY_RESOURCES } from "../../generated/shared/mcp/contracts";
+import {
+  filterForbiddenCapabilityNames,
+  isCapabilityForbiddenForAgent,
+} from "../../generated/shared/mcp/forbiddenCapabilities";
 import {
   isRecord,
   parseOptionalJsonArray,
@@ -72,6 +74,10 @@ const parseGovernance = (value: unknown, fieldPath: string): GovernanceConfig =>
     throw new Error(`${fieldPath}.maxRows must be a positive number.`);
   }
 
+  if (value.maxRows > 1000) {
+    throw new Error(`${fieldPath}.maxRows must be at most 1000.`);
+  }
+
   return {
     maxRows: value.maxRows,
     ...(value.requireAtLeastOneFilter === true ? { requireAtLeastOneFilter: true } : {}),
@@ -115,12 +121,6 @@ const parseExecutionConfig = (
       sql: value.sql,
       channel,
       maxRows: value.maxRows,
-      ...(typeof value.agentId === "string" && value.agentId.trim() !== ""
-        ? { agentId: value.agentId }
-        : {}),
-      ...(typeof value.clientToken === "string" && value.clientToken.trim() !== ""
-        ? { clientToken: value.clientToken }
-        : {}),
     };
   }
 
@@ -133,12 +133,6 @@ const parseExecutionConfig = (
       providerType: "tools",
       operation: value.operation,
       ...(isRecord(value.staticParams) ? { staticParams: value.staticParams } : {}),
-      ...(typeof value.agentId === "string" && value.agentId.trim() !== ""
-        ? { agentId: value.agentId }
-        : {}),
-      ...(typeof value.clientToken === "string" && value.clientToken.trim() !== ""
-        ? { clientToken: value.clientToken }
-        : {}),
     };
   }
 
@@ -240,19 +234,31 @@ export const readAuditContext = (
   };
 };
 
-export const assertCapabilityAllowedForAgent = (
+export const readForbiddenCapabilityNames = (
   context: IExecuteFunctions,
+  itemIndex = 0,
+): string[] => {
+  const rawValue = context.getNodeParameter(
+    "forbiddenCapabilityNamesJson",
+    itemIndex,
+    "[]",
+  );
+  const entries =
+    parseOptionalJsonArray(
+      normalizeJsonParameter(rawValue, "[]"),
+      "Forbidden Capability Names JSON",
+    ) ?? [];
+  return filterForbiddenCapabilityNames(
+    entries.filter((entry): entry is string => typeof entry === "string"),
+  );
+};
+
+export const assertCapabilityAllowedForAgent = (
   capability: CapabilityDefinition,
 ): void => {
-  if (capability.executionConfig.providerType === "tools") {
-    const operation = capability.executionConfig.operation.toLowerCase();
-    for (const forbidden of FORBIDDEN_CAPABILITY_RESOURCES) {
-      if (operation.includes(forbidden.toLowerCase())) {
-        throw new NodeOperationError(
-          context.getNode(),
-          `Capability "${capability.name}" exposes a forbidden administration operation.`,
-        );
-      }
-    }
+  if (isCapabilityForbiddenForAgent(capability)) {
+    throw new Error(
+      `Capability "${capability.name}" exposes a forbidden administration operation.`,
+    );
   }
 };

@@ -137,10 +137,12 @@ Esses guardrails operam independentemente do prompt. A IA não pode contorná-lo
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Validação de tipo de parâmetro     | Rejeita antes de chamar o nó se tipo inválido                                                                  |
 | Filtro obrigatório                 | Recusa execução se capability exige ao menos um filtro e nenhum foi passado                                    |
-| Limite máximo de tool calls        | Recusa chamadas acima do limite configurado por turno                                                          |
+| Limite máximo de tool calls        | Recusa em `tools/call` quando `toolCallCount > maxToolCallsPerTurn` (wire do AI Hub)                            |
 | Mascaramento de colunas sensíveis  | Remove ou mascara campos antes de retornar à IA                                                                |
-| Log de auditoria                   | Registra: capability, params, usuário, timestamp, duração, resultado                                           |
-| Resultado truncado sinalizado      | Se `rowCount === maxRows`, adiciona `truncated: true` ao retorno para a IA saber que pode haver mais registros |
+| Log de auditoria                   | Registra: capability, params sanitizados, usuário, timestamp, duração, resultado                               |
+| Resultado truncado sinalizado      | Se `rowCount >= maxRows` efetivo, adiciona `truncated: true`                                                    |
+| SELECT-only                        | SQL de capability rejeitado se não for `SELECT` / `WITH ... SELECT`                                            |
+| Admin block                        | Nomes/operações `clientAccess` / `userAccess` omitidos de `tools/list` e rejeitados em `call`                  |
 | Prompt injection não vira execução | Parâmetros que chegam ao MCP são validados por tipo e range — texto livre não é passado ao SQL                 |
 
 ## Comportamento em erros Plug

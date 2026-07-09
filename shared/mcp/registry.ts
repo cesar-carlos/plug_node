@@ -1,4 +1,8 @@
 import type { CapabilityDefinition, ToolSchema } from "./contracts";
+import {
+  isCapabilityBlockedByNameList,
+  isCapabilityForbiddenForAgent,
+} from "./forbiddenCapabilities";
 
 export type CapabilityRegistry = ReadonlyMap<string, CapabilityDefinition>;
 
@@ -60,8 +64,17 @@ export const buildRegistry = (
   return registry;
 };
 
-export const listCapabilities = (registry: CapabilityRegistry): ToolSchema[] =>
-  [...registry.values()].map(toToolSchema);
+export const listCapabilities = (
+  registry: CapabilityRegistry,
+  forbiddenNames: readonly string[] = [],
+): ToolSchema[] =>
+  [...registry.values()]
+    .filter(
+      (capability) =>
+        !isCapabilityForbiddenForAgent(capability) &&
+        !isCapabilityBlockedByNameList(capability.name, forbiddenNames),
+    )
+    .map(toToolSchema);
 
 export const lookupCapability = (
   registry: CapabilityRegistry,

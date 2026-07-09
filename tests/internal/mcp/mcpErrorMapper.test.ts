@@ -51,12 +51,30 @@ describe("mcp errorMapper", () => {
         new PlugError("Too many requests", { code: "HTTP_TOO_MANY", statusCode: 429 }),
       ),
     ).toBe("Too many requests in sequence. Please wait a moment.");
+
+    expect(
+      mapPlugErrorToFriendlyMessage(
+        new PlugError("Unauthorized", { code: "HTTP_UNAUTHORIZED", statusCode: 401 }),
+      ),
+    ).toBe(
+      "Authentication failed for this capability. Check credentials or session and try again.",
+    );
+  });
+
+    it("should fall back to a generic friendly message for unmapped plug errors", () => {
+    expect(
+      mapPlugErrorToFriendlyMessage(
+        new PlugError("rpc internal failure xyz", { code: "PLUG_UNKNOWN" }),
+      ),
+    ).toBe("An unexpected error occurred while executing the capability.");
   });
 
   it("should fall back to generic error messages for unknown values", () => {
-    expect(mapPlugErrorToFriendlyMessage(new Error("Unexpected"))).toBe("Unexpected");
+    expect(mapPlugErrorToFriendlyMessage(new Error("Unexpected"))).toBe(
+      "An unexpected error occurred while executing the capability.",
+    );
     expect(mapPlugErrorToFriendlyMessage({ message: "Structured failure" })).toBe(
-      "Structured failure",
+      "An unexpected error occurred while executing the capability.",
     );
     expect(mapPlugErrorToFriendlyMessage(42)).toBe(
       "An unexpected error occurred while executing the capability.",

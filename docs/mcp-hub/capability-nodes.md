@@ -4,7 +4,9 @@ Este documento define como criar e configurar nós de consulta no workflow para 
 
 ## Princípio
 
-Um capability node é uma **instância pré-configurada** do `Plug Database` (ou outro nó) com propósito único. O autor do fluxo define tudo: SQL, tabelas, parâmetros, limites. A IA só enxerga o contrato semântico.
+Uma capability é um **contrato de negócio** com SQL base (ou operação Tools) fixo. Na V1 isso vive em `capabilityDefinitionsJson` no **Plug MCP Server**. O autor do fluxo define tudo: SQL, tabelas, parâmetros, limites. A IA só enxerga o contrato semântico.
+
+> Proto-V1 ainda pode usar instâncias `Plug Database` com `usableAsTool: true`. O MCP Server é o caminho governado.
 
 ```
 Autor define (fixo no nó):         IA controla (parâmetros):
