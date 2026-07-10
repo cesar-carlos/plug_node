@@ -103,7 +103,8 @@ const extractToolsRows = (
       continue;
     }
 
-    const { __plugTools: _toolsMeta, ...rest } = json;
+    const rest = { ...json };
+    delete rest.__plugTools;
     rows.push(rest);
   }
   return rows;
