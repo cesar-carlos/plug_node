@@ -1,7 +1,4 @@
-import {
-  FORBIDDEN_CAPABILITY_RESOURCES,
-  type CapabilityDefinition,
-} from "./contracts";
+import { FORBIDDEN_CAPABILITY_RESOURCES, type CapabilityDefinition } from "./contracts";
 
 const normalizeToken = (value: string): string =>
   value
@@ -51,10 +48,9 @@ export const isCapabilityForbiddenForAgent = (
   return false;
 };
 
-export const filterForbiddenCapabilityNames = (
-  names: readonly string[],
-): string[] =>
-  [...new Set(names.map((name) => name.trim()).filter((name) => name !== ""))];
+export const filterForbiddenCapabilityNames = (names: readonly string[]): string[] => [
+  ...new Set(names.map((name) => name.trim()).filter((name) => name !== "")),
+];
 
 export const isCapabilityBlockedByNameList = (
   capabilityName: string,

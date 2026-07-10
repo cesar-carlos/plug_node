@@ -129,8 +129,7 @@ export const assertSqlIsReadOnly = (sql: string, fieldLabel: string): void => {
     }
 
     const isSelect = normalized.startsWith("select");
-    const isCteSelect =
-      normalized.startsWith("with ") && /\bselect\b/.test(normalized);
+    const isCteSelect = normalized.startsWith("with ") && /\bselect\b/.test(normalized);
     if (!isSelect && !isCteSelect) {
       throw new PlugValidationError(
         `${fieldLabel} must be a SELECT (or WITH ... SELECT) statement.`,

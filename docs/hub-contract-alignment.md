@@ -6,13 +6,13 @@ This document summarizes how the `n8n-nodes-plug-database` package aligns with t
 
 When working side-by-side with `plug_server`, read these first:
 
-| Topic                              | Server doc                                                      |
-| ---------------------------------- | --------------------------------------------------------------- |
-| REST bridge and JSON-RPC commands  | `plug_server/docs/api/api_rest_bridge.md`                       |
-| Client / User / Agent access rules | `plug_server/docs/api/client_agent_business_rules.md`           |
-| Relay `relay:*` on `/consumers`    | `plug_server/docs/socket/socket_relay_protocol.md`              |
-| Consumer SDK and channel choice    | `plug_server/docs/socket/socket_client_sdk.md`                  |
-| Rate limits and quotas             | `plug_server/docs/limits/limites_acesso_e_quotas.md`            |
+| Topic                              | Server doc                                                       |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| REST bridge and JSON-RPC commands  | `plug_server/docs/api/api_rest_bridge.md`                        |
+| Client / User / Agent access rules | `plug_server/docs/api/client_agent_business_rules.md`            |
+| Relay `relay:*` on `/consumers`    | `plug_server/docs/socket/socket_relay_protocol.md`               |
+| Consumer SDK and channel choice    | `plug_server/docs/socket/socket_client_sdk.md`                   |
+| Rate limits and quotas             | `plug_server/docs/limits/limites_acesso_e_quotas.md`             |
 | Hub ↔ agent sync checklist         | `plug_server/docs/plug_agente/communication_sync_plug_agente.md` |
 
 OpenAPI on a running hub: `GET /docs` and `GET /docs.json` under `/api/v1`.
@@ -66,24 +66,24 @@ Cache login tokens in long-running workflows (see server limits doc).
 
 ## Node parity checklist
 
-| Hub capability                         | Node support                                                                 |
-| -------------------------------------- | ---------------------------------------------------------------------------- |
-| `sql.execute`                          | Execute SQL (guided + advanced)                                              |
-| `sql.executeBatch`                     | Execute Batch                                                                |
-| `sql.bulkInsert`                       | Bulk Insert SQL (guided JSON for table/columns/rows)                         |
-| `sql.cancel`                           | Cancel SQL                                                                   |
-| `rpc.discover`                         | Discover RPC                                                                 |
-| `agent.getProfile`                     | Get Agent Profile                                                            |
-| `client_token.getPolicy`               | Get Client Token Policy                                                      |
-| `options.prefer_db_streaming`          | Prefer DB Streaming (SQL options) + Auto Performance Hints on Socket         |
-| `options.execution_mode`               | Managed / Preserve                                                           |
-| `options.multi_result`                 | Multi Result                                                                 |
+| Hub capability                         | Node support                                                                                             |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `sql.execute`                          | Execute SQL (guided + advanced)                                                                          |
+| `sql.executeBatch`                     | Execute Batch                                                                                            |
+| `sql.bulkInsert`                       | Bulk Insert SQL (guided JSON for table/columns/rows)                                                     |
+| `sql.cancel`                           | Cancel SQL                                                                                               |
+| `rpc.discover`                         | Discover RPC                                                                                             |
+| `agent.getProfile`                     | Get Agent Profile                                                                                        |
+| `client_token.getPolicy`               | Get Client Token Policy                                                                                  |
+| `options.prefer_db_streaming`          | Prefer DB Streaming (SQL options) + Auto Performance Hints on Socket                                     |
+| `options.execution_mode`               | Managed / Preserve                                                                                       |
+| `options.multi_result`                 | Multi Result                                                                                             |
 | `fastPath` (relay)                     | Socket Options → Relay Fast Path (default on typeVersion 1); auto-omitted for streaming-capable commands |
-| `requestServerTimings`                 | Socket Options; hub phases in `__plug.transport.serverTimings`               |
-| `meta.agent_phases` (agent sub-phases) | Parsed when hub forwards nested timings; `agentPhases` in metadata           |
-| `clientRequestIdEcho` (extension)      | **Gap** — hub/agent handshake only; node uses JSON-RPC `id` as today         |
-| `streamPullWindowSize` adaptive        | Socket Options (`0` = omit explicit window; policy applies agent hint)       |
-| `max_parallel_read_only_batch_items`   | Batch options + Auto Performance Hints                                       |
+| `requestServerTimings`                 | Socket Options; hub phases in `__plug.transport.serverTimings`                                           |
+| `meta.agent_phases` (agent sub-phases) | Parsed when hub forwards nested timings; `agentPhases` in metadata                                       |
+| `clientRequestIdEcho` (extension)      | **Gap** — hub/agent handshake only; node uses JSON-RPC `id` as today                                     |
+| `streamPullWindowSize` adaptive        | Socket Options (`0` = omit explicit window; policy applies agent hint)                                   |
+| `max_parallel_read_only_batch_items`   | Batch options + Auto Performance Hints                                                                   |
 
 ## Test coverage matrix (plug_node)
 

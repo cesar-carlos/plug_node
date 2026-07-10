@@ -42,10 +42,7 @@ describe("assertSqlIsReadOnly", () => {
       assertSqlIsReadOnly("SELECT TOP 10 Nome FROM Cliente", "SQL"),
     ).not.toThrow();
     expect(() =>
-      assertSqlIsReadOnly(
-        "WITH cte AS (SELECT 1 AS n) SELECT n FROM cte",
-        "SQL",
-      ),
+      assertSqlIsReadOnly("WITH cte AS (SELECT 1 AS n) SELECT n FROM cte", "SQL"),
     ).not.toThrow();
   });
 
@@ -56,9 +53,9 @@ describe("assertSqlIsReadOnly", () => {
     expect(() =>
       assertSqlIsReadOnly("DELETE FROM Cliente WHERE CodCliente = 1", "SQL"),
     ).toThrow(PlugValidationError);
-    expect(() => assertSqlIsReadOnly("INSERT INTO Cliente (Nome) VALUES ('x')", "SQL")).toThrow(
-      PlugValidationError,
-    );
+    expect(() =>
+      assertSqlIsReadOnly("INSERT INTO Cliente (Nome) VALUES ('x')", "SQL"),
+    ).toThrow(PlugValidationError);
   });
 });
 
@@ -94,24 +91,33 @@ describe("mcp governance extras", () => {
 
   it("should unify effective maxRows across governance, execution, and limite", () => {
     expect(
-      resolveEffectiveMaxRows(capability({ governanceMaxRows: 50, executionMaxRows: 100 }), {
-        limite: 80,
-        codCliente: 1,
-      }),
+      resolveEffectiveMaxRows(
+        capability({ governanceMaxRows: 50, executionMaxRows: 100 }),
+        {
+          limite: 80,
+          codCliente: 1,
+        },
+      ),
     ).toBe(50);
 
     expect(
-      resolveEffectiveMaxRows(capability({ governanceMaxRows: 50, executionMaxRows: 20 }), {
-        limite: 40,
-        codCliente: 1,
-      }),
+      resolveEffectiveMaxRows(
+        capability({ governanceMaxRows: 50, executionMaxRows: 20 }),
+        {
+          limite: 40,
+          codCliente: 1,
+        },
+      ),
     ).toBe(20);
 
     expect(
-      resolveEffectiveMaxRows(capability({ governanceMaxRows: 50, executionMaxRows: 100 }), {
-        limite: 10,
-        codCliente: 1,
-      }),
+      resolveEffectiveMaxRows(
+        capability({ governanceMaxRows: 50, executionMaxRows: 100 }),
+        {
+          limite: 10,
+          codCliente: 1,
+        },
+      ),
     ).toBe(10);
   });
 });

@@ -120,7 +120,11 @@ describe("TriggerReconnectManager", () => {
     expect(onFatalError).toHaveBeenCalledWith(fatalError);
     expect(manager.isReconnecting()).toBe(false);
 
-    await manager.handleRuntimeError(retryableSocketError, vi.fn(async () => undefined), closeSession);
+    await manager.handleRuntimeError(
+      retryableSocketError,
+      vi.fn(async () => undefined),
+      closeSession,
+    );
     await vi.advanceTimersByTimeAsync(500);
 
     expect(closeSession).toHaveBeenCalledTimes(2);

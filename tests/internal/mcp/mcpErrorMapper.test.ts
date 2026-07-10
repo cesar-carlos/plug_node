@@ -61,7 +61,7 @@ describe("mcp errorMapper", () => {
     );
   });
 
-    it("should fall back to a generic friendly message for unmapped plug errors", () => {
+  it("should fall back to a generic friendly message for unmapped plug errors", () => {
     expect(
       mapPlugErrorToFriendlyMessage(
         new PlugError("rpc internal failure xyz", { code: "PLUG_UNKNOWN" }),

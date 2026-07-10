@@ -10,9 +10,7 @@ import { buildAuditEntry } from "../../generated/shared/mcp/auditLogger";
 import { MCP_PROTOCOL_VERSION } from "../../generated/shared/mcp/contracts";
 import { buildMcpCallResponse, buildMcpError } from "../../generated/shared/mcp/envelope";
 import { mapPlugErrorToFriendlyMessage } from "../../generated/shared/mcp/errorMapper";
-import {
-  isCapabilityBlockedByNameList,
-} from "../../generated/shared/mcp/forbiddenCapabilities";
+import { isCapabilityBlockedByNameList } from "../../generated/shared/mcp/forbiddenCapabilities";
 import { enforceGovernance } from "../../generated/shared/mcp/governance";
 import { validateParams } from "../../generated/shared/mcp/paramValidator";
 import {
@@ -86,7 +84,10 @@ export class PlugMcpServer implements INodeType {
           [
             toOutputItem({
               protocolVersion,
-              tools: listCapabilities(registry, forbiddenNames) as unknown as IDataObject[],
+              tools: listCapabilities(
+                registry,
+                forbiddenNames,
+              ) as unknown as IDataObject[],
             }),
           ],
         ];

@@ -20,6 +20,5 @@ export const clientAccessAllowsTransientRetry = (
   operation: ClientAccessOperation,
 ): boolean => clientAccessSafeRetryOperations.has(operation);
 
-export const userAccessAllowsTransientRetry = (
-  operation: UserAccessOperation,
-): boolean => userAccessSafeRetryOperations.has(operation);
+export const userAccessAllowsTransientRetry = (operation: UserAccessOperation): boolean =>
+  userAccessSafeRetryOperations.has(operation);

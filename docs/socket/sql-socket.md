@@ -67,15 +67,15 @@ Para comando único, se o **probe** de capability (`rpc.discover`) falhar por ti
 
 Para compatibilidade com `agents:command`, o servidor deve cumprir estes pontos:
 
-| Evento                           | Requisito                                                                                                                                                              |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agents:command`                 | Aceitar o body REST (`agentId`, `command`, …). Campos extras do cliente (`protocolVersion`, `requestId`, `clientRequestId`) podem ser ignorados.                       |
-| `agents:command_response`        | Ecoar `requestId` no sucesso (tipicamente o `command.id`); em stream, também enviar `streamId`. Falhas devem incluir `error.code` e `error.message`.                   |
-| `agents:stream_pull`             | Receber `requestId`, `streamId` e `windowSize`.                                                                                                                        |
-| `agents:stream_pull_response`    | Ecoar `requestId`, `streamId` e `windowSize` positivo no sucesso.                                                                                                      |
-| `agents:command_stream_chunk`    | Enviar `request_id` e `stream_id` do stream ativo.                                                                                                                     |
-| `agents:command_stream_complete` | Enviar `request_id`, `stream_id` e `terminal_status`.                                                                                                                  |
-| `connect_error` / `app:error`    | Usar códigos estáveis como `TOKEN_EXPIRED`, `INVALID_TOKEN`, `ACCOUNT_BLOCKED` e `AGENT_ACCESS_REVOKED` para permitir reconnect ou encerramento correto.               |
+| Evento                           | Requisito                                                                                                                                                |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agents:command`                 | Aceitar o body REST (`agentId`, `command`, …). Campos extras do cliente (`protocolVersion`, `requestId`, `clientRequestId`) podem ser ignorados.         |
+| `agents:command_response`        | Ecoar `requestId` no sucesso (tipicamente o `command.id`); em stream, também enviar `streamId`. Falhas devem incluir `error.code` e `error.message`.     |
+| `agents:stream_pull`             | Receber `requestId`, `streamId` e `windowSize`.                                                                                                          |
+| `agents:stream_pull_response`    | Ecoar `requestId`, `streamId` e `windowSize` positivo no sucesso.                                                                                        |
+| `agents:command_stream_chunk`    | Enviar `request_id` e `stream_id` do stream ativo.                                                                                                       |
+| `agents:command_stream_complete` | Enviar `request_id`, `stream_id` e `terminal_status`.                                                                                                    |
+| `connect_error` / `app:error`    | Usar códigos estáveis como `TOKEN_EXPIRED`, `INVALID_TOKEN`, `ACCOUNT_BLOCKED` e `AGENT_ACCESS_REVOKED` para permitir reconnect ou encerramento correto. |
 
 O node ignora mensagens que não batem com a correlação ativa. Isso protege execuções concorrentes e respostas atrasadas, mas exige que batch e stream usem `requestId`/`streamId` corretamente.
 

@@ -4,21 +4,21 @@ Esta pasta documenta o **Plug MCP Hub**: a camada que expõe nós Plug como capa
 
 ## Status da implementação
 
-| Fase | Status | Notas |
-| ---- | ------ | ----- |
-| Proto-V1 (`usableAsTool`) | Disponível | Sem governance centralizada |
-| V1 (MCP Server + AI Hub) | **Implementado (parcial)** | Registry JSON inline; SQL + Tools; governance básica |
-| V2 / V3 | Planejado | Ver [roadmap.md](./roadmap.md) |
+| Fase                      | Status                     | Notas                                                |
+| ------------------------- | -------------------------- | ---------------------------------------------------- |
+| Proto-V1 (`usableAsTool`) | Disponível                 | Sem governance centralizada                          |
+| V1 (MCP Server + AI Hub)  | **Implementado (parcial)** | Registry JSON inline; SQL + Tools; governance básica |
+| V2 / V3                   | Planejado                  | Ver [roadmap.md](./roadmap.md)                       |
 
 ## Documentos
 
-| Documento | Conteúdo |
-| --------- | -------- |
-| [overview.md](./overview.md) | Problema, visão, conceitos principais |
-| [architecture.md](./architecture.md) | Camadas, componentes e responsabilidades |
-| [capability-nodes.md](./capability-nodes.md) | Como modelar capabilities (SQL base + params) |
-| [ai-hub-rules.md](./ai-hub-rules.md) | Regras de comportamento, guardrails e system prompt |
-| [roadmap.md](./roadmap.md) | Fases V1, V2 e V3 |
+| Documento                                    | Conteúdo                                            |
+| -------------------------------------------- | --------------------------------------------------- |
+| [overview.md](./overview.md)                 | Problema, visão, conceitos principais               |
+| [architecture.md](./architecture.md)         | Camadas, componentes e responsabilidades            |
+| [capability-nodes.md](./capability-nodes.md) | Como modelar capabilities (SQL base + params)       |
+| [ai-hub-rules.md](./ai-hub-rules.md)         | Regras de comportamento, guardrails e system prompt |
+| [roadmap.md](./roadmap.md)                   | Fases V1, V2 e V3                                   |
 
 ## Relação com o pacote atual
 

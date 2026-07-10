@@ -11,10 +11,7 @@ import {
   resolvePlugExecutionContext,
 } from "../n8n/plugCommandRequestBuilder";
 import { executeBuiltCommandWithRetry } from "../n8n/plugTransportExecutor";
-import {
-  assertSqlIsReadOnly,
-  validateGuidedSql,
-} from "../n8n/plugSqlGuidedCommands";
+import { assertSqlIsReadOnly, validateGuidedSql } from "../n8n/plugSqlGuidedCommands";
 import { executePlugToolsResource } from "../n8n/plugToolsExecution";
 import type { CapabilityDefinition } from "../mcp/contracts";
 import { resolveEffectiveMaxRows, maskSensitiveColumns } from "../mcp/governance";

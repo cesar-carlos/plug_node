@@ -57,9 +57,9 @@ describe("mcp forbiddenCapabilities", () => {
 
   it("should mark admin capabilities as forbidden for agents", () => {
     expect(isCapabilityForbiddenForAgent(sqlCapability("client_access"))).toBe(true);
-    expect(
-      isCapabilityForbiddenForAgent(toolsCapability("admin", "clientAccess")),
-    ).toBe(true);
+    expect(isCapabilityForbiddenForAgent(toolsCapability("admin", "clientAccess"))).toBe(
+      true,
+    );
     expect(
       isCapabilityForbiddenForAgent(toolsCapability("validate_doc", "validateCpfCnpj")),
     ).toBe(false);
