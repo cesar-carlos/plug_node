@@ -1,5 +1,12 @@
 # n8n-nodes-plug-database
 
+## 3.3.1
+
+### Patch Changes
+
+- 7aca81c: Harden Plug MCP Hub governance and execution: SELECT-only SQL capabilities, unified effective maxRows for truncation, forbidden/admin capability filtering on tools/list and tools/call, friendly error mapping without technical leaks, Tools provider support in MCP Server V1, AI Hub maxToolCallsPerTurn clamping, and optional per-turn tool-call budget enforcement on the MCP Server.
+- 8837c10: Harden Plug server communication retries and socket safety: no double-execution on socket timeouts or agents:command→relay fallback after emit; auto-omit relay fastPath for streaming-capable commands; refresh TOKEN_EXPIRED without HTTP status; fix stream credit races and pull abort accounting; clear stuck Socket Event Trigger reconnecting flag; gate Client/User Access transient retries to safe list/get ops; map HTTP timeouts to PlugTimeoutError; parse Retry-After HTTP-dates and cap delays; treat RPC -32013 as retryable; align consumer/relay app:error retryable codes; trim PayloadFrame signature key_id on encode.
+
 ## 3.3.0
 
 ### Minor Changes
