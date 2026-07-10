@@ -183,7 +183,7 @@ export const executeToolsCapability = async (
   const toolContext = withMergedToolParameters(context, mergedParams);
   const result = await executePlugToolsResource(toolContext, {
     credentialName: config.credentialName,
-    nodeDisplayName: config.nodeDisplayName,
+    nodeDisplayName: config.nodeDisplayName ?? "Plug MCP Server",
   });
 
   const items = result[0] ?? [];
