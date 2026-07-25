@@ -537,7 +537,8 @@ export const executeRelayBatchCommand = async (
       fastPath,
       streamPullWindowSize,
       streamedItems: batchResults.filter(
-        (item) => ((item.response as SocketTransportResult).metrics?.streamChunks ?? 0) > 0,
+        (item) =>
+          ((item.response as SocketTransportResult).metrics?.streamChunks ?? 0) > 0,
       ).length,
     });
 

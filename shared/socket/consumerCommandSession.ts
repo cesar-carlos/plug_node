@@ -473,7 +473,8 @@ export const executeConsumerCommand = async (
 
           streamAggregation.setActiveStreamId(streamId);
           if (isSocketAggregatedResponseMode(input.responseMode)) {
-            normalizedResponse = removeStreamMarkerFromConsumerResponse(normalizedResponse);
+            normalizedResponse =
+              removeStreamMarkerFromConsumerResponse(normalizedResponse);
           }
           await streamAggregation.requestInitialWindow(requestNextStreamWindow);
         } catch (error: unknown) {

@@ -1287,8 +1287,10 @@ describe("executeRelayCommand", () => {
   it("matches streamed RPC responses by JSON-RPC body id when accepted arrives late", async () => {
     class ResponseBeforeAcceptedTransport implements RelaySocketTransport {
       connected = false;
-      readonly emittedEvents: Array<{ readonly event: string; readonly payload?: unknown }> =
-        [];
+      readonly emittedEvents: Array<{
+        readonly event: string;
+        readonly payload?: unknown;
+      }> = [];
       streamPullRequests = 0;
       private readonly handlers = new Map<string, Set<(payload: unknown) => void>>();
 

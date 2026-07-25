@@ -64,10 +64,10 @@ On relay, the JSON-RPC command `id` is the hub `client_request_id` used for idem
 
 **Auto Performance Hints** (default **on** in Execute SQL and Execute Batch **Additional Options**) applies performance suggestions only when you have not set the related option explicitly:
 
-| Operation     | When hints apply (Socket / batch)                          | Suggestion                                   |
-| ------------- | ---------------------------------------------------------- | -------------------------------------------- |
-| Execute SQL   | Channel = **Socket**, `SELECT TOP N` with **N ≥ 1000**     | `options.prefer_db_streaming: true`          |
-| Execute Batch | All commands are read-only `SELECT`                        | `options.max_parallel_read_only_batch_items` |
+| Operation     | When hints apply (Socket / batch)                      | Suggestion                                   |
+| ------------- | ------------------------------------------------------ | -------------------------------------------- |
+| Execute SQL   | Channel = **Socket**, `SELECT TOP N` with **N ≥ 1000** | `options.prefer_db_streaming: true`          |
+| Execute Batch | All commands are read-only `SELECT`                    | `options.max_parallel_read_only_batch_items` |
 
 Hints do **not** override explicit **Prefer DB Streaming**, **Max Parallel Read-Only Items**, or **Auto Performance Hints = off**.
 
