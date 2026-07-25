@@ -1,6 +1,6 @@
 import type { PayloadFrameSigningOptions } from "../contracts/payload-frame";
 import { PlugTimeoutError } from "../contracts/errors";
-import { encodePayloadFrameAsync } from "./payloadFrameCodec";
+import { encodePayloadFrame } from "./payloadFrameCodec";
 import {
   relayAppErrorEvent,
   relayConnectErrorEvent,
@@ -34,6 +34,15 @@ type PendingPull = {
 const pullKey = (conversationId: string, requestId: string, streamId: string): string =>
   `${conversationId}\0${requestId}\0${streamId}`;
 
+export interface RelayStreamPullSessionOptions {
+  readonly signing?: PayloadFrameSigningOptions;
+  /**
+   * When false, skip app:error / connect_error / disconnect listeners.
+   * Use when the parent aggregation session already owns those terminal events.
+   */
+  readonly attachTerminalListeners?: boolean;
+}
+
 export interface RelayStreamPullSession {
   readonly requestPull: (input: {
     readonly conversationId: string;
@@ -47,8 +56,16 @@ export interface RelayStreamPullSession {
 
 export const createRelayStreamPullSession = (
   transport: RelaySocketTransport,
-  signing?: PayloadFrameSigningOptions,
+  signingOrOptions?: PayloadFrameSigningOptions | RelayStreamPullSessionOptions,
 ): RelayStreamPullSession => {
+  const options: RelayStreamPullSessionOptions =
+    signingOrOptions !== undefined &&
+    ("signing" in signingOrOptions || "attachTerminalListeners" in signingOrOptions)
+      ? signingOrOptions
+      : { signing: signingOrOptions as PayloadFrameSigningOptions | undefined };
+  const signing = options.signing;
+  const attachTerminalListeners = options.attachTerminalListeners !== false;
+
   const pending = new Map<string, PendingPull>();
   let disposed = false;
 
@@ -134,9 +151,11 @@ export const createRelayStreamPullSession = (
   };
 
   transport.on(relayRpcStreamPullResponseEvent, handlePullResponse);
-  transport.on(relayAppErrorEvent, handleAppError);
-  transport.on(relayConnectErrorEvent, handleConnectError);
-  transport.on(relayDisconnectEvent, handleDisconnect);
+  if (attachTerminalListeners) {
+    transport.on(relayAppErrorEvent, handleAppError);
+    transport.on(relayConnectErrorEvent, handleConnectError);
+    transport.on(relayDisconnectEvent, handleDisconnect);
+  }
 
   return {
     async requestPull(input): Promise<number> {
@@ -152,7 +171,8 @@ export const createRelayStreamPullSession = (
         DEFAULT_RELAY_PULL_WINDOW,
         relayMaxStreamPullWindowSize,
       );
-      const frame = await encodePayloadFrameAsync(
+      // Tiny control frames: sync encode avoids async scheduling overhead.
+      const frame = encodePayloadFrame(
         {
           stream_id: input.streamId,
           request_id: input.requestId,
@@ -211,9 +231,11 @@ export const createRelayStreamPullSession = (
       }
       disposed = true;
       transport.off(relayRpcStreamPullResponseEvent, handlePullResponse);
-      transport.off(relayAppErrorEvent, handleAppError);
-      transport.off(relayConnectErrorEvent, handleConnectError);
-      transport.off(relayDisconnectEvent, handleDisconnect);
+      if (attachTerminalListeners) {
+        transport.off(relayAppErrorEvent, handleAppError);
+        transport.off(relayConnectErrorEvent, handleConnectError);
+        transport.off(relayDisconnectEvent, handleDisconnect);
+      }
       for (const entry of pending.values()) {
         clearTimeout(entry.timer);
         entry.reject(

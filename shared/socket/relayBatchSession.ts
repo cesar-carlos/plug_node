@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  JsonObject,
   PlugCommandTransportResult,
   RelayRpcBatchAcceptedItemSuccess,
   RpcSingleCommand,
   SocketCommandRuntimeMetrics,
+  SocketTransportResult,
 } from "../contracts/api";
+import type { PayloadFrameEnvelope } from "../contracts/payload-frame";
 import { PlugValidationError } from "../contracts/errors";
 import { plugLogger } from "../logging/plugLogger";
 import { normalizeRpcPayload } from "../output/rpcNormalization";
@@ -25,12 +28,17 @@ import {
   ensureRelayCompatibleCommand,
   extractRpcBodyId,
   extractServerTimings,
+  getStreamIdFromNormalizedResponse,
   normalizeRelayBatchAcceptedPayload,
   normalizeRelayConnectionReady,
   normalizeRelayConversationStarted,
 } from "./relaySessionNormalization";
 import { waitForRelaySingleEvent } from "./relaySessionWait";
 import type { ExecuteRelayCommandInput, RelaySocketTransport } from "./relaySessionTypes";
+import {
+  waitForRelayStreamAggregation,
+  type RelayStreamAggregationMetrics,
+} from "./relayStreamAggregation";
 import { resolveAdaptiveStreamPullWindowSize } from "./streamPullWindowPolicy";
 import { resolveSocketBufferLimits } from "./streamCommandSessionCommon";
 import {
@@ -43,20 +51,31 @@ export const MAX_RELAY_BATCH_COMMANDS = 32;
 const buildBatchMetrics = (
   serverTimings: import("../contracts/api").PlugServerTimings | undefined,
   requestServerTimings: boolean | undefined,
-  fastPath?: boolean,
+  options?: {
+    readonly fastPath?: boolean;
+    readonly stream?: RelayStreamAggregationMetrics;
+  },
 ): SocketCommandRuntimeMetrics => ({
-  ignoredCommandResponses: 0,
-  ignoredStreamChunks: 0,
-  ignoredStreamCompletes: 0,
+  ignoredCommandResponses: options?.stream?.ignoredResponses ?? 0,
+  ignoredStreamChunks: options?.stream?.ignoredChunks ?? 0,
+  ignoredStreamCompletes: options?.stream?.ignoredCompletes ?? 0,
   ignoredStreamPullResponses: 0,
-  streamPullRequests: 0,
-  streamChunks: 0,
-  bufferedBytes: 0,
-  bufferedRows: 0,
+  streamPullRequests: options?.stream?.pullCount ?? 0,
+  streamChunks: options?.stream?.chunkCount ?? 0,
+  bufferedBytes: options?.stream?.bufferedBytes ?? 0,
+  bufferedRows: options?.stream?.bufferedRows ?? 0,
   ...(serverTimings ? { serverTimings } : {}),
-  ...(fastPath === true ? { fastPath: true } : {}),
+  ...(options?.fastPath === true ? { fastPath: true } : {}),
   ...(requestServerTimings === true ? { requestServerTimings: true } : {}),
 });
+
+type DecodedBatchItemResponse = {
+  readonly clientRequestId: string;
+  readonly requestId: string;
+  readonly frame: PayloadFrameEnvelope;
+  readonly data: unknown;
+  readonly acceptedItem?: RelayRpcBatchAcceptedItemSuccess;
+};
 
 export interface ExecuteRelayBatchCommandInput extends Omit<
   ExecuteRelayCommandInput,
@@ -146,7 +165,12 @@ export const executeRelayBatchCommand = async (
 ): Promise<readonly RelayBatchCommandItemResult[]> => {
   const commands = ensureRelayBatchCommands(input.commands);
   const timeouts = resolveSocketCommandTimeouts({ timeoutMs: input.timeoutMs });
-  resolveSocketBufferLimits(input.bufferLimits);
+  const limits = resolveSocketBufferLimits(input.bufferLimits);
+  const streamPullWindowSize = resolveAdaptiveStreamPullWindowSize({
+    configured: input.streamPullWindowSize,
+    agentRecommended: input.agentRecommendedStreamPullWindowSize,
+    agentMax: input.agentMaxStreamPullWindowSize,
+  });
   let conversationId: string | undefined = input.reusedConversationId;
   const managedTransport = input.managedTransport === true;
   const fastPath = input.fastPath === true;
@@ -204,30 +228,20 @@ export const executeRelayBatchCommand = async (
       string,
       {
         readonly item: RelayRpcBatchAcceptedItemSuccess;
-        readonly resolve: (value: {
-          readonly item: RelayRpcBatchAcceptedItemSuccess;
-          readonly payload: unknown;
-        }) => void;
+        readonly resolve: (value: DecodedBatchItemResponse) => void;
         readonly reject: (error: unknown) => void;
       }
     >();
-    const bufferedClassicResponses = new Map<string, unknown>();
+    const bufferedClassicResponses = new Map<string, DecodedBatchItemResponse>();
 
     const pendingFastPathResponses = new Map<
       string,
       {
-        readonly resolve: (value: {
-          readonly clientRequestId: string;
-          readonly requestId: string;
-          readonly payload: unknown;
-        }) => void;
+        readonly resolve: (value: DecodedBatchItemResponse) => void;
         readonly reject: (error: unknown) => void;
       }
     >();
-    const bufferedFastPathResponses = new Map<
-      string,
-      { readonly requestId: string; readonly payload: unknown }
-    >();
+    const bufferedFastPathResponses = new Map<string, DecodedBatchItemResponse>();
 
     const responseListener = (payload: unknown): void => {
       void (async () => {
@@ -246,20 +260,23 @@ export const executeRelayBatchCommand = async (
               decoded.frame.requestId,
               clientRequestId,
             );
+            const decodedItem: DecodedBatchItemResponse = {
+              clientRequestId,
+              requestId,
+              frame: decoded.frame,
+              data: decoded.data,
+            };
             const pending = pendingFastPathResponses.get(clientRequestId);
             if (pending) {
               pendingFastPathResponses.delete(clientRequestId);
-              pending.resolve({ clientRequestId, requestId, payload: decoded.data });
+              pending.resolve(decodedItem);
               if (pendingFastPathResponses.size === 0) {
                 input.transport.off(relayRpcResponseEvent, responseListener);
               }
               return;
             }
 
-            bufferedFastPathResponses.set(clientRequestId, {
-              requestId,
-              payload: decoded.data,
-            });
+            bufferedFastPathResponses.set(clientRequestId, decodedItem);
             return;
           }
 
@@ -271,14 +288,25 @@ export const executeRelayBatchCommand = async (
           const pending = pendingClassicResponses.get(requestId);
           if (pending) {
             pendingClassicResponses.delete(requestId);
-            pending.resolve({ item: pending.item, payload: decoded.data });
+            pending.resolve({
+              clientRequestId: pending.item.clientRequestId,
+              requestId,
+              frame: decoded.frame,
+              data: decoded.data,
+              acceptedItem: pending.item,
+            });
             if (pendingClassicResponses.size === 0) {
               input.transport.off(relayRpcResponseEvent, responseListener);
             }
             return;
           }
 
-          bufferedClassicResponses.set(requestId, decoded.data);
+          bufferedClassicResponses.set(requestId, {
+            clientRequestId: "",
+            requestId,
+            frame: decoded.frame,
+            data: decoded.data,
+          });
         } catch {
           // Ignore unrelated frames until timeout handles failures.
         }
@@ -298,35 +326,18 @@ export const executeRelayBatchCommand = async (
       timeoutMs: timeouts.commandTimeoutMs,
     });
 
-    let responses:
-      | Array<{
-          readonly item: RelayRpcBatchAcceptedItemSuccess;
-          readonly payload: unknown;
-        }>
-      | Array<{
-          readonly clientRequestId: string;
-          readonly requestId: string;
-          readonly payload: unknown;
-        }>;
+    let responses: DecodedBatchItemResponse[];
 
     if (fastPath) {
       const waitAllResponses = Promise.all(
         commands.map(
           (command) =>
-            new Promise<{
-              readonly clientRequestId: string;
-              readonly requestId: string;
-              readonly payload: unknown;
-            }>((resolve, reject) => {
+            new Promise<DecodedBatchItemResponse>((resolve, reject) => {
               const clientRequestId = String(command.id);
               const buffered = bufferedFastPathResponses.get(clientRequestId);
               if (buffered !== undefined) {
                 bufferedFastPathResponses.delete(clientRequestId);
-                resolve({
-                  clientRequestId,
-                  requestId: buffered.requestId,
-                  payload: buffered.payload,
-                });
+                resolve(buffered);
                 return;
               }
 
@@ -376,14 +387,15 @@ export const executeRelayBatchCommand = async (
       responses = await Promise.all(
         acceptedItems.map(
           (item) =>
-            new Promise<{
-              readonly item: RelayRpcBatchAcceptedItemSuccess;
-              readonly payload: unknown;
-            }>((resolve, reject) => {
+            new Promise<DecodedBatchItemResponse>((resolve, reject) => {
               const buffered = bufferedClassicResponses.get(item.requestId);
               if (buffered !== undefined) {
                 bufferedClassicResponses.delete(item.requestId);
-                resolve({ item, payload: buffered });
+                resolve({
+                  ...buffered,
+                  clientRequestId: item.clientRequestId,
+                  acceptedItem: item,
+                });
                 return;
               }
 
@@ -414,92 +426,121 @@ export const executeRelayBatchCommand = async (
 
     input.transport.off(relayRpcResponseEvent, responseListener);
 
+    const finalizeBatchItem = async (
+      decoded: DecodedBatchItemResponse,
+    ): Promise<RelayBatchCommandItemResult> => {
+      const streamId = getStreamIdFromNormalizedResponse(decoded.data);
+      let responsePayload = decoded.data;
+      let chunkPayloads: JsonObject[] = [];
+      let rawChunkFrames: PayloadFrameEnvelope[] = [];
+      let completePayload: JsonObject | undefined;
+      let rawResponseFrame: PayloadFrameEnvelope | undefined = decoded.frame;
+      let rawCompleteFrame: PayloadFrameEnvelope | undefined;
+      let streamMetrics: RelayStreamAggregationMetrics | undefined;
+
+      if (streamId) {
+        const acceptedStatePromise = Promise.resolve({
+          success: true as const,
+          conversationId: conversationId as string,
+          requestId: decoded.requestId,
+          clientRequestId: decoded.clientRequestId,
+          ...(decoded.acceptedItem?.deduplicated !== undefined
+            ? { deduplicated: decoded.acceptedItem.deduplicated }
+            : {}),
+          ...(decoded.acceptedItem?.replayed !== undefined
+            ? { replayed: decoded.acceptedItem.replayed }
+            : {}),
+          ...(decoded.acceptedItem?.inFlight !== undefined
+            ? { inFlight: decoded.acceptedItem.inFlight }
+            : {}),
+        });
+
+        const streamOutcome = await waitForRelayStreamAggregation({
+          transport: input.transport,
+          conversationId: conversationId as string,
+          clientRequestId: decoded.clientRequestId,
+          acceptedStatePromise,
+          responseMode: input.responseMode,
+          payloadFrameSigning: input.payloadFrameSigning,
+          streamPullWindowSize,
+          // Hub requestId is already known from the response frame.
+          fastPath: true,
+          timeouts,
+          limits,
+          seededResponse: {
+            frame: decoded.frame,
+            data: decoded.data,
+          },
+        });
+
+        responsePayload = streamOutcome.result.responsePayload;
+        chunkPayloads = streamOutcome.chunkPayloads;
+        rawChunkFrames = streamOutcome.rawChunkFrames;
+        completePayload = streamOutcome.result.completePayload;
+        rawResponseFrame = streamOutcome.result.responseFrame;
+        rawCompleteFrame =
+          streamOutcome.rawCompleteFrame ?? streamOutcome.result.completeFrame;
+        streamMetrics = streamOutcome.metrics;
+      }
+
+      const serverTimings = extractServerTimings(responsePayload);
+      const metrics = buildBatchMetrics(serverTimings, input.requestServerTimings, {
+        fastPath,
+        stream: streamMetrics,
+      });
+
+      const response: SocketTransportResult = {
+        channel: "socket",
+        socketMode: "relay",
+        agentId: input.agentId,
+        requestId: decoded.requestId,
+        notification: false,
+        conversationId,
+        ...(decoded.acceptedItem
+          ? {
+              accepted: {
+                success: true as const,
+                conversationId: conversationId as string,
+                requestId: decoded.requestId,
+                clientRequestId: decoded.clientRequestId,
+                deduplicated: decoded.acceptedItem.deduplicated,
+                replayed: decoded.acceptedItem.replayed,
+                inFlight: decoded.acceptedItem.inFlight,
+              },
+            }
+          : {}),
+        response: normalizeRpcPayload(responsePayload),
+        rawResponsePayload: responsePayload,
+        chunkPayloads,
+        ...(completePayload !== undefined ? { completePayload } : {}),
+        ...(rawResponseFrame !== undefined ? { rawResponseFrame } : {}),
+        rawChunkFrames,
+        ...(rawCompleteFrame !== undefined ? { rawCompleteFrame } : {}),
+        metrics,
+        ...(serverTimings ? { executionMetrics: { serverTimings } } : {}),
+      };
+
+      return {
+        clientRequestId: decoded.clientRequestId,
+        requestId: decoded.requestId,
+        response,
+      };
+    };
+
+    const batchResults = await Promise.all(responses.map(finalizeBatchItem));
+
     plugLogger.debug("transport.socket.batch_completed", {
       agentId: input.agentId,
       conversationId,
       batchSize: commands.length,
-      resolvedCount: responses.length,
+      resolvedCount: batchResults.length,
       fastPath,
-      streamPullWindowSize: resolveAdaptiveStreamPullWindowSize({
-        configured: input.streamPullWindowSize,
-        agentRecommended: input.agentRecommendedStreamPullWindowSize,
-        agentMax: input.agentMaxStreamPullWindowSize,
-      }),
+      streamPullWindowSize,
+      streamedItems: batchResults.filter(
+        (item) => ((item.response as SocketTransportResult).metrics?.streamChunks ?? 0) > 0,
+      ).length,
     });
 
-    if (fastPath) {
-      const batchResults = (
-        responses as Array<{
-          readonly clientRequestId: string;
-          readonly requestId: string;
-          readonly payload: unknown;
-        }>
-      ).map(({ clientRequestId, requestId, payload }) => {
-        const serverTimings = extractServerTimings(payload);
-        const metrics = buildBatchMetrics(
-          serverTimings,
-          input.requestServerTimings,
-          true,
-        );
-        return {
-          clientRequestId,
-          requestId,
-          response: {
-            channel: "socket",
-            socketMode: "relay",
-            agentId: input.agentId,
-            requestId,
-            notification: false,
-            conversationId,
-            response: normalizeRpcPayload(payload),
-            rawResponsePayload: payload,
-            chunkPayloads: [],
-            rawChunkFrames: [],
-            metrics,
-            ...(serverTimings ? { executionMetrics: { serverTimings } } : {}),
-          },
-        };
-      });
-      commandSucceeded = true;
-      return batchResults;
-    }
-
-    const batchResults = (
-      responses as Array<{
-        readonly item: RelayRpcBatchAcceptedItemSuccess;
-        readonly payload: unknown;
-      }>
-    ).map(({ item, payload }) => {
-      const serverTimings = extractServerTimings(payload);
-      const metrics = buildBatchMetrics(serverTimings, input.requestServerTimings);
-      return {
-        clientRequestId: item.clientRequestId,
-        requestId: item.requestId,
-        response: {
-          channel: "socket",
-          socketMode: "relay",
-          agentId: input.agentId,
-          requestId: item.requestId,
-          notification: false,
-          conversationId,
-          accepted: {
-            success: true,
-            conversationId: conversationId as string,
-            requestId: item.requestId,
-            clientRequestId: item.clientRequestId,
-            deduplicated: item.deduplicated,
-            replayed: item.replayed,
-            inFlight: item.inFlight,
-          },
-          response: normalizeRpcPayload(payload),
-          rawResponsePayload: payload,
-          chunkPayloads: [],
-          rawChunkFrames: [],
-          metrics,
-          ...(serverTimings ? { executionMetrics: { serverTimings } } : {}),
-        },
-      };
-    });
     commandSucceeded = true;
     return batchResults;
   } finally {

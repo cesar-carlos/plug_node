@@ -1,7 +1,8 @@
 import type { StreamAggregationState } from "./streamAggregationState";
 
 export const STREAM_PULL_PREFETCH_CREDIT_RATIO = 0.25;
-export const MAX_PARALLEL_CHUNK_DECODES = 2;
+/** Bounded overlapping PayloadFrame decodes before ordered merge. */
+export const MAX_PARALLEL_CHUNK_DECODES = 4;
 
 export const shouldPrefetchStreamPull = (
   state: StreamAggregationState,

@@ -11,6 +11,7 @@ export interface SocketIoTransportLike {
   on(event: string, handler: (payload: unknown) => void): void;
   off(event: string, handler: (payload: unknown) => void): void;
   emit(event: string, payload?: unknown): void;
+  updateAccessToken?(accessToken: string): void;
 }
 
 class SocketIoTransport implements SocketIoTransportLike, CustomSocketEventTransport {
@@ -47,6 +48,10 @@ class SocketIoTransport implements SocketIoTransportLike, CustomSocketEventTrans
     }
 
     this.socket.emit(event, payload);
+  }
+
+  updateAccessToken(accessToken: string): void {
+    this.socket.auth = { token: accessToken };
   }
 }
 

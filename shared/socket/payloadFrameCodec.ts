@@ -22,7 +22,7 @@ const maxGzipInputBytes = 512 * 1024;
 const maxCompressedBytes = 10 * 1024 * 1024;
 const maxDecodedBytes = 10 * 1024 * 1024;
 const maxInflationRatio = 10;
-const asyncGzipThresholdBytes = 16 * 1024;
+const asyncGzipThresholdBytes = 4 * 1024;
 const asyncGunzipThresholdBytes = 1;
 const signatureAlgorithm = "hmac-sha256";
 const gzipAsync = promisify(gzipCallback);
@@ -54,14 +54,18 @@ const payloadToBuffer = (payload: PayloadFrameEnvelope["payload"]): Buffer => {
   }
 
   if (Array.isArray(payload)) {
-    for (const value of payload) {
+    const length = payload.length;
+    const buffer = Buffer.allocUnsafe(length);
+    for (let index = 0; index < length; index += 1) {
+      const value = payload[index];
       if (!Number.isInteger(value) || value < 0 || value > 255) {
         throw new PlugValidationError(
           "PayloadFrame payload array must contain byte values",
         );
       }
+      buffer[index] = value;
     }
-    return Buffer.from(payload);
+    return buffer;
   }
 
   throw new PlugValidationError("PayloadFrame payload must be binary or base64");

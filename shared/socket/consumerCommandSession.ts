@@ -48,6 +48,7 @@ import {
   removeStreamMarkerFromConsumerResponse,
   tryMergeChunkRowsIntoConsumerResponse,
 } from "./consumerCommandResponseMerge";
+import { createParallelChunkDecodeQueue } from "./parallelChunkDecode";
 import {
   matchesConsumerCommandRequest,
   matchesConsumerStreamPayload,
@@ -221,17 +222,20 @@ export const executeConsumerCommand = async (
       });
     };
 
-    let chunkHandlerChain = Promise.resolve();
-
-    const enqueueChunkWork = (work: () => Promise<void>): void => {
-      chunkHandlerChain = chunkHandlerChain.then(work).catch((error: unknown) => {
+    const decodeQueue = createParallelChunkDecodeQueue({
+      onError: (error: unknown) => {
         cleanup();
         settle.settleOnce(reject, error);
-      });
+      },
+    });
+
+    const enqueueChunkWork = (work: () => Promise<void>): void => {
+      decodeQueue.enqueueOrderedWork(work);
     };
 
     const cleanup = (): void => {
       idleTimer.dispose();
+      decodeQueue.clearPendingDecodes();
       input.transport.off(consumerSocketCommandResponseEvent, handleCommandResponse);
       input.transport.off(
         consumerSocketCommandStreamChunkEvent,
@@ -468,6 +472,9 @@ export const executeConsumerCommand = async (
           }
 
           streamAggregation.setActiveStreamId(streamId);
+          if (isSocketAggregatedResponseMode(input.responseMode)) {
+            normalizedResponse = removeStreamMarkerFromConsumerResponse(normalizedResponse);
+          }
           await streamAggregation.requestInitialWindow(requestNextStreamWindow);
         } catch (error: unknown) {
           cleanup();
@@ -477,63 +484,71 @@ export const executeConsumerCommand = async (
     };
 
     const handleCommandStreamChunk = (payload: unknown): void => {
-      enqueueChunkWork(async () => {
-        if (settle.isSettled()) {
-          return;
-        }
+      if (settle.isSettled()) {
+        return;
+      }
 
-        idleTimer.resetIdleTimer();
-        const decodedPayload = await decodeConsumerCommandWirePayload(
-          payload,
-          input.payloadFrameSigning,
-        );
-        const chunk = normalizeConsumerStreamChunkPayload(decodedPayload);
-        if (
-          !matchesConsumerStreamPayload(
-            chunk,
-            activeRequestId,
-            commandRequestId,
-            streamAggregation.state.activeStreamId,
-            toConsumerCommandRequestId,
-          )
-        ) {
-          ignoredStreamChunks += 1;
-          plugLogger.debug("transport.socket.command.stream_chunk_ignored", {
-            socketMode: "agentsCommand",
-            agentId: input.agentId,
-            expectedRequestId: activeRequestId,
-            commandRequestId,
-            expectedStreamId: streamAggregation.state.activeStreamId,
-            requestId: toConsumerCommandRequestId(chunk.request_id),
-            streamId: typeof chunk.stream_id === "string" ? chunk.stream_id : undefined,
-          });
-          return;
-        }
-
-        chunkPayloads.push(chunk);
-        chunkCount += 1;
-        bufferedBytes += estimateConsumerWireBytes(payload, chunk);
-        bufferedRows += countRows(chunk.rows);
-
-        if (isSocketAggregatedResponseMode(input.responseMode)) {
-          const mergedResponse = tryMergeChunkRowsIntoConsumerResponse(
-            normalizedResponse,
-            chunk,
+      idleTimer.resetIdleTimer();
+      decodeQueue.enqueueDecodeThenOrdered(
+        async () => {
+          const decodedPayload = await decodeConsumerCommandWirePayload(
+            payload,
+            input.payloadFrameSigning,
           );
-          if (mergedResponse !== undefined) {
-            normalizedResponse = mergedResponse;
-            chunkPayloads.pop();
+          const chunk = normalizeConsumerStreamChunkPayload(decodedPayload);
+          return {
+            chunk,
+            wireBytes: estimateConsumerWireBytes(payload, chunk),
+          };
+        },
+        ({ chunk, wireBytes }) => {
+          if (
+            !matchesConsumerStreamPayload(
+              chunk,
+              activeRequestId,
+              commandRequestId,
+              streamAggregation.state.activeStreamId,
+              toConsumerCommandRequestId,
+            )
+          ) {
+            ignoredStreamChunks += 1;
+            plugLogger.debug("transport.socket.command.stream_chunk_ignored", {
+              socketMode: "agentsCommand",
+              agentId: input.agentId,
+              expectedRequestId: activeRequestId,
+              commandRequestId,
+              expectedStreamId: streamAggregation.state.activeStreamId,
+              requestId: toConsumerCommandRequestId(chunk.request_id),
+              streamId: typeof chunk.stream_id === "string" ? chunk.stream_id : undefined,
+            });
+            return;
           }
-        }
 
-        assertBufferLimits();
+          chunkPayloads.push(chunk);
+          chunkCount += 1;
+          bufferedBytes += wireBytes;
+          bufferedRows += countRows(chunk.rows);
 
-        streamAggregation.recordChunkReceived();
-        streamAggregation.schedulePullIfCreditsExhausted(
-          enqueueChunkWork,
-          requestNextStreamWindow,
-        );
-      });
+          if (isSocketAggregatedResponseMode(input.responseMode)) {
+            const mergedResponse = tryMergeChunkRowsIntoConsumerResponse(
+              normalizedResponse,
+              chunk,
+            );
+            if (mergedResponse !== undefined) {
+              normalizedResponse = mergedResponse;
+              chunkPayloads.pop();
+            }
+          }
+
+          assertBufferLimits();
+
+          streamAggregation.recordChunkReceived();
+          streamAggregation.schedulePullIfCreditsExhausted(
+            enqueueChunkWork,
+            requestNextStreamWindow,
+          );
+        },
+      );
     };
 
     const handleCommandStreamComplete = (payload: unknown): void => {
@@ -573,9 +588,6 @@ export const executeConsumerCommand = async (
 
         streamAggregation.state.streamCompleted = true;
         completePayload = complete;
-        if (isSocketAggregatedResponseMode(input.responseMode)) {
-          normalizedResponse = removeStreamMarkerFromConsumerResponse(normalizedResponse);
-        }
         plugLogger.info("transport.socket.command.complete", {
           socketMode: "agentsCommand",
           agentId: input.agentId,

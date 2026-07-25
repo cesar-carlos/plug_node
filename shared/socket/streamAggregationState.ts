@@ -1,3 +1,5 @@
+import { shouldPrefetchStreamPull } from "./streamPullPrefetch";
+
 export interface StreamAggregationState {
   activeStreamId?: string;
   streamCreditsRemaining: number;
@@ -55,14 +57,9 @@ export const createStreamAggregationController = (): StreamAggregationController
         return;
       }
 
-      const prefetchThreshold = Math.max(
-        1,
-        Math.floor(state.lastGrantedWindowSize * 0.25),
-      );
       const shouldPull =
         state.streamCreditsRemaining === 0 ||
-        (state.lastGrantedWindowSize > 0 &&
-          state.streamCreditsRemaining <= prefetchThreshold);
+        shouldPrefetchStreamPull(state, state.lastGrantedWindowSize);
 
       if (!shouldPull) {
         return;

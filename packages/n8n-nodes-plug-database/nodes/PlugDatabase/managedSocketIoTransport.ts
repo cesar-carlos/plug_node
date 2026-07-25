@@ -68,6 +68,9 @@ export class ManagedSocketIoTransport {
       // Soft-refresh: keep the live socket when only the JWT string rotates.
       const tokenRotated = this.accessToken !== accessToken;
       this.accessToken = accessToken;
+      if (tokenRotated) {
+        this.transport?.updateAccessToken?.(accessToken);
+      }
       plugLogger.debug(`transport.socket.${this.options.logEventKey}.reused`, {
         socketMode: this.options.socketMode,
         namespaceUrl,

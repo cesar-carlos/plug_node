@@ -10,7 +10,8 @@ import type {
   PayloadFrameSigningOptions,
 } from "../contracts/payload-frame";
 import { plugLogger } from "../logging/plugLogger";
-import { decodePayloadFrameAsync, encodePayloadFrameAsync } from "./payloadFrameCodec";
+import { decodePayloadFrameAsync, encodePayloadFrame } from "./payloadFrameCodec";
+import { createParallelChunkDecodeQueue } from "./parallelChunkDecode";
 import {
   relayAppErrorEvent,
   relayConnectErrorEvent,
@@ -53,8 +54,12 @@ import {
   finishStreamPull,
   shouldSkipStreamPull,
 } from "./streamAggregationState";
-import { MAX_PARALLEL_CHUNK_DECODES } from "./streamPullPrefetch";
 import { createRelayStreamPullSession } from "./streamPullSession";
+
+export interface RelayStreamAggregationSeededResponse {
+  readonly frame: PayloadFrameEnvelope;
+  readonly data: unknown;
+}
 
 export interface RelayStreamAggregationInput {
   readonly transport: RelaySocketTransport;
@@ -67,6 +72,8 @@ export interface RelayStreamAggregationInput {
   readonly fastPath?: boolean;
   readonly timeouts: SocketCommandTimeouts;
   readonly limits: SocketBufferLimits;
+  /** When set, skip waiting for relay:rpc.response and continue from this frame. */
+  readonly seededResponse?: RelayStreamAggregationSeededResponse;
 }
 
 export interface RelayStreamAggregationResult {
@@ -112,12 +119,14 @@ export const waitForRelayStreamAggregation = (
   let ignoredCompletes = 0;
   let activeRequestId = input.clientRequestId;
   let hubRequestId = input.clientRequestId;
+  let acceptedReady = input.fastPath === true;
   const keepRawChunkFrames = !isSocketAggregatedResponseMode(input.responseMode);
   const streamAggregation = createStreamAggregationController();
-  const pullSession = createRelayStreamPullSession(
-    input.transport,
-    input.payloadFrameSigning,
-  );
+  // Aggregation owns terminal events; pull session only listens for pull_response.
+  const pullSession = createRelayStreamPullSession(input.transport, {
+    signing: input.payloadFrameSigning,
+    attachTerminalListeners: false,
+  });
 
   const assertBufferLimits = (): void => {
     assertSocketBufferWithinLimits(input.limits, {
@@ -130,55 +139,17 @@ export const waitForRelayStreamAggregation = (
   const aggregationPromise = new Promise<RelayStreamAggregationOutput>(
     (resolve, reject) => {
       const settle = createSettleOnce();
-      let chunkHandlerChain = Promise.resolve();
-      let inflightDecodes = 0;
-      const pendingDecodeQueue: Array<() => void> = [];
-
-      const pumpDecodeQueue = (): void => {
-        while (
-          inflightDecodes < MAX_PARALLEL_CHUNK_DECODES &&
-          pendingDecodeQueue.length > 0
-        ) {
-          const next = pendingDecodeQueue.shift();
-          if (!next) {
-            return;
-          }
-          next();
-        }
-      };
-
-      const enqueueChunkWork = (work: () => Promise<void>): void => {
-        chunkHandlerChain = chunkHandlerChain.then(work).catch((error: unknown) => {
+      const decodeQueue = createParallelChunkDecodeQueue({
+        onError: (error: unknown) => {
           cleanup();
           settle.settleOnce(reject, error);
-        });
-      };
-
-      const enqueueBoundedDecode = (work: () => Promise<void>): void => {
-        const run = (): void => {
-          inflightDecodes += 1;
-          enqueueChunkWork(async () => {
-            try {
-              await work();
-            } finally {
-              inflightDecodes = Math.max(0, inflightDecodes - 1);
-              pumpDecodeQueue();
-            }
-          });
-        };
-
-        if (inflightDecodes < MAX_PARALLEL_CHUNK_DECODES) {
-          run();
-          return;
-        }
-
-        pendingDecodeQueue.push(run);
-      };
+        },
+      });
 
       const cleanup = (): void => {
         idleTimer.dispose();
         pullSession.dispose();
-        pendingDecodeQueue.length = 0;
+        decodeQueue.clearPendingDecodes();
         input.transport.off(relayRpcAcceptedEvent, handleAccepted);
         input.transport.off(relayRpcResponseEvent, responseListener);
         input.transport.off(relayRpcChunkEvent, chunkListener);
@@ -258,10 +229,11 @@ export const waitForRelayStreamAggregation = (
 
         hubRequestId = acceptedRequestId;
         activeRequestId = acceptedRequestId;
+        acceptedReady = true;
       };
 
       const ensureAcceptedHubRequestId = async (): Promise<void> => {
-        if (input.fastPath === true) {
+        if (acceptedReady) {
           return;
         }
 
@@ -303,14 +275,51 @@ export const waitForRelayStreamAggregation = (
         }
 
         // Drain handlers queued by this pull turn. Skip when already running on the
-        // chunk chain (follow-up pulls) to avoid awaiting the current chain task.
+        // ordered chain (follow-up pulls) to avoid awaiting the current chain task.
         if (options?.drainQueuedHandlers !== false) {
-          await chunkHandlerChain;
+          await decodeQueue.drainOrderedWork();
         }
 
         if (shouldRequestAdditionalWindow && !streamAggregation.state.streamCompleted) {
           await requestNextStreamWindow(options);
         }
+      };
+
+      const beginStreamFromResponse = async (
+        frame: PayloadFrameEnvelope,
+        data: unknown,
+      ): Promise<void> => {
+        if (typeof frame.requestId === "string" && frame.requestId) {
+          activeRequestId = frame.requestId;
+          hubRequestId = frame.requestId;
+        }
+
+        rawResponseFrame = frame;
+        // Strip stream_id once up front; chunk merges only push rows in place.
+        rawResponsePayload = isSocketAggregatedResponseMode(input.responseMode)
+          ? removeStreamMarkerFromRawRpcResponse(data)
+          : data;
+        bufferedBytes += frame.originalSize;
+        bufferedRows += countResultRows(data);
+        assertBufferLimits();
+
+        const streamId = getStreamIdFromNormalizedResponse(data);
+        if (!streamId) {
+          finishResolve({
+            responseFrame: frame,
+            responsePayload: rawResponsePayload,
+          });
+          return;
+        }
+
+        streamAggregation.setActiveStreamId(streamId);
+        if (pendingCompletePayload !== undefined) {
+          const pending = pendingCompletePayload;
+          pendingCompletePayload = undefined;
+          handleComplete(pending);
+          return;
+        }
+        await streamAggregation.requestInitialWindow(requestNextStreamWindow);
       };
 
       const handleResponse = async (payload: unknown): Promise<void> => {
@@ -329,56 +338,17 @@ export const waitForRelayStreamAggregation = (
             return;
           }
 
-          if (typeof decoded.frame.requestId === "string" && decoded.frame.requestId) {
-            activeRequestId = decoded.frame.requestId;
-            hubRequestId = decoded.frame.requestId;
-          }
-
-          rawResponseFrame = decoded.frame;
-          rawResponsePayload = decoded.data;
-          bufferedBytes += decoded.frame.originalSize;
-          bufferedRows += countResultRows(decoded.data);
-          assertBufferLimits();
-
-          const streamId = getStreamIdFromNormalizedResponse(decoded.data);
-          if (!streamId) {
-            finishResolve({
-              responseFrame: decoded.frame,
-              responsePayload: decoded.data,
-            });
-            return;
-          }
-
-          streamAggregation.setActiveStreamId(streamId);
-          if (pendingCompletePayload !== undefined) {
-            const pending = pendingCompletePayload;
-            pendingCompletePayload = undefined;
-            handleComplete(pending);
-            return;
-          }
-          await streamAggregation.requestInitialWindow(requestNextStreamWindow);
+          await beginStreamFromResponse(decoded.frame, decoded.data);
         } catch (error: unknown) {
           cleanup();
           settle.settleOnce(reject, error);
         }
       };
 
-      const handleChunk = async (payload: unknown): Promise<void> => {
-        if (settle.isSettled()) {
-          return;
-        }
-
-        idleTimer.resetIdleTimer();
-        try {
-          await ensureAcceptedHubRequestId();
-        } catch (error: unknown) {
-          cleanup();
-          settle.settleOnce(reject, error);
-          return;
-        }
-        const decoded = await decodePayloadFrameAsync<JsonObject>(payload, {
-          signing: input.payloadFrameSigning,
-        });
+      const applyDecodedChunk = (decoded: {
+        readonly frame: PayloadFrameEnvelope;
+        readonly data: JsonObject;
+      }): void => {
         if (!matchesRequestId(decoded.frame.requestId, decoded.data)) {
           ignoredChunks += 1;
           return;
@@ -396,7 +366,8 @@ export const waitForRelayStreamAggregation = (
           ? tryMergeChunkRowsIntoRawRpcResponse(rawResponsePayload, decoded.data)
           : undefined;
         if (mergedResponse !== undefined) {
-          rawResponsePayload = removeStreamMarkerFromRawRpcResponse(mergedResponse);
+          // Rows were pushed in place; stream_id already stripped on response.
+          rawResponsePayload = mergedResponse;
         } else {
           if (keepRawChunkFrames) {
             rawChunkFrames.push(decoded.frame);
@@ -407,13 +378,32 @@ export const waitForRelayStreamAggregation = (
 
         streamAggregation.recordChunkReceived();
         streamAggregation.schedulePullIfCreditsExhausted(
-          enqueueChunkWork,
+          decodeQueue.enqueueOrderedWork,
           () => requestNextStreamWindow({ drainQueuedHandlers: false }),
         );
       };
 
+      const handleChunk = (payload: unknown): void => {
+        if (settle.isSettled()) {
+          return;
+        }
+
+        idleTimer.resetIdleTimer();
+        decodeQueue.enqueueDecodeThenOrdered(
+          async () => {
+            await ensureAcceptedHubRequestId();
+            return decodePayloadFrameAsync<JsonObject>(payload, {
+              signing: input.payloadFrameSigning,
+            });
+          },
+          (decoded) => {
+            applyDecodedChunk(decoded);
+          },
+        );
+      };
+
       const handleComplete = (payload: unknown): void => {
-        enqueueChunkWork(async () => {
+        decodeQueue.enqueueOrderedWork(async () => {
           if (settle.isSettled()) {
             return;
           }
@@ -445,7 +435,7 @@ export const waitForRelayStreamAggregation = (
           completePayload = decoded.data;
           const responseFrame =
             rawResponseFrame ??
-            (await encodePayloadFrameAsync(
+            encodePayloadFrame(
               {
                 jsonrpc: "2.0",
                 id: activeRequestId,
@@ -456,7 +446,7 @@ export const waitForRelayStreamAggregation = (
                 compression: "none",
                 signing: input.payloadFrameSigning,
               },
-            ));
+            );
           finishResolve({
             responseFrame,
             completeFrame: decoded.frame,
@@ -496,7 +486,7 @@ export const waitForRelayStreamAggregation = (
         void handleResponse(payload);
       };
       const chunkListener = (payload: unknown): void => {
-        enqueueBoundedDecode(() => handleChunk(payload));
+        handleChunk(payload);
       };
       const completeListener = (payload: unknown): void => {
         handleComplete(payload);
@@ -505,7 +495,9 @@ export const waitForRelayStreamAggregation = (
       // Apply hub requestId synchronously on accepted so the following
       // relay:rpc.response in the same turn can match immediately.
       input.transport.on(relayRpcAcceptedEvent, handleAccepted);
-      input.transport.on(relayRpcResponseEvent, responseListener);
+      if (input.seededResponse === undefined) {
+        input.transport.on(relayRpcResponseEvent, responseListener);
+      }
       input.transport.on(relayRpcChunkEvent, chunkListener);
       input.transport.on(relayRpcCompleteEvent, completeListener);
       input.transport.on(relayAppErrorEvent, handleAppError);
@@ -518,6 +510,16 @@ export const waitForRelayStreamAggregation = (
         },
         () => undefined,
       );
+
+      if (input.seededResponse !== undefined) {
+        void beginStreamFromResponse(
+          input.seededResponse.frame,
+          input.seededResponse.data,
+        ).catch((error: unknown) => {
+          cleanup();
+          settle.settleOnce(reject, error);
+        });
+      }
     },
   );
 

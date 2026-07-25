@@ -44,6 +44,7 @@ const buildMockTransport = () => ({
   on: vi.fn(),
   off: vi.fn(),
   emit: vi.fn(),
+  updateAccessToken: vi.fn(),
 });
 
 const relaySuccess = {
@@ -201,6 +202,9 @@ describe("RelaySocketExecutionManager", () => {
     const { createRelaySocketCommandExecutor } =
       await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/relaySocketExecutionManager");
 
+    const transport = buildMockTransport();
+    createSocketIoTransportMock.mockImplementation(() => transport);
+
     const executor = createRelaySocketCommandExecutor();
     const baseInput = {
       agentId: "agent-1",
@@ -239,6 +243,7 @@ describe("RelaySocketExecutionManager", () => {
     });
 
     expect(createSocketIoTransportMock).toHaveBeenCalledTimes(1);
+    expect(transport.updateAccessToken).toHaveBeenCalledWith("token-b");
   });
 
   it("marks the manager stale after executeRelayCommand fails", async () => {
