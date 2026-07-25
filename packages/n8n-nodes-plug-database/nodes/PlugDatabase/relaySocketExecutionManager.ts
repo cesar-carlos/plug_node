@@ -231,6 +231,10 @@ export class RelaySocketExecutionManager {
 
       return result;
     } catch (error: unknown) {
+      const conversationId = this.agentSessions.get(input.agentId)?.conversationId;
+      if (conversationId && this.activeTransport) {
+        this.activeTransport.emit(relayConversationEndEvent, { conversationId });
+      }
       this.managedTransport.markStale();
       this.agentSessions.delete(input.agentId);
       throw error;

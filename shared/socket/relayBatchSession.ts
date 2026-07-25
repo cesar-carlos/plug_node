@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   PlugCommandTransportResult,
   RelayRpcBatchAcceptedItemSuccess,
@@ -105,10 +107,19 @@ const isBatchAcceptedSuccessItem = (
 
 const waitForRelayBatchAcceptedFailure = (
   transport: RelaySocketTransport,
-): Promise<never> =>
-  new Promise<never>((_, reject) => {
-    const handleAccepted = (payload: unknown): void => {
+): { readonly promise: Promise<never>; readonly cancel: () => void } => {
+  let handleAccepted: ((payload: unknown) => void) | undefined;
+
+  const cancel = (): void => {
+    if (handleAccepted) {
       transport.off(relayRpcBatchAcceptedEvent, handleAccepted);
+      handleAccepted = undefined;
+    }
+  };
+
+  const promise = new Promise<never>((_, reject) => {
+    handleAccepted = (payload: unknown): void => {
+      cancel();
       try {
         assertRelayBatchAcceptedPayload(normalizeRelayBatchAcceptedPayload(payload));
       } catch (error: unknown) {
@@ -118,6 +129,9 @@ const waitForRelayBatchAcceptedFailure = (
 
     transport.on(relayRpcBatchAcceptedEvent, handleAccepted);
   });
+
+  return { promise, cancel };
+};
 
 const resolveHubRequestId = (
   frameRequestId: string | null | undefined,
@@ -136,6 +150,7 @@ export const executeRelayBatchCommand = async (
   let conversationId: string | undefined = input.reusedConversationId;
   const managedTransport = input.managedTransport === true;
   const fastPath = input.fastPath === true;
+  let commandSucceeded = false;
   const clientRequestIds = new Set(commands.map((command) => String(command.id)));
 
   if (!managedTransport || !input.transport.connected) {
@@ -160,6 +175,7 @@ export const executeRelayBatchCommand = async (
         normalizeRelayConversationStarted,
       );
       input.transport.emit(relayConversationStartEvent, {
+        requestId: randomUUID(),
         agentId: input.agentId,
       });
       const conversation = await conversationPromise;
@@ -180,7 +196,7 @@ export const executeRelayBatchCommand = async (
       ...(fastPath ? { omitTraceId: true } : {}),
     });
 
-    const batchFailurePromise = fastPath
+    const batchFailureWaiter = fastPath
       ? waitForRelayBatchAcceptedFailure(input.transport)
       : undefined;
 
@@ -279,6 +295,7 @@ export const executeRelayBatchCommand = async (
         : {}),
       ...(input.requestServerTimings === true ? { requestServerTimings: true } : {}),
       ...(fastPath ? { fastPath: true } : {}),
+      timeoutMs: timeouts.commandTimeoutMs,
     });
 
     let responses:
@@ -336,11 +353,15 @@ export const executeRelayBatchCommand = async (
         ),
       );
 
-      responses = await Promise.race(
-        batchFailurePromise
-          ? [waitAllResponses, batchFailurePromise]
-          : [waitAllResponses],
-      );
+      try {
+        responses = await Promise.race(
+          batchFailureWaiter
+            ? [waitAllResponses, batchFailureWaiter.promise]
+            : [waitAllResponses],
+        );
+      } finally {
+        batchFailureWaiter?.cancel();
+      }
     } else {
       const batchAccepted = assertRelayBatchAcceptedPayload(
         await waitForRelaySingleEvent(
@@ -351,8 +372,6 @@ export const executeRelayBatchCommand = async (
         ),
       );
       const acceptedItems = batchAccepted.items.filter(isBatchAcceptedSuccessItem);
-
-      await Promise.resolve();
 
       responses = await Promise.all(
         acceptedItems.map(
@@ -409,7 +428,7 @@ export const executeRelayBatchCommand = async (
     });
 
     if (fastPath) {
-      return (
+      const batchResults = (
         responses as Array<{
           readonly clientRequestId: string;
           readonly requestId: string;
@@ -441,9 +460,11 @@ export const executeRelayBatchCommand = async (
           },
         };
       });
+      commandSucceeded = true;
+      return batchResults;
     }
 
-    return (
+    const batchResults = (
       responses as Array<{
         readonly item: RelayRpcBatchAcceptedItemSuccess;
         readonly payload: unknown;
@@ -479,8 +500,12 @@ export const executeRelayBatchCommand = async (
         },
       };
     });
+    commandSucceeded = true;
+    return batchResults;
   } finally {
-    if (conversationId && input.skipConversationEnd !== true) {
+    // Keep conversation open across managed reuse only after success.
+    // Failed batch commands must end so agent stream capacity is released.
+    if (conversationId && (input.skipConversationEnd !== true || !commandSucceeded)) {
       input.transport.emit(relayConversationEndEvent, { conversationId });
     }
     if (!managedTransport) {

@@ -144,6 +144,7 @@ export const executeBuiltCommandWithRetry = async (input: {
         transportWithMetrics,
         builtRequest.responseMode,
         input.includeMetadata,
+        builtRequest.autoPerformanceHints === true,
       );
 
       return {

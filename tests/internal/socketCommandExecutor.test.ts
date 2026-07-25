@@ -297,7 +297,7 @@ describe("ConsumerSocketExecutionManager", () => {
     });
 
     expect(probeEmitCount).toBe(1);
-    expect(createdSockets).toHaveLength(2);
+    expect(createdSockets).toHaveLength(1);
     manager.close();
   }, 15_000);
 

@@ -257,4 +257,38 @@ describe("executeRelayBatchCommand", () => {
       transport.emittedEvents.some((entry) => entry.event === "relay:rpc.batch_accepted"),
     ).toBe(false);
   });
+
+  it("forwards timeoutMs on relay:rpc.request.batch and requestId on conversation.start", async () => {
+    const transport = new MockRelayBatchTransport();
+    transport.connect();
+
+    await executeRelayBatchCommand({
+      transport,
+      session,
+      agentId: "agent-1",
+      commands: [buildCommand("client-1"), buildCommand("client-2")],
+      responseMode: "aggregatedJson",
+      timeoutMs: 90_000,
+      managedTransport: true,
+      skipConversationEnd: true,
+    });
+
+    const conversationStart = transport.emittedEvents.find(
+      (entry) => entry.event === "relay:conversation.start",
+    );
+    expect(isRecord(conversationStart?.payload)).toBe(true);
+    if (isRecord(conversationStart?.payload)) {
+      expect(typeof conversationStart.payload.requestId).toBe("string");
+      expect(String(conversationStart.payload.requestId).length).toBeGreaterThan(0);
+      expect(conversationStart.payload.agentId).toBe("agent-1");
+    }
+
+    const batchRequest = transport.emittedEvents.find(
+      (entry) => entry.event === "relay:rpc.request.batch",
+    );
+    expect(isRecord(batchRequest?.payload)).toBe(true);
+    if (isRecord(batchRequest?.payload)) {
+      expect(batchRequest.payload.timeoutMs).toBe(90_000);
+    }
+  });
 });

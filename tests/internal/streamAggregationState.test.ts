@@ -43,6 +43,24 @@ describe("streamAggregationState", () => {
     await scheduled[0]?.();
   });
 
+  it("prefetches the next pull before credits are fully exhausted", async () => {
+    const controller = createStreamAggregationController();
+    controller.setActiveStreamId("stream-1");
+    controller.state.lastGrantedWindowSize = 8;
+    controller.state.streamCreditsRemaining = 2;
+
+    const scheduled: Array<() => Promise<void>> = [];
+    controller.schedulePullIfCreditsExhausted(
+      (work) => {
+        scheduled.push(work);
+      },
+      async () => undefined,
+    );
+
+    expect(scheduled).toHaveLength(1);
+    await scheduled[0]?.();
+  });
+
   it("ignores credit accounting until an active stream id is set", () => {
     const controller = createStreamAggregationController();
     controller.state.streamCreditsRemaining = 2;

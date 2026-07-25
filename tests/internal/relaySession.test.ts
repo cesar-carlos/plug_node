@@ -890,6 +890,36 @@ describe("executeRelayCommand", () => {
     ).toBe(true);
   });
 
+  it("ends the conversation on failure even when skipConversationEnd is true", async () => {
+    const command: RpcSingleCommand = {
+      jsonrpc: "2.0",
+      method: "client_token.getPolicy",
+      id: "client-request-1",
+      params: {
+        client_token: "client-token",
+      },
+    };
+    const transport = new TimeoutRelayTransport();
+    transport.connect();
+
+    await expect(
+      executeRelayCommand({
+        transport,
+        session,
+        command,
+        responseMode: "aggregatedJson",
+        timeoutMs: 25,
+        managedTransport: true,
+        skipConversationEnd: true,
+      }),
+    ).rejects.toThrow("Timed out while waiting for relay RPC completion");
+
+    expect(
+      transport.emittedEvents.some(({ event }) => event === "relay:conversation.end"),
+    ).toBe(true);
+    expect(transport.connected).toBe(true);
+  });
+
   it("allows sql.executeBatch as a single relay command", async () => {
     const command: RpcSingleCommand = {
       jsonrpc: "2.0",
@@ -1213,6 +1243,187 @@ describe("executeRelayCommand", () => {
       },
     });
     expect(result.metrics?.serverTimings).toEqual(result.executionMetrics?.serverTimings);
+  });
+
+  it("forwards timeoutMs on relay:rpc.request and requestId on conversation.start", async () => {
+    const transport = new MockRelayTransport();
+    transport.connect();
+
+    await executeRelayCommand({
+      transport,
+      session,
+      agentId: "agent-1",
+      command: {
+        jsonrpc: "2.0",
+        method: "client_token.getPolicy",
+        id: "client-request-1",
+        params: { client_token: "client-token" },
+      },
+      responseMode: "aggregatedJson",
+      timeoutMs: 90_000,
+      managedTransport: true,
+      skipConversationEnd: true,
+    });
+
+    const conversationStart = transport.emittedEvents.find(
+      (entry) => entry.event === "relay:conversation.start",
+    );
+    expect(isRecord(conversationStart?.payload)).toBe(true);
+    if (isRecord(conversationStart?.payload)) {
+      expect(typeof conversationStart.payload.requestId).toBe("string");
+      expect(String(conversationStart.payload.requestId).length).toBeGreaterThan(0);
+      expect(conversationStart.payload.agentId).toBe("agent-1");
+    }
+
+    const rpcRequest = transport.emittedEvents.find(
+      (entry) => entry.event === "relay:rpc.request",
+    );
+    expect(isRecord(rpcRequest?.payload)).toBe(true);
+    if (isRecord(rpcRequest?.payload)) {
+      expect(rpcRequest.payload.timeoutMs).toBe(90_000);
+    }
+  });
+
+  it("matches streamed RPC responses by JSON-RPC body id when accepted arrives late", async () => {
+    class ResponseBeforeAcceptedTransport implements RelaySocketTransport {
+      connected = false;
+      readonly emittedEvents: Array<{ readonly event: string; readonly payload?: unknown }> =
+        [];
+      streamPullRequests = 0;
+      private readonly handlers = new Map<string, Set<(payload: unknown) => void>>();
+
+      connect(): void {
+        this.connected = true;
+        queueMicrotask(() => {
+          this.dispatch("relay:connection.ready", {
+            id: "socket-1",
+            connectedAt: new Date().toISOString(),
+          } satisfies RelayConnectionReadyPayload);
+        });
+      }
+
+      disconnect(): void {
+        this.connected = false;
+      }
+
+      on(event: string, handler: (payload: unknown) => void): void {
+        const eventHandlers =
+          this.handlers.get(event) ?? new Set<(payload: unknown) => void>();
+        eventHandlers.add(handler);
+        this.handlers.set(event, eventHandlers);
+      }
+
+      off(event: string, handler: (payload: unknown) => void): void {
+        this.handlers.get(event)?.delete(handler);
+      }
+
+      emit(event: string, payload?: unknown): void {
+        this.emittedEvents.push({ event, payload });
+
+        if (event === "relay:conversation.start") {
+          queueMicrotask(() => {
+            this.dispatch("relay:conversation.started", {
+              success: true,
+              conversationId: "conversation-1",
+              agentId: "agent-1",
+              createdAt: new Date().toISOString(),
+            });
+          });
+          return;
+        }
+
+        if (event === "relay:rpc.request") {
+          queueMicrotask(() => {
+            // Hub frame + body ids before accepted — must wait for accepted hub UUID.
+            this.dispatch(
+              "relay:rpc.response",
+              encodePayloadFrame(
+                {
+                  jsonrpc: "2.0",
+                  id: "hub-request-1",
+                  result: {
+                    rows: [{ id: 1, name: "Alpha" }],
+                    stream_id: "stream-1",
+                  },
+                },
+                { requestId: "hub-request-1", compression: "none" },
+              ),
+            );
+            this.dispatch("relay:rpc.accepted", {
+              success: true,
+              conversationId: "conversation-1",
+              requestId: "hub-request-1",
+              clientRequestId: "client-request-1",
+            });
+          });
+          return;
+        }
+
+        if (event === "relay:rpc.stream.pull") {
+          this.streamPullRequests += 1;
+          queueMicrotask(() => {
+            this.dispatch("relay:rpc.stream.pull_response", {
+              success: true,
+              conversationId: "conversation-1",
+              requestId: "hub-request-1",
+              streamId: "stream-1",
+              windowSize: 32,
+            });
+            this.dispatch(
+              "relay:rpc.chunk",
+              encodePayloadFrame(
+                {
+                  request_id: "hub-request-1",
+                  stream_id: "stream-1",
+                  rows: [{ id: 2, name: "Beta" }],
+                },
+                { requestId: "hub-request-1", compression: "none" },
+              ),
+            );
+            this.dispatch(
+              "relay:rpc.complete",
+              encodePayloadFrame(
+                {
+                  request_id: "hub-request-1",
+                  stream_id: "stream-1",
+                  total_rows: 2,
+                  terminal_status: "completed",
+                },
+                { requestId: "hub-request-1", compression: "none" },
+              ),
+            );
+          });
+        }
+      }
+
+      private dispatch(event: string, payload: unknown): void {
+        for (const handler of this.handlers.get(event) ?? []) {
+          handler(payload);
+        }
+      }
+    }
+
+    const transportResult = await executeRelayCommand({
+      transport: new ResponseBeforeAcceptedTransport(),
+      session,
+      command: {
+        jsonrpc: "2.0",
+        method: "sql.execute",
+        id: "client-request-1",
+        params: {
+          sql: "SELECT 1",
+          client_token: "client-token",
+        },
+      },
+      responseMode: "aggregatedJson",
+      timeoutMs: 5000,
+    });
+
+    const items = buildNodeOutputItems(transportResult, "aggregatedJson");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ id: 1, name: "Alpha" });
+    expect(items[1]).toMatchObject({ id: 2, name: "Beta" });
+    expect(transportResult.requestId).toBe("hub-request-1");
   });
 
   it("fails immediately when the relay socket disconnects during control events", async () => {

@@ -185,7 +185,7 @@ export const plugSqlBatchAdvancedOptions: INodeProperties = {
       displayName: "Coalesce Input Items",
       name: "coalesceInputItems",
       type: "boolean",
-      default: false,
+      default: true,
       description:
         "Merge Batch Commands JSON from all input items into one sql.executeBatch call. Additional Options must match on every item. The node returns one output item.",
     },
@@ -328,7 +328,7 @@ export const plugSqlSocketAdvancedOptions: INodeProperties = {
       type: "boolean",
       default: true,
       description:
-        "Relay unary fast-path: skip relay:rpc.accepted on the happy path and route responses by JSON-RPC body id. Enabled by default on typeVersion 1 relay nodes. Automatically omitted for streaming-capable commands (prefer_db_streaming, multi_result, sql.executeBatch) because the hub rejects fastPath on those methods.",
+        "Relay unary fast-path: skip relay:rpc.accepted on the happy path and route responses by JSON-RPC body id. Enabled by default for socket relay (all typeVersions) when unset. Automatically omitted for all sql.execute / sql.executeBatch commands because agents may open streams (including inadvertent streams on large results) and stream.pull requires the hub requestId from accepted.",
     },
     {
       displayName: "Request Server Timings",

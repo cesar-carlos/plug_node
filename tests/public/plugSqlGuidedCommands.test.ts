@@ -301,7 +301,41 @@ describe("plugSqlGuidedCommands", () => {
     ).toBeUndefined();
   });
 
-  it("applies auto prefer_db_streaming on socket when hints are enabled", () => {
+  it("applies auto prefer_db_streaming on socket for large TOP when hints are enabled", () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "client@example.com",
+        password: "secret",
+        baseUrl: "https://plug-server.example.com/api/v1",
+      },
+      parameters: {
+        channel: "socket",
+        sql: "SELECT TOP 1000 * FROM Cliente",
+        namedParamsJson: "",
+        sqlOptions: {
+          autoPerformanceHints: true,
+        },
+      },
+      responses: [],
+      nodeTypeVersion: 2,
+    });
+
+    const built = finalizeBuiltCommandRequest(
+      buildGuidedSqlCommand(context, 0, executionContext),
+      context,
+      0,
+      { supportsSocket: true },
+      "executeSql",
+    );
+
+    expect(built.command.params?.options).toMatchObject({
+      prefer_db_streaming: true,
+    });
+    expect(built.channel).toBe("socket");
+    expect(built.fastPath).toBeUndefined();
+  });
+
+  it("does not auto-enable prefer_db_streaming for unbounded SELECT without TOP", () => {
     const context = createMockExecuteContext({
       credentials: {
         user: "client@example.com",
@@ -328,10 +362,39 @@ describe("plugSqlGuidedCommands", () => {
       "executeSql",
     );
 
-    expect(built.command.params?.options).toMatchObject({
-      prefer_db_streaming: true,
+    expect(built.command.params?.options?.prefer_db_streaming).toBeUndefined();
+    // sql.execute never uses fastPath: agents may stream large/wide results.
+    expect(built.fastPath).toBeUndefined();
+  });
+
+  it("omits relay fastPath for sql.execute even with TOP N", () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "client@example.com",
+        password: "secret",
+        baseUrl: "https://plug-server.example.com/api/v1",
+      },
+      parameters: {
+        channel: "socket",
+        sql: "SELECT TOP 1 * FROM Cliente",
+        namedParamsJson: "",
+        sqlOptions: {
+          autoPerformanceHints: false,
+        },
+      },
+      responses: [],
+      nodeTypeVersion: 2,
     });
-    expect(built.channel).toBe("socket");
+
+    const built = finalizeBuiltCommandRequest(
+      buildGuidedSqlCommand(context, 0, executionContext),
+      context,
+      0,
+      { supportsSocket: true },
+      "executeSql",
+    );
+
+    expect(built.fastPath).toBeUndefined();
   });
 
   it("respects explicit preferDbStreaming false even when auto hints are enabled", () => {
@@ -434,7 +497,7 @@ describe("plugSqlGuidedCommands", () => {
     expect(built.fastPath).toBeUndefined();
   });
 
-  it("keeps relay fastPath default on typeVersion 1 for non-streaming SQL", () => {
+  it("omits relay fastPath on typeVersion 1 for sql.execute", () => {
     const context = createMockExecuteContext({
       credentials: {
         user: "client@example.com",
@@ -461,7 +524,7 @@ describe("plugSqlGuidedCommands", () => {
       "executeSql",
     );
 
-    expect(built.fastPath).toBe(true);
+    expect(built.fastPath).toBeUndefined();
   });
 
   it("omits relay fastPath when multi_result is enabled even if Socket Options request it", () => {

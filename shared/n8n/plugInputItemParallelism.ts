@@ -12,13 +12,13 @@ import {
 } from "./plugSqlPerformanceHints";
 
 /** Default ceiling when Auto Performance Hints enable input-item parallelism. */
-export const plugMaxParallelInputItems = 4;
+export const plugMaxParallelInputItems = 8;
 
 /**
  * Hub REST per-agent inflight ceiling (`SOCKET_REST_AGENT_MAX_INFLIGHT` in plug_server).
  * Caps node-side concurrency so independent items do not overload the agent bridge.
  */
-export const socketRestAgentMaxInflight = 4;
+export const socketRestAgentMaxInflight = 8;
 
 const readParallelInputItemsCeiling = (): number => {
   const envValue = process.env.PLUG_MAX_PARALLEL_INPUT_ITEMS;

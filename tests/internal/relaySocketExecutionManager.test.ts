@@ -197,7 +197,7 @@ describe("RelaySocketExecutionManager", () => {
     executor.close();
   });
 
-  it("recreates the transport when the access token changes", async () => {
+  it("reuses the transport when only the access token changes", async () => {
     const { createRelaySocketCommandExecutor } =
       await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/relaySocketExecutionManager");
 
@@ -238,7 +238,7 @@ describe("RelaySocketExecutionManager", () => {
       },
     });
 
-    expect(createSocketIoTransportMock).toHaveBeenCalledTimes(2);
+    expect(createSocketIoTransportMock).toHaveBeenCalledTimes(1);
   });
 
   it("marks the manager stale after executeRelayCommand fails", async () => {

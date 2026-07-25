@@ -22,8 +22,8 @@ const maxGzipInputBytes = 512 * 1024;
 const maxCompressedBytes = 10 * 1024 * 1024;
 const maxDecodedBytes = 10 * 1024 * 1024;
 const maxInflationRatio = 10;
-const asyncGzipThresholdBytes = 128 * 1024;
-const asyncGunzipThresholdBytes = 64 * 1024;
+const asyncGzipThresholdBytes = 16 * 1024;
+const asyncGunzipThresholdBytes = 1;
 const signatureAlgorithm = "hmac-sha256";
 const gzipAsync = promisify(gzipCallback);
 const allowedRootKeys = new Set([
@@ -45,8 +45,12 @@ const payloadToBuffer = (payload: PayloadFrameEnvelope["payload"]): Buffer => {
     return Buffer.from(payload, "base64");
   }
 
+  if (Buffer.isBuffer(payload)) {
+    return payload;
+  }
+
   if (payload instanceof Uint8Array) {
-    return Buffer.from(payload);
+    return Buffer.from(payload.buffer, payload.byteOffset, payload.byteLength);
   }
 
   if (Array.isArray(payload)) {

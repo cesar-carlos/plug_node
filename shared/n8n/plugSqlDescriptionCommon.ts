@@ -85,7 +85,7 @@ export const buildPlugSqlResponseModeProperty = (
   type: "options",
   default: "aggregatedJson",
   description:
-    "Choose the shape of the node output. Use Aggregated JSON for per-row items, Aggregated Single Item for one item with rows[], or Chunk Items for large socket streams.",
+    "Choose the shape of the node output. Use Aggregated JSON for per-row items, Aggregated Single Item for one item with rows[], or Chunk Items for large socket streams. With Auto Performance Hints enabled, Aggregated JSON automatically promotes to a single item when more than 1000 rows are returned.",
   options: [
     {
       name: "Aggregated JSON",

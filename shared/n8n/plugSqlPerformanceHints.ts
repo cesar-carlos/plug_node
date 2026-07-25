@@ -35,6 +35,25 @@ export const isLikelyReadOnlySql = (sql: string): boolean => {
   return !mutationKeywordPattern.test(normalizedStatement);
 };
 
+/**
+ * True for a single-statement SELECT without TOP (or with an explicit empty
+ * probe). Agents may still open a DB stream for large unbounded SELECTs even
+ * when prefer_db_streaming is off; callers should avoid relay fastPath so
+ * relay:rpc.accepted can anchor stream.pull requestIds.
+ */
+export const isLikelyUnboundedSelectSql = (sql: string): boolean => {
+  if (!isLikelyReadOnlySql(sql)) {
+    return false;
+  }
+
+  const cleanSql = splitSqlStatements(sql)[0].replace(/\s+/g, " ");
+  if (/\bwhere\s+1\s*=\s*0\b/i.test(cleanSql)) {
+    return false;
+  }
+
+  return !/^\s*select\s+top\s+(?:\(|\d)/i.test(cleanSql);
+};
+
 export const shouldAutoPreferDbStreaming = (sql: string): boolean => {
   if (!isLikelyReadOnlySql(sql)) {
     return false;
@@ -51,7 +70,8 @@ export const shouldAutoPreferDbStreaming = (sql: string): boolean => {
     return Number.isFinite(topN) && topN >= plugLargeResultTopThreshold;
   }
 
-  return /\bfrom\b/i.test(cleanSql);
+  // Unbounded SELECT keeps unary/`fastPath` unless the user opts into Prefer DB Streaming.
+  return false;
 };
 
 export const resolveAutoMaxParallelReadOnlyBatchItems = (

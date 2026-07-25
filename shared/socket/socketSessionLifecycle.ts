@@ -2,6 +2,7 @@ import { DEFAULT_REQUEST_TIMEOUT_MS } from "../contracts/api";
 import { PlugTimeoutError } from "../contracts/errors";
 
 export const DEFAULT_SOCKET_CONNECT_TIMEOUT_MS = 10_000;
+export const IDLE_COMMAND_TIMER_CHECK_INTERVAL_MS = 250;
 
 export interface SocketCommandTimeouts {
   readonly connectTimeoutMs: number;
@@ -50,12 +51,13 @@ export const attachIdleCommandTimer = (
   readonly resetIdleTimer: () => void;
   readonly dispose: () => void;
 } => {
-  let commandTimer: NodeJS.Timeout | undefined;
+  let lastActivityMs = Date.now();
+  let checkTimer: NodeJS.Timeout | undefined;
 
   const dispose = (): void => {
-    if (commandTimer) {
-      clearTimeout(commandTimer);
-      commandTimer = undefined;
+    if (checkTimer) {
+      clearInterval(checkTimer);
+      checkTimer = undefined;
     }
   };
 
@@ -64,15 +66,25 @@ export const attachIdleCommandTimer = (
       return;
     }
 
-    dispose();
-    commandTimer = setTimeout(() => {
-      if (!settle.isSettled()) {
-        onTimeout();
-      }
-    }, timeouts.commandTimeoutMs);
+    lastActivityMs = Date.now();
   };
 
-  resetIdleTimer();
+  checkTimer = setInterval(() => {
+    if (settle.isSettled()) {
+      dispose();
+      return;
+    }
+
+    if (Date.now() - lastActivityMs >= timeouts.commandTimeoutMs) {
+      dispose();
+      onTimeout();
+    }
+  }, IDLE_COMMAND_TIMER_CHECK_INTERVAL_MS);
+
+  // Ensure the interval does not keep the process alive on its own.
+  if (typeof checkTimer.unref === "function") {
+    checkTimer.unref();
+  }
 
   return { resetIdleTimer, dispose };
 };

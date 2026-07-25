@@ -132,6 +132,8 @@ const aggregateSocketSqlStream = (
   };
 };
 
+export const LARGE_AGGREGATED_JSON_ROW_THRESHOLD = 1000;
+
 const withOptionalMetadata = (
   includeMetadata: boolean,
   metadata: JsonObject,
@@ -142,6 +144,7 @@ const buildSingleSuccessItems = (
   metadata: JsonObject,
   includeMetadata: boolean,
   responseMode: PlugResponseMode,
+  autoPerformanceHints = false,
 ): JsonObject[] => {
   const resultPayload = response.item.result;
 
@@ -167,7 +170,13 @@ const buildSingleSuccessItems = (
     }
 
     if (hasRowsArray) {
-      if (responseMode === "aggregatedSingleItem") {
+      const promoteToSingleItem =
+        responseMode === "aggregatedSingleItem" ||
+        (responseMode === "aggregatedJson" &&
+          autoPerformanceHints &&
+          rows.length > LARGE_AGGREGATED_JSON_ROW_THRESHOLD);
+
+      if (promoteToSingleItem) {
         const rowCount =
           typeof explicitRowCount === "number" ? explicitRowCount : rows.length;
 
@@ -175,18 +184,23 @@ const buildSingleSuccessItems = (
           {
             rowCount,
             rows,
-            ...withOptionalMetadata(includeMetadata, metadata),
+            ...withOptionalMetadata(includeMetadata, {
+              ...metadata,
+              ...(responseMode === "aggregatedJson"
+                ? { promotedToSingleItem: true }
+                : {}),
+            }),
           },
         ];
       }
 
-      return rows.map((row, index) => ({
-        ...(isRecord(row) ? row : { value: row }),
-        ...withOptionalMetadata(includeMetadata, {
-          ...metadata,
-          rowIndex: index,
-        }),
-      }));
+      return rows.map((row, index) => {
+        const item: JsonObject = isRecord(row) ? { ...row } : { value: row };
+        if (includeMetadata) {
+          item.__plug = { ...metadata, rowIndex: index };
+        }
+        return item;
+      });
     }
   }
 
@@ -214,6 +228,7 @@ export const buildNodeOutputItems = (
   result: PlugCommandTransportResult,
   responseMode: PlugResponseMode,
   includeMetadata = true,
+  autoPerformanceHints = false,
 ): JsonObject[] => {
   if (result.notification) {
     return [
@@ -273,6 +288,7 @@ export const buildNodeOutputItems = (
       toMetadata(result),
       includeMetadata,
       responseMode,
+      autoPerformanceHints,
     );
   }
 

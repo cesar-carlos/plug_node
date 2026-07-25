@@ -32,6 +32,51 @@ describe("plugBatchCoalesce", () => {
     expect(shouldCoalesceBatchInputItems(enabled, 0)).toBe(true);
   });
 
+  it("defaults coalesce to true when flag is unset and auto hints are on", () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeBatch",
+        inputMode: "guided",
+        batchCommandsJson: '[{"sql":"SELECT TOP 1 * FROM Cliente"}]',
+        batchOptions: { autoPerformanceHints: true },
+      },
+      responses: [],
+    });
+
+    expect(shouldCoalesceBatchInputItems(context, 0)).toBe(true);
+  });
+
+  it("defaults coalesce to false when flag is unset and auto hints are off", () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeBatch",
+        inputMode: "guided",
+        batchCommandsJson: '[{"sql":"SELECT TOP 1 * FROM Cliente"}]',
+        batchOptions: { autoPerformanceHints: false },
+      },
+      responses: [],
+    });
+
+    expect(shouldCoalesceBatchInputItems(context, 0)).toBe(false);
+  });
+
+  it("honors explicit coalesceInputItems false", () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeBatch",
+        inputMode: "guided",
+        batchCommandsJson: '[{"sql":"SELECT TOP 1 * FROM Cliente"}]',
+        batchOptions: { coalesceInputItems: false, autoPerformanceHints: true },
+      },
+      responses: [],
+    });
+
+    expect(shouldCoalesceBatchInputItems(context, 0)).toBe(false);
+  });
+
   it("merges batch commands from multiple input items", () => {
     const context = createMockExecuteContext({
       credentials,

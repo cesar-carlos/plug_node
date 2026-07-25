@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   PlugCommandTransportResult,
   SocketCommandRuntimeMetrics,
@@ -47,10 +49,19 @@ const buildSyntheticAcceptedState = (
 
 const waitForRelayAcceptedFailure = (
   transport: ExecuteRelayCommandInput["transport"],
-): Promise<never> =>
-  new Promise<never>((_, reject) => {
-    const handleAccepted = (payload: unknown): void => {
+): { readonly promise: Promise<never>; readonly cancel: () => void } => {
+  let handleAccepted: ((payload: unknown) => void) | undefined;
+
+  const cancel = (): void => {
+    if (handleAccepted) {
       transport.off(relayRpcAcceptedEvent, handleAccepted);
+      handleAccepted = undefined;
+    }
+  };
+
+  const promise = new Promise<never>((_, reject) => {
+    handleAccepted = (payload: unknown): void => {
+      cancel();
       try {
         assertRelayAcceptedPayload(normalizeRelayAcceptedPayload(payload));
       } catch (error: unknown) {
@@ -60,6 +71,9 @@ const waitForRelayAcceptedFailure = (
 
     transport.on(relayRpcAcceptedEvent, handleAccepted);
   });
+
+  return { promise, cancel };
+};
 
 export const executeRelayCommand = async (
   input: ExecuteRelayCommandInput,
@@ -72,6 +86,7 @@ export const executeRelayCommand = async (
   const managedTransport = input.managedTransport === true;
   const fastPath = input.fastPath === true;
   const commandStartMs = Date.now();
+  let commandSucceeded = false;
   let connectionReady: import("../contracts/api").RelayConnectionReadyPayload | undefined;
 
   if (!managedTransport || !input.transport.connected) {
@@ -109,6 +124,7 @@ export const executeRelayCommand = async (
         normalizeRelayConversationStarted,
       );
       input.transport.emit(relayConversationStartEvent, {
+        requestId: randomUUID(),
         agentId: input.agentId,
       });
       const conversation = await conversationPromise;
@@ -162,7 +178,7 @@ export const executeRelayCommand = async (
       limits,
     });
 
-    const relayFailurePromise = fastPath
+    const relayFailureWaiter = fastPath
       ? waitForRelayAcceptedFailure(input.transport)
       : undefined;
 
@@ -174,120 +190,129 @@ export const executeRelayCommand = async (
         : {}),
       ...(input.requestServerTimings === true ? { requestServerTimings: true } : {}),
       ...(fastPath ? { fastPath: true } : {}),
+      timeoutMs: timeouts.commandTimeoutMs,
     });
 
-    const streamOutcome = await Promise.race(
-      relayFailurePromise
-        ? [streamAggregationPromise, relayFailurePromise]
-        : [
-            streamAggregationPromise,
-            acceptedStatePromise.then(
-              () =>
-                new Promise<Awaited<typeof streamAggregationPromise>>(() => {
-                  // Accepted succeeded; stream aggregation resolves the command.
-                }),
-              (error: unknown) => Promise.reject(error),
-            ),
-          ],
-    );
+    try {
+      const streamOutcome = await Promise.race(
+        relayFailureWaiter
+          ? [streamAggregationPromise, relayFailureWaiter.promise]
+          : [
+              streamAggregationPromise,
+              acceptedStatePromise.then(
+                () =>
+                  new Promise<Awaited<typeof streamAggregationPromise>>(() => {
+                    // Accepted succeeded; stream aggregation resolves the command.
+                  }),
+                (error: unknown) => Promise.reject(error),
+              ),
+            ],
+      );
 
-    let accepted = await acceptedStatePromise;
+      let accepted = await acceptedStatePromise;
 
-    if (fastPath) {
-      const hubRequestId = streamOutcome.result.responseFrame.requestId;
-      if (typeof hubRequestId === "string" && hubRequestId.trim() !== "") {
-        accepted = {
-          ...accepted,
-          requestId: hubRequestId,
-        };
+      if (fastPath) {
+        const hubRequestId = streamOutcome.result.responseFrame.requestId;
+        if (typeof hubRequestId === "string" && hubRequestId.trim() !== "") {
+          accepted = {
+            ...accepted,
+            requestId: hubRequestId,
+          };
+        }
       }
-    }
 
-    const {
-      result: finalResponse,
-      metrics: streamMetrics,
-      chunkPayloads,
-      rawChunkFrames,
-      rawCompleteFrame,
-    } = streamOutcome;
+      const {
+        result: finalResponse,
+        metrics: streamMetrics,
+        chunkPayloads,
+        rawChunkFrames,
+        rawCompleteFrame,
+      } = streamOutcome;
 
-    if (!fastPath || accepted.deduplicated || accepted.inFlight) {
-      if (accepted.inFlight) {
-        plugLogger.info("transport.socket.request_accepted.in_flight", {
-          agentId: input.agentId,
-          conversationId,
-          requestId: accepted.requestId,
-          clientRequestId: accepted.clientRequestId,
-        });
+      if (!fastPath || accepted.deduplicated || accepted.inFlight) {
+        if (accepted.inFlight) {
+          plugLogger.info("transport.socket.request_accepted.in_flight", {
+            agentId: input.agentId,
+            conversationId,
+            requestId: accepted.requestId,
+            clientRequestId: accepted.clientRequestId,
+          });
+        }
+        if (accepted.deduplicated) {
+          plugLogger.info("transport.socket.request_accepted.deduplicated", {
+            agentId: input.agentId,
+            conversationId,
+            requestId: accepted.requestId,
+            clientRequestId: accepted.clientRequestId,
+            replayed: accepted.replayed,
+          });
+        }
       }
-      if (accepted.deduplicated) {
-        plugLogger.info("transport.socket.request_accepted.deduplicated", {
-          agentId: input.agentId,
-          conversationId,
-          requestId: accepted.requestId,
-          clientRequestId: accepted.clientRequestId,
-          replayed: accepted.replayed,
-        });
-      }
-    }
 
-    const serverTimings = extractServerTimings(finalResponse.responsePayload);
+      const serverTimings = extractServerTimings(finalResponse.responsePayload);
 
-    const buildMetrics = (): SocketCommandRuntimeMetrics => ({
-      ignoredCommandResponses: streamMetrics.ignoredResponses,
-      ignoredStreamChunks: streamMetrics.ignoredChunks,
-      ignoredStreamCompletes: streamMetrics.ignoredCompletes,
-      ignoredStreamPullResponses: 0,
-      streamPullRequests: streamMetrics.pullCount,
-      streamChunks: streamMetrics.chunkCount,
-      bufferedBytes: streamMetrics.bufferedBytes,
-      bufferedRows: streamMetrics.bufferedRows,
-      ...(serverTimings ? { serverTimings } : {}),
-      ...(fastPath ? { fastPath: true } : {}),
-      ...(input.requestServerTimings === true ? { requestServerTimings: true } : {}),
-    });
-
-    plugLogger.debug("transport.socket.request_accepted", {
-      agentId: input.agentId,
-      conversationId,
-      requestId: accepted.requestId,
-      clientRequestId: accepted.clientRequestId,
-      deduplicated: accepted.deduplicated,
-      replayed: accepted.replayed,
-      inFlight: accepted.inFlight,
-      fastPath,
-      requestServerTimings: input.requestServerTimings === true,
-      chunkCount: streamMetrics.chunkCount,
-      bufferedBytes: streamMetrics.bufferedBytes,
-      bufferedRows: streamMetrics.bufferedRows,
-      ...(serverTimings ? { serverTimings } : {}),
-    });
-    const connectedAfterMs = Date.now() - commandStartMs;
-
-    return {
-      channel: "socket",
-      socketMode: "relay",
-      agentId: input.agentId,
-      requestId: accepted.requestId,
-      notification: false,
-      conversationId,
-      accepted: fastPath ? undefined : accepted,
-      ...(connectionReady ? { connectionReady } : {}),
-      response: normalizeRpcPayload(finalResponse.responsePayload),
-      rawResponsePayload: finalResponse.responsePayload,
-      chunkPayloads,
-      completePayload: finalResponse.completePayload,
-      rawResponseFrame: finalResponse.responseFrame,
-      rawChunkFrames,
-      rawCompleteFrame: rawCompleteFrame ?? finalResponse.completeFrame,
-      metrics: buildMetrics(),
-      executionMetrics: {
-        connectedAfterMs,
+      const buildMetrics = (): SocketCommandRuntimeMetrics => ({
+        ignoredCommandResponses: streamMetrics.ignoredResponses,
+        ignoredStreamChunks: streamMetrics.ignoredChunks,
+        ignoredStreamCompletes: streamMetrics.ignoredCompletes,
+        ignoredStreamPullResponses: 0,
+        streamPullRequests: streamMetrics.pullCount,
+        streamChunks: streamMetrics.chunkCount,
+        bufferedBytes: streamMetrics.bufferedBytes,
+        bufferedRows: streamMetrics.bufferedRows,
         ...(serverTimings ? { serverTimings } : {}),
-      },
-    };
+        ...(fastPath ? { fastPath: true } : {}),
+        ...(input.requestServerTimings === true ? { requestServerTimings: true } : {}),
+      });
+
+      plugLogger.debug("transport.socket.request_accepted", {
+        agentId: input.agentId,
+        conversationId,
+        requestId: accepted.requestId,
+        clientRequestId: accepted.clientRequestId,
+        deduplicated: accepted.deduplicated,
+        replayed: accepted.replayed,
+        inFlight: accepted.inFlight,
+        fastPath,
+        requestServerTimings: input.requestServerTimings === true,
+        chunkCount: streamMetrics.chunkCount,
+        bufferedBytes: streamMetrics.bufferedBytes,
+        bufferedRows: streamMetrics.bufferedRows,
+        ...(serverTimings ? { serverTimings } : {}),
+      });
+      const connectedAfterMs = Date.now() - commandStartMs;
+
+      const result: PlugCommandTransportResult = {
+        channel: "socket",
+        socketMode: "relay",
+        agentId: input.agentId,
+        requestId: accepted.requestId,
+        notification: false,
+        conversationId,
+        accepted: fastPath ? undefined : accepted,
+        ...(connectionReady ? { connectionReady } : {}),
+        response: normalizeRpcPayload(finalResponse.responsePayload),
+        rawResponsePayload: finalResponse.responsePayload,
+        chunkPayloads,
+        completePayload: finalResponse.completePayload,
+        rawResponseFrame: finalResponse.responseFrame,
+        rawChunkFrames,
+        rawCompleteFrame: rawCompleteFrame ?? finalResponse.completeFrame,
+        metrics: buildMetrics(),
+        executionMetrics: {
+          connectedAfterMs,
+          ...(serverTimings ? { serverTimings } : {}),
+        },
+      };
+      commandSucceeded = true;
+      return result;
+    } finally {
+      relayFailureWaiter?.cancel();
+    }
   } finally {
-    if (conversationId && input.skipConversationEnd !== true) {
+    // Keep conversation open across managed reuse only after success.
+    // Failed commands must end so agent stream capacity is released.
+    if (conversationId && (input.skipConversationEnd !== true || !commandSucceeded)) {
       input.transport.emit(relayConversationEndEvent, { conversationId });
     }
     if (!managedTransport) {

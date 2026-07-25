@@ -4,6 +4,7 @@ import { PlugValidationError } from "../../packages/n8n-nodes-plug-database/gene
 import {
   assertBulkInsertWithinHubLimits,
   isLikelyReadOnlySql,
+  isLikelyUnboundedSelectSql,
   plugBulkInsertMaxRows,
   resolveAutoMaxParallelReadOnlyBatchItems,
   shouldAutoPreferDbStreaming,
@@ -20,15 +21,23 @@ describe("plugSqlPerformanceHints", () => {
     );
   });
 
-  it("suggests db streaming for large TOP or unbounded SELECT with FROM", () => {
+  it("suggests db streaming only for large TOP results", () => {
     expect(shouldAutoPreferDbStreaming("SELECT TOP 1000 * FROM Cliente")).toBe(true);
     expect(shouldAutoPreferDbStreaming("SELECT TOP 10 * FROM Cliente")).toBe(false);
-    expect(shouldAutoPreferDbStreaming("SELECT * FROM Cliente")).toBe(true);
+    expect(shouldAutoPreferDbStreaming("SELECT * FROM Cliente")).toBe(false);
     expect(shouldAutoPreferDbStreaming("SELECT * FROM Cliente WHERE 1=0")).toBe(false);
     expect(shouldAutoPreferDbStreaming("SELECT 1")).toBe(false);
     expect(
       shouldAutoPreferDbStreaming("UPDATE Cliente SET Nome = 'x' WHERE CodCliente = 1"),
     ).toBe(false);
+  });
+
+  it("detects unbounded SELECT statements that may open inadvertent streams", () => {
+    expect(isLikelyUnboundedSelectSql("SELECT * FROM Cliente")).toBe(true);
+    expect(isLikelyUnboundedSelectSql("SELECT CodCliente FROM Cliente")).toBe(true);
+    expect(isLikelyUnboundedSelectSql("SELECT TOP 10 * FROM Cliente")).toBe(false);
+    expect(isLikelyUnboundedSelectSql("SELECT * FROM Cliente WHERE 1=0")).toBe(false);
+    expect(isLikelyUnboundedSelectSql("DELETE FROM Cliente")).toBe(false);
   });
 
   it("resolves batch parallelism only for all-read-only commands when hints are enabled", () => {

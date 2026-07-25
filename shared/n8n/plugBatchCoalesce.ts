@@ -34,7 +34,13 @@ export const shouldCoalesceBatchInputItems = (
   }
 
   const batchOptions = toCollection(context, "batchOptions", itemIndex);
-  return toOptionalBoolean(batchOptions.coalesceInputItems) === true;
+  if ("coalesceInputItems" in batchOptions) {
+    return toOptionalBoolean(batchOptions.coalesceInputItems) === true;
+  }
+
+  const autoPerformanceHints =
+    toOptionalBoolean(batchOptions.autoPerformanceHints) ?? true;
+  return autoPerformanceHints;
 };
 
 export const buildCoalescedBatchRequest = (input: {

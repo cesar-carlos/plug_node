@@ -46,10 +46,7 @@ export class ManagedSocketIoTransport {
   ensureTransport(baseUrl: string, accessToken: string): SocketIoTransportLike {
     const namespaceUrl = deriveSocketNamespaceUrl(baseUrl, "/consumers");
     const shouldRecreate =
-      this.transport === undefined ||
-      this.stale ||
-      this.namespaceUrl !== namespaceUrl ||
-      this.accessToken !== accessToken;
+      this.transport === undefined || this.stale || this.namespaceUrl !== namespaceUrl;
 
     if (shouldRecreate) {
       this.dispose();
@@ -68,9 +65,13 @@ export class ManagedSocketIoTransport {
         namespaceUrl,
       });
     } else {
+      // Soft-refresh: keep the live socket when only the JWT string rotates.
+      const tokenRotated = this.accessToken !== accessToken;
+      this.accessToken = accessToken;
       plugLogger.debug(`transport.socket.${this.options.logEventKey}.reused`, {
         socketMode: this.options.socketMode,
         namespaceUrl,
+        tokenRotated,
       });
     }
 

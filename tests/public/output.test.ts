@@ -644,6 +644,95 @@ describe("buildNodeOutputItems", () => {
     });
   });
 
+  it("promotes aggregatedJson to a single item when autoPerformanceHints and rows exceed 1000", () => {
+    const rows = Array.from({ length: 1001 }, (_, index) => ({ id: index + 1 }));
+    const result: PlugCommandTransportResult = {
+      channel: "rest",
+      agentId: "agent-1",
+      requestId: "request-1",
+      notification: false,
+      response: {
+        type: "single",
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            rows,
+          },
+        },
+      },
+      raw: {
+        mode: "bridge",
+        agentId: "agent-1",
+        requestId: "request-1",
+        response: {
+          type: "single",
+          success: true,
+          item: {
+            id: "rpc-1",
+            success: true,
+            result: {
+              rows,
+            },
+          },
+        },
+      },
+    };
+
+    const items = buildNodeOutputItems(result, "aggregatedJson", true, true);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      rowCount: 1001,
+      rows,
+      __plug: {
+        promotedToSingleItem: true,
+      },
+    });
+  });
+
+  it("does not promote aggregatedJson large results when autoPerformanceHints is off", () => {
+    const rows = Array.from({ length: 1001 }, (_, index) => ({ id: index + 1 }));
+    const result: PlugCommandTransportResult = {
+      channel: "rest",
+      agentId: "agent-1",
+      requestId: "request-1",
+      notification: false,
+      response: {
+        type: "single",
+        success: true,
+        item: {
+          id: "rpc-1",
+          success: true,
+          result: {
+            rows,
+          },
+        },
+      },
+      raw: {
+        mode: "bridge",
+        agentId: "agent-1",
+        requestId: "request-1",
+        response: {
+          type: "single",
+          success: true,
+          item: {
+            id: "rpc-1",
+            success: true,
+            result: {
+              rows,
+            },
+          },
+        },
+      },
+    };
+
+    const items = buildNodeOutputItems(result, "aggregatedJson", true, false);
+
+    expect(items).toHaveLength(1001);
+  });
+
   it("includes serverTimings with agentPhases in __plug.transport when metadata is enabled", () => {
     const result: PlugCommandTransportResult = {
       channel: "socket",

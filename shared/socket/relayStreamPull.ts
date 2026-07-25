@@ -48,7 +48,7 @@ export const requestRelayStreamPull = async (
     {
       requestId,
       omitTraceId: true,
-      compression: "default",
+      compression: "none",
       signing,
     },
   );

@@ -41,9 +41,27 @@ describe("socketSessionLifecycle", () => {
     idleTimer.resetIdleTimer();
     await vi.advanceTimersByTimeAsync(800);
     expect(timedOut).toBe(false);
-    await vi.advanceTimersByTimeAsync(300);
+    // Interval check is every 250ms; need one more tick past commandTimeoutMs after reset.
+    await vi.advanceTimersByTimeAsync(500);
     expect(timedOut).toBe(true);
     idleTimer.dispose();
+    vi.useRealTimers();
+  });
+
+  it("idle command timer uses a single interval across many resets", async () => {
+    vi.useFakeTimers();
+    const settle = createSettleOnce();
+    const timeouts = resolveSocketCommandTimeouts({ timeoutMs: 1000 });
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+
+    const idleTimer = attachIdleCommandTimer(settle, timeouts, () => undefined);
+    for (let index = 0; index < 20; index += 1) {
+      idleTimer.resetIdleTimer();
+    }
+
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    idleTimer.dispose();
+    setIntervalSpy.mockRestore();
     vi.useRealTimers();
   });
 });

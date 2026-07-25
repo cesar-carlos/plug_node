@@ -378,19 +378,17 @@ const resolveRequestServerTimings = (
 
 /**
  * Hub rejects `fastPath` on streaming-capable methods (prefer_db_streaming,
- * multi_result, sql.executeBatch). See plug_server socket_client_sdk.md.
+ * multi_result, sql.executeBatch). Agents may also open inadvertent streams for
+ * any `sql.execute` whose result is large/wide enough, even with TOP N and
+ * without prefer_db_streaming — so all sql.execute must wait for accepted to
+ * learn the hub requestId used by stream.pull.
  */
 const isStreamingCapableSqlCommand = (command: RpcSingleCommand): boolean => {
-  if (command.method === "sql.executeBatch") {
+  if (command.method === "sql.executeBatch" || command.method === "sql.execute") {
     return true;
   }
 
-  if (command.method !== "sql.execute") {
-    return false;
-  }
-
-  const options = command.params.options;
-  return options?.prefer_db_streaming === true || options?.multi_result === true;
+  return false;
 };
 
 const commandIncompatibleWithRelayFastPath = (
@@ -418,7 +416,7 @@ const resolveSocketFastPath = (
     return enabled === true ? true : undefined;
   }
 
-  return context.getNode().typeVersion < 2 ? true : undefined;
+  return true;
 };
 
 const resolveSocketRequestServerTimings = (
@@ -477,6 +475,16 @@ const applySocketSqlAutoPerformanceHints = (
   };
 };
 
+const resolveAutoPerformanceHints = (
+  context: IExecuteFunctions,
+  itemIndex: number,
+  operation: string,
+): boolean => {
+  const collectionName = operationOptionsCollectionMap[operation] ?? "profileOptions";
+  const operationOptions = toCollection(context, collectionName, itemIndex);
+  return toOptionalBoolean(operationOptions.autoPerformanceHints) ?? true;
+};
+
 export const finalizeBuiltCommandRequest = (
   builtRequest: BuiltCommandRequest,
   context: IExecuteFunctions,
@@ -493,6 +501,11 @@ export const finalizeBuiltCommandRequest = (
   const withChannel = {
     ...builtRequest,
     channel: !config.supportsSocket ? "rest" : channel,
+    autoPerformanceHints: resolveAutoPerformanceHints(
+      context,
+      itemIndex,
+      resolvedOperation,
+    ),
     ...(resolveRequestServerTimings(context, itemIndex, resolvedOperation, channel)
       ? { requestServerTimings: true as const }
       : {}),

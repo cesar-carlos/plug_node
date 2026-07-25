@@ -643,4 +643,5 @@ export interface BuiltCommandRequest {
   readonly streamPullWindowSize?: number;
   readonly fastPath?: boolean;
   readonly requestServerTimings?: boolean;
+  readonly autoPerformanceHints?: boolean;
 }

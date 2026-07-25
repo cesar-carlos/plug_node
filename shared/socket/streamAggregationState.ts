@@ -5,6 +5,7 @@ export interface StreamAggregationState {
   pendingChunksDuringPull: number;
   streamCompleted: boolean;
   pullCount: number;
+  lastGrantedWindowSize: number;
 }
 
 export interface StreamAggregationController {
@@ -25,6 +26,7 @@ export const createStreamAggregationController = (): StreamAggregationController
     pendingChunksDuringPull: 0,
     streamCompleted: false,
     pullCount: 0,
+    lastGrantedWindowSize: 0,
   };
 
   return {
@@ -49,13 +51,28 @@ export const createStreamAggregationController = (): StreamAggregationController
       enqueueChunkWork: (work: () => Promise<void>) => void,
       requestNextStreamWindow: () => Promise<void>,
     ): void {
-      if (state.activeStreamId && state.streamCreditsRemaining === 0) {
-        enqueueChunkWork(async () => {
-          if (!state.streamCompleted) {
-            await requestNextStreamWindow();
-          }
-        });
+      if (!state.activeStreamId || state.streamCompleted || state.streamPullInFlight) {
+        return;
       }
+
+      const prefetchThreshold = Math.max(
+        1,
+        Math.floor(state.lastGrantedWindowSize * 0.25),
+      );
+      const shouldPull =
+        state.streamCreditsRemaining === 0 ||
+        (state.lastGrantedWindowSize > 0 &&
+          state.streamCreditsRemaining <= prefetchThreshold);
+
+      if (!shouldPull) {
+        return;
+      }
+
+      enqueueChunkWork(async () => {
+        if (!state.streamCompleted) {
+          await requestNextStreamWindow();
+        }
+      });
     },
     async requestInitialWindow(
       requestNextStreamWindow: () => Promise<void>,
@@ -84,6 +101,7 @@ export const finishStreamPull = (
   state: StreamAggregationState,
   nextWindowSize: number,
 ): boolean => {
+  state.lastGrantedWindowSize = nextWindowSize;
   state.streamCreditsRemaining = Math.max(
     nextWindowSize - state.pendingChunksDuringPull,
     0,
