@@ -24,5 +24,5 @@ alwaysApply: true
   - **typeVersion 2 (default):** `agents:command` (+ stream chunk/complete/pull), with PayloadFrame decode on outbound events
   - **typeVersion 1 / capability-probe fallback:** relay conversation (`relay:conversation.*`, `relay:rpc.*`, stream pull)
 - Do not fall back to relay after `agents:command` has already been emitted (double-execution risk).
-- Omit relay `fastPath` for streaming-capable commands (`prefer_db_streaming`, `multi_result`, `sql.executeBatch`).
+- Omit relay `fastPath` for all `sql.execute` / `sql.executeBatch` commands (agents may open streams; stream.pull needs the hub requestId from accepted).
 - Normalize transport differences inside the shared core. n8n-facing outputs should be JSON-oriented and consistent across REST and SOCKET where possible.

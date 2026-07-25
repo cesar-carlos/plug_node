@@ -32,10 +32,10 @@ If the capability probe times out on a **single** command, the node may fall bac
 1. Login and obtain tokens.
 2. Connect to `/consumers` and wait for `connection:ready`.
 3. Start a relay conversation (`relay:conversation.start`).
-4. Send `relay:rpc.request` (optional `fastPath` for unary non-streaming).
-5. Collect response, chunks, and completion; pull stream windows as needed.
+4. Send `relay:rpc.request` (optional `fastPath` for unary non-SQL; omitted for all `sql.execute` / `sql.executeBatch`).
+5. Collect response, chunks, and completion; pull stream windows as needed (batch items that open a stream are aggregated the same way).
 6. Decode PayloadFrame / gzip payloads and normalize to JSON.
-7. End the conversation and disconnect.
+7. End the conversation on failure (or after success when not reusing a managed conversation) and disconnect when the managed transport is not kept.
 
 Normative Socket guides: [docs/socket/sql-socket.md](./socket/sql-socket.md) and [docs/hub-contract-alignment.md](./hub-contract-alignment.md).
 

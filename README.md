@@ -88,7 +88,7 @@ Detailed Socket documentation is available in [docs/socket](./docs/socket/README
 
 Recommended Node.js version:
 
-- `22.22.0`
+- `24.18.0` (see `.nvmrc` / `.node-version`; workspace `engines` is `>=24.18.0 <25`)
 
 Main commands:
 
@@ -113,6 +113,8 @@ npm run scan:public
 - [Project summary](https://github.com/cesar-carlos/plug_node/blob/main/docs/project-summary.md)
 - [Architecture](https://github.com/cesar-carlos/plug_node/blob/main/docs/architecture.md)
 - [Communication patterns](https://github.com/cesar-carlos/plug_node/blob/main/docs/communication-patterns.md)
+- [Performance and reliability](https://github.com/cesar-carlos/plug_node/blob/main/docs/performance-and-reliability.md)
+- [Hub contract alignment](https://github.com/cesar-carlos/plug_node/blob/main/docs/hub-contract-alignment.md)
 - [Socket guide](https://github.com/cesar-carlos/plug_node/blob/main/docs/socket/README.md)
 - [Error and authorization contracts](https://github.com/cesar-carlos/plug_node/blob/main/docs/error-and-authorization-contracts.md)
 - [UX decisions](https://github.com/cesar-carlos/plug_node/blob/main/docs/ux-decisions.md)

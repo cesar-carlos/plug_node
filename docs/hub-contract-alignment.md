@@ -78,7 +78,7 @@ Cache login tokens in long-running workflows (see server limits doc).
 | `options.prefer_db_streaming`          | Prefer DB Streaming (SQL options) + Auto Performance Hints on Socket                                     |
 | `options.execution_mode`               | Managed / Preserve                                                                                       |
 | `options.multi_result`                 | Multi Result                                                                                             |
-| `fastPath` (relay)                     | Socket Options → Relay Fast Path (default on typeVersion 1); auto-omitted for streaming-capable commands |
+| `fastPath` (relay)                     | Socket Options → Relay Fast Path (default on when unset); auto-omitted for all `sql.execute` / `sql.executeBatch` |
 | `requestServerTimings`                 | Socket Options; hub phases in `__plug.transport.serverTimings`                                           |
 | `meta.agent_phases` (agent sub-phases) | Parsed when hub forwards nested timings; `agentPhases` in metadata                                       |
 | `clientRequestIdEcho` (extension)      | **Gap** — hub/agent handshake only; node uses JSON-RPC `id` as today                                     |
@@ -108,7 +108,7 @@ Shared SQL command builders live in [`shared/n8n/plugSqlGuidedCommands.ts`](../s
 | `requestServerTimings` on relay / `agents:command` / REST | **Shipped** — opt-in via Socket Options; timings in `__plug.transport.serverTimings` when Include Plug Metadata is on                                | Hub (shipped)                                                                                                                      |
 | Hub `meta.serverTimings.phasesMs`                         | **Shipped** — parsed from relay JSON-RPC `meta`, top-level `agents:command_response.serverTimings`, REST body                                        | Hub (shipped)                                                                                                                      |
 | `meta.agent_phases` / hub-merged `agent_*` keys           | **Shipped** — nested `agent_phases` → `serverTimings.agentPhases`; merged `agent_*` hub keys stay in `phasesMs`                                      | Agent (`plug_agente` item 4, proposed) + hub merge when agent ships                                                                |
-| Relay `fastPath` + `omitTraceId` on command frames        | **Shipped** — default fast path on typeVersion 1 relay; per-frame `traceId` omitted on relay hot path                                                | Hub (shipped)                                                                                                                      |
+| Relay `fastPath` + `omitTraceId` on command frames        | **Shipped** — default fast path when unset; omitted for all `sql.execute` / `sql.executeBatch`; per-frame `traceId` omitted on relay hot path | Hub (shipped)                                                                                                                      |
 | `clientRequestIdEcho: "v1"` extension                     | **Documented gap** — negotiated hub ↔ agent at handshake; node already sends stable JSON-RPC `id` as `client_request_id`; no consumer envelope field | Hub + agent ([ADR 0009](https://github.com/cesar-carlos/plug_server/blob/main/docs/adrs/0009-client-request-id-echo.md), proposed) |
 
 ## E2E smoke tables

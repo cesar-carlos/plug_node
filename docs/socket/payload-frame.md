@@ -71,16 +71,15 @@ Na decodificação, a assinatura HMAC é verificada antes de qualquer descompres
 
 ### Thresholds de async vs sync
 
-O codec usa a variante síncrona ou assíncrona do zlib dependendo do tamanho:
+O codec usa a variante síncrona ou assíncrona do zlib dependendo do tamanho (API `*Async`):
 
 | Operação      | Até (bytes) | Variante usada   |
 | ------------- | ----------- | ---------------- |
-| gzip encode   | < 128 KiB   | `gzipSync`       |
-| gzip encode   | ≥ 128 KiB   | `gzip` (async)   |
-| gunzip decode | < 64 KiB    | `gunzipSync`     |
-| gunzip decode | ≥ 64 KiB    | `gunzip` (async) |
+| gzip encode   | < 4 KiB     | `gzipSync`       |
+| gzip encode   | ≥ 4 KiB     | `gzip` (async)   |
+| gunzip decode | qualquer    | `gunzip` (async) |
 
-A variante síncrona bloqueia o event loop do Node.js durante a operação. Para payloads menores que os thresholds acima, o custo é suficientemente baixo para que o overhead de criação de Promise e agendamento não compense. Para payloads maiores, a variante assíncrona libera o event loop durante a compressão/descompressão.
+A variante síncrona bloqueia o event loop do Node.js durante a operação. Encode abaixo de 4 KiB permanece sync porque o overhead de Promise costuma superar o ganho. Decode gzip é sempre async na API assíncrona para não bloquear o event loop em chunks grandes.
 
 <a id="assinatura-hmac"></a>
 

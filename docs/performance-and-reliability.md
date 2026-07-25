@@ -41,9 +41,9 @@ For large reads:
 
 ## Relay Fast Path
 
-**Relay Fast Path** is **on by default** for typeVersion **1** relay nodes and in Socket Options (`fastPath: true`). It skips `relay:rpc.accepted` on the happy path and routes responses by JSON-RPC body `id`. Disable only when the hub requires classic accepted correlation. See `plug_server/docs/studies/relay_fastpath_study.md` for hub-side trade-offs.
+**Relay Fast Path** is **on by default** for socket relay (all typeVersions) when Socket Options leave it unset. It skips `relay:rpc.accepted` on the happy path and routes responses by JSON-RPC body `id`. Disable only when the hub requires classic accepted correlation. See `plug_server/docs/studies/relay_fastpath_study.md` for hub-side trade-offs.
 
-The node **automatically omits** `fastPath` when the command is streaming-capable (`prefer_db_streaming`, `multi_result`, or `sql.executeBatch`), even if Socket Options leave the toggle on — the hub rejects that combination with `VALIDATION_ERROR`.
+The node **automatically omits** `fastPath` for **all** `sql.execute` and `sql.executeBatch` commands (including when Prefer DB Streaming / Multi Result are off). Agents may open streams on large or wide results; stream pull needs the hub `requestId` from `relay:rpc.accepted`. Non-SQL unary methods still use fast path by default.
 
 Relay command frames omit per-frame `traceId` on the hot path (aligned with hub high-throughput guidance); stream pulls already did this.
 
@@ -64,10 +64,10 @@ On relay, the JSON-RPC command `id` is the hub `client_request_id` used for idem
 
 **Auto Performance Hints** (default **on** in Execute SQL and Execute Batch **Additional Options**) applies performance suggestions only when you have not set the related option explicitly:
 
-| Operation     | When hints apply (Socket / batch)             | Suggestion                                   |
-| ------------- | --------------------------------------------- | -------------------------------------------- |
-| Execute SQL   | Channel = **Socket**, eligible large `SELECT` | `options.prefer_db_streaming: true`          |
-| Execute Batch | All commands are read-only `SELECT`           | `options.max_parallel_read_only_batch_items` |
+| Operation     | When hints apply (Socket / batch)                          | Suggestion                                   |
+| ------------- | ---------------------------------------------------------- | -------------------------------------------- |
+| Execute SQL   | Channel = **Socket**, `SELECT TOP N` with **N ≥ 1000**     | `options.prefer_db_streaming: true`          |
+| Execute Batch | All commands are read-only `SELECT`                        | `options.max_parallel_read_only_batch_items` |
 
 Hints do **not** override explicit **Prefer DB Streaming**, **Max Parallel Read-Only Items**, or **Auto Performance Hints = off**.
 
@@ -108,7 +108,7 @@ When **Include Plug Metadata** is enabled, `__plug.transport` may include `attem
 Enable **Coalesce Input Items** under batch **Additional Options** to merge `Batch Commands JSON` from every input item into **one** `sql.executeBatch` hub call.
 
 - **Additional Options** must be identical on all items (compared to item 0).
-- Maximum **100** commands after merge.
+- Maximum **32** commands after merge (same cap as a single relay/hub batch).
 - The node returns **one** output item; `__plug.coalescedItemCount` records how many input items were merged.
 - Failures apply to the whole batch (not per-item `continueOnFail` granularity).
 - **Max Parallel Read-Only Items** and **Auto Performance Hints** control `max_parallel_read_only_batch_items` for read-only batches (see Auto Performance Hints above).
