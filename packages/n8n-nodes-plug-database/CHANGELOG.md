@@ -1,5 +1,16 @@
 # n8n-nodes-plug-database
 
+## 3.5.0
+
+### Minor Changes
+
+- cfa54a4: Improve Plug MCP Server / AI Hub UX and harden capability governance: visual capability builder, validate operation (rejects admin capabilities), multi-item execution, capability-name dropdown, resource-mapper params, optional audit on output, pilot pack examples, stricter maxRows / filter / SQL-binding checks (string-literal aware), Tools staticParams precedence, blank required-string rejection, case-insensitive column masking on SQL and Tools, and tool-call budget defaulting omitted count to 1 when a max is set.
+
+### Patch Changes
+
+- e9d2a89: Speed up PayloadFrame HMAC verify (raw digest compare) and JSON parse (Buffer path), raise parallel chunk decode overlap to 8, and extend `bench:payload-frame:check` with async decode cases plus a refreshed baseline to catch performance regressions.
+- e9d2a89: Harden Socket SQL/relay and Socket Event Trigger: serialize relay executes per agent, defer transport dispose under refcount, map classic batch accept failures, clean batch response listeners on timeout, reject orphaned parallel chunk decodes, serialize trigger reconnects with single circuit accounting, fix dropOldest with maxQueueSize=0, persist event-id dedupe across reconnects, and recreate idle sockets on JWT rotation.
+
 ## 3.4.0
 
 ### Minor Changes
