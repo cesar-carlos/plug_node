@@ -1,5 +1,11 @@
 # n8n-nodes-plug-database
 
+## 3.6.0
+
+### Minor Changes
+
+- 806601e: Automatic AI Hub → MCP Server wiring: Hub emits a `wiring` block; MCP Server inherits forbidden names and max tool calls from input/`aiHubNodeName` when params stay at defaults. CI early format job, version-PR Check Runs, Linux baseline calibration artifact, staging e2e hub, pack-size warnings, and expanded socket unit coverage.
+
 ## 3.5.0
 
 ### Minor Changes
