@@ -464,7 +464,7 @@ export const executeRelayBatchCommand = async (
               clientRequestId,
               error: {
                 code: "RELAY_BATCH_ITEM_MISSING",
-                message: `Relay batch accept omitted clientRequestId \"${clientRequestId}\".`,
+                message: `Relay batch accept omitted clientRequestId "${clientRequestId}".`,
               },
             });
             continue;
@@ -480,7 +480,7 @@ export const executeRelayBatchCommand = async (
               clientRequestId,
               error: {
                 code: "RELAY_BATCH_ITEM_INVALID",
-                message: `Relay batch accept item for \"${clientRequestId}\" is invalid.`,
+                message: `Relay batch accept item for "${clientRequestId}" is invalid.`,
               },
             });
             continue;
@@ -678,7 +678,7 @@ export const executeRelayBatchCommand = async (
             clientRequestId,
             error: {
               code: "RELAY_BATCH_ITEM_MISSING",
-              message: `Relay batch did not resolve clientRequestId \"${clientRequestId}\".`,
+              message: `Relay batch did not resolve clientRequestId "${clientRequestId}".`,
             },
           },
         );
