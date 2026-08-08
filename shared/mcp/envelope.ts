@@ -40,9 +40,10 @@ export const extractPlugExecutionResult = (
     return { rows: [], rowCount: 0, emptyResult: true };
   }
 
+  const rows = jsonItems.filter(isRecord);
   return {
-    rows: jsonItems.filter(isRecord),
-    rowCount: jsonItems.length,
+    rows,
+    rowCount: rows.length,
     emptyResult: false,
   };
 };

@@ -2,19 +2,10 @@ import type { IExecuteFunctions } from "n8n-workflow";
 
 import type { SystemPromptConfig } from "../../generated/shared/mcp/contracts";
 import { filterForbiddenCapabilityNames } from "../../generated/shared/mcp/forbiddenCapabilities";
-import { parseOptionalJsonArray } from "../../generated/shared/utils/json";
-
-const normalizeJsonParameter = (value: unknown, fallback = ""): string => {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (value === undefined || value === null) {
-    return fallback;
-  }
-
-  return JSON.stringify(value);
-};
+import {
+  normalizeJsonParameter,
+  parseOptionalJsonArray,
+} from "../../generated/shared/utils/json";
 
 const normalizeMaxToolCallsPerTurn = (value: unknown): number => {
   const parsed = Number(value);

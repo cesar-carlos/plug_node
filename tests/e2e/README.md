@@ -30,6 +30,8 @@ npm run test:socket
 
 E2E is **not** part of `npm run verify`. The suite runs sequentially (`fileParallelism: false`).
 
+When you redirect suite output to a file for debugging, write under `tmp/e2e-logs/` (for example `npm run test:e2e:socket > tmp/e2e-logs/tmp-e2e-socket.log 2>&1`). Do not leave capture logs in the repository root. See [`tmp/README.md`](../../tmp/README.md).
+
 ## CI / staging
 
 GitHub Actions exposes an optional `e2e-staging` job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml). It runs on **workflow_dispatch** only and uses repository secrets:

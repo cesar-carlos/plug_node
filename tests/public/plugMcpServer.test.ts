@@ -107,7 +107,99 @@ describe("Plug MCP Server node", () => {
     expect(operationProperty?.options?.map((option) => option.value)).toEqual([
       "list",
       "call",
+      "validate",
     ]);
+  });
+
+  it("should return a friendly error when calling with an empty registry", async () => {
+    const node = new PlugMcpServer();
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "call",
+        capabilityName: "consultar_cliente",
+        capabilityParamsJson: "{}",
+        capabilityDefinitionsJson: "[]",
+        auditUserId: "user-1",
+        auditSessionId: "session-1",
+      },
+      responses: [],
+    });
+
+    const result = await node.execute.call(context);
+    const payload = result[0][0].json as {
+      isError?: boolean;
+      content: Array<{ text: string }>;
+    };
+
+    expect(payload.isError).toBe(true);
+    expect(payload.content[0]?.text).toContain("No capabilities are registered");
+  });
+
+  it("should validate capability definitions without executing", async () => {
+    const node = new PlugMcpServer();
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "validate",
+        authoringMode: "json",
+        capabilityDefinitionsJson: JSON.stringify(
+          sampleCapabilityDefinitions.filter(
+            (capability) => capability.name !== "client_access",
+          ),
+        ),
+      },
+      responses: [],
+    });
+
+    const result = await node.execute.call(context);
+    expect(result[0][0].json).toMatchObject({
+      valid: true,
+      capabilityCount: 2,
+    });
+  });
+
+  it("should fail validate when admin capabilities are present", async () => {
+    const node = new PlugMcpServer();
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "validate",
+        authoringMode: "json",
+        capabilityDefinitionsJson: JSON.stringify(sampleCapabilityDefinitions),
+      },
+      responses: [],
+    });
+
+    const result = await node.execute.call(context);
+    expect(result[0][0].json).toMatchObject({
+      valid: false,
+      forbiddenCapabilities: ["client_access"],
+    });
+  });
+
+  it("should omit audit when includeAuditInOutput is false", async () => {
+    const node = new PlugMcpServer();
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "call",
+        capabilityName: "validar_documento",
+        capabilityParamsJson: JSON.stringify({ document: "39053344705" }),
+        capabilityDefinitionsJson: JSON.stringify(sampleCapabilityDefinitions),
+        includeAuditInOutput: false,
+        auditUserId: "user-1",
+        auditSessionId: "session-1",
+      },
+      responses: [],
+    });
+
+    const result = await node.execute.call(context);
+    const payload = result[0][0].json as Record<string, unknown>;
+
+    expect(payload.isError).toBeUndefined();
+    expect(payload.audit).toBeUndefined();
+    expect(payload.content).toBeDefined();
   });
 
   it("should return tools/list payload and hide forbidden capability names", async () => {
@@ -238,6 +330,59 @@ describe("Plug MCP Server node", () => {
 
     expect(payload.isError).toBe(true);
     expect(payload.content[0]?.text).toContain("tool calls per turn exceeded");
+  });
+
+  it("should treat omitted toolCallCount as 1 when maxToolCallsPerTurn is set", async () => {
+    const node = new PlugMcpServer();
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "call",
+        capabilityName: "consultar_cliente",
+        capabilityParamsJson: JSON.stringify({ nomeCliente: "Joao%", limite: 10 }),
+        capabilityDefinitionsJson: JSON.stringify(sampleCapabilityDefinitions),
+        maxToolCallsPerTurn: 1,
+        toolCallCount: 0,
+        auditUserId: "user-1",
+        auditSessionId: "session-1",
+        agentId: "agent-1",
+        clientToken: "client-token",
+      },
+      responses: [
+        {
+          statusCode: 200,
+          headers: {},
+          body: loadFixture("login.success.json"),
+        },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-1",
+            requestId: "request-1",
+            response: {
+              type: "single",
+              success: true,
+              item: {
+                id: "rpc-1",
+                success: true,
+                result: {
+                  rows: [{ Nome: "Joao", CNPJ: "12345678901234" }],
+                  rowCount: 1,
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const result = await node.execute.call(context);
+    const payload = result[0][0].json as { isError?: boolean };
+
+    // count defaults to 1 and max is 1 → allowed (1 > 1 is false)
+    expect(payload.isError).toBeUndefined();
   });
 
   it("should execute a successful SQL capability call", async () => {

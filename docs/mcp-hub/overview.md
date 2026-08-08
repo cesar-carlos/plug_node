@@ -1,86 +1,82 @@
-# Visão Geral — Plug MCP Hub
+# Overview — Plug MCP Hub
 
 ## Problema
 
-O `Plug Database` expõe uma superfície técnica ampla: Resource SQL, Client Access, User Access, Tools, dezenas de operações, campos de configuração e modos avançados. Quando esse nó é conectado diretamente a um agente de IA, a IA recebe complexidade técnica que ela não precisa gerenciar.
+O `Plug Database` expõe uma superfície técnica ampla: SQL, Client Access, User Access, Tools, canais e opções avançadas. Ligado direto a um agente de IA, o modelo passa a gerenciar internos de ERP que não deveria controlar.
 
-Para a pergunta "quais clientes têm títulos vencidos?", a IA precisaria:
+Para "quais clientes têm títulos vencidos?", o agente precisaria de tabelas, joins, guided SQL, canal e política de client token.
 
-- Saber que a tabela relevante é `TituloReceber` com join em `Cliente`
-- Montar SQL parametrizado corretamente
-- Escolher Resource, Operation, Channel e outras opções do nó
-- Respeitar a política do client token do hub
+Isso não é trabalho do agente. Ele deve ver só **capacidades de negócio**.
 
-Esse nível de conhecimento técnico não deveria ser responsabilidade da IA. Ela deveria conhecer apenas **capacidades de negócio**.
-
-O segundo problema é escala: com 50 ou 100 consultas úteis do ERP, conectar cada nó manualmente ao agente e manter descrições individuais não é sustentável.
+O segundo problema é escala: N instâncias de Plug Database como tools não se mantêm.
 
 ## Objetivo
 
-Permitir que quem constrói o fluxo configure consultas e ações uma vez e o sistema exponha essas capacidades para a IA de forma estruturada, segura e governada.
+O autor configura consultas e ações uma vez. O sistema expõe essas capabilities de forma estruturada e governada.
 
-A IA não conhece SQL, JSON-RPC, tabelas ou operações. Ela conhece **capacidades**:
+A IA não vê SQL, JSON-RPC, tabelas nem internos do nó Plug. Vê capacidades como:
 
 - Consultar Cliente
-- Consultar Contas a Receber
-- Consultar Estoque
-- Publicar Evento de Cobrança
-- Gerar Boleto PDF
+- Contas a Receber Vencidas
+- Saldo em Estoque
+- Publicar Evento de Status
+- Gerar PDF de Documento
 
-Cada capacidade é implementada por um nó Plug pré-configurado. A IA escolhe a capacidade certa, preenche os parâmetros de negócio e o sistema executa.
+Cada capability é uma **definição** no **Plug MCP Server** (JSON ou Visual Builder). A IA escolhe a capability, preenche parâmetros de negócio e o Server executa via transporte Plug compartilhado.
 
-## Visão
+## Fluxo em runtime
 
 ```
-Usuário faz uma pergunta em linguagem natural
+Usuário pergunta em linguagem natural
           ↓
-     IA recebe catálogo de capacidades via MCP
+AI Agent recebe o catálogo (tools/list)
           ↓
-     IA escolhe a capacidade certa
+IA escolhe capability + parâmetros
           ↓
-     MCP Hub delega para o nó Plug correto
+Plug MCP Server valida, governa, executa
           ↓
-     Nó Plug executa SQL/Tool/Evento no hub
+shared transport → plug_server → agente ERP
           ↓
-     Resultado normalizado volta para a IA
+Envelope MCP normalizado volta ao workflow / agente
           ↓
-     IA responde ao usuário com dados reais
+IA responde com dados reais
 ```
 
-A IA nunca escreve SQL. Nunca escolhe tabelas. Nunca altera configurações do nó.
+A IA nunca escreve SQL, não escolhe tabelas e não altera a config de execução.
 
-## Conceitos principais
+## Conceitos
 
 ### Capability
 
-Uma capacidade de negócio que a IA sabe usar. Tem nome, descrição semântica (quando usar, quando não usar), parâmetros de negócio e um provider que executa.
+Ferramenta de negócio que a IA pode chamar: nome técnico, contrato semântico (`whenToUse` / `whenNotToUse`), parâmetros, governance e config de execução.
 
-Exemplos: `Consultar Cliente`, `Contas a Receber Vencidas`, `Saldo em Estoque`, `Enviar Cobrança`.
+### Provider (execution config)
 
-### Provider
+Implementação técnica dentro da definição:
 
-A implementação técnica da capability. No contexto do Plug, o provider é sempre uma instância de `Plug Database` (ou outro nó) pré-configurada com SQL base, operação, credenciais e limites.
+- `sql` — SQL read-only fixo com bindings nomeados (`:codCliente`, `:limite`, …)
+- `tools` — operação allowlisted do Plug Tools (`validateCpfCnpj`, `publishSocketEvent`, …)
 
-A IA não interage com o provider diretamente.
+A IA não fala com o provider diretamente.
 
-### SQL Base
+### Contrato semântico
 
-O SQL fixo definido pelo autor do fluxo no nó de consulta. Contém tabelas, joins, ordenação e filtros estruturais. A IA não altera o SQL base.
+O que a IA lê em `tools/list`: descrição, quando usar / não usar, schema de parâmetros.
 
-A IA só preenche os **parâmetros nomeados** (`:codCliente`, `:limite`, `:dataInicio`) que o autor expôs intencionalmente.
+### Contrato de governance
 
-### Semantic Contract
-
-A descrição que a IA lê para entender o que a capability faz. Inclui objetivo, quando usar, quando não usar e os parâmetros disponíveis.
-
-### Governance Contract
-
-As regras que o sistema aplica independentemente da IA: limite máximo de registros, filtros obrigatórios, colunas proibidas, tabelas permitidas pelo client token, validação guided SQL.
+Regras aplicadas pelo MCP Server independentemente do modelo: filtros obrigatórios, `maxRows` efetivo, máscara de colunas (`[redacted]`), SQL SELECT-only, bloqueio de admin e budget opcional de tool calls.
 
 ## O que o MCP Hub não é
 
-- Não é um substituto para o `Plug Database` — é a camada acima dele
-- Não é um servidor HTTP standalone — hospeda-se como nó n8n ou via plug_server
-- Não dá à IA liberdade para escrever SQL arbitrário
-- Não expõe operações de administração (Client Access, User Access) como tools de agente
-- Não gerencia autenticação — isso continua no plug_server e nos nós existentes
+- Não substitui o `Plug Database` — fica acima do transporte compartilhado
+- Não é daemon MCP HTTP/stdio na V1 — é nó n8n com contrato `tools/list` + `tools/call`
+- Não é SQL livre para a IA
+- Não é superfície admin (Client/User Access permanecem bloqueados)
+- Não gerencia auth — credenciais e hub auth ficam no stack Plug
+
+## Por onde começar
+
+- Authoring: [capability-nodes.md](./capability-nodes.md)
+- Arquitetura: [architecture.md](./architecture.md)
+- Pack + wiring: [examples/](./examples/)

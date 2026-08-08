@@ -59,4 +59,33 @@ describe("mcp governance", () => {
 
     expect(masked).toEqual([{ Nome: "Joao", CNPJ: "[redacted]" }]);
   });
+
+  it("should mask sensitive columns case-insensitively", () => {
+    const masked = maskSensitiveColumns(
+      [{ Nome: "Joao", CNPJ: "12345678901234", Email: "a@b.c" }],
+      ["cnpj", "EMAIL"],
+    );
+
+    expect(masked).toEqual([
+      { Nome: "Joao", CNPJ: "[redacted]", Email: "[redacted]" },
+    ]);
+  });
+
+  it("should treat explicit boolean false as an active filter", () => {
+    const withBooleanFilter: CapabilityDefinition = {
+      ...capability(),
+      parameters: {
+        ...capability().parameters,
+        ativo: { type: "boolean", description: "Somente ativos." },
+      },
+      governance: {
+        ...capability().governance,
+        filterParamNames: ["ativo"],
+      },
+    };
+
+    expect(enforceGovernance(withBooleanFilter, { ativo: false, limite: 10 })).toEqual({
+      ok: true,
+    });
+  });
 });

@@ -37,32 +37,43 @@ export class PlugAiHub implements INodeType {
   };
 
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-    try {
-      const promptConfig = readSystemPromptConfig(this, 0);
-      const forbiddenCapabilityNames = readForbiddenCapabilityNames(this, 0);
-      const systemPrompt = buildSystemPrompt(promptConfig);
+    const items = this.getInputData();
+    const itemCount = Math.max(items.length, 1);
+    const returnData: INodeExecutionData[] = [];
 
-      return [
-        [
-          toOutputItem({
-            systemPrompt,
-            maxToolCallsPerTurn: promptConfig.maxToolCallsPerTurn,
-            forbiddenCapabilityNames,
-          }),
-        ],
-      ];
-    } catch (error: unknown) {
-      if (this.continueOnFail()) {
-        return [
-          [
-            toOutputItem({
-              error: serializeErrorForContinueOnFail(error),
-            }),
-          ],
-        ];
+    for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
+      try {
+        const promptConfig = readSystemPromptConfig(this, itemIndex);
+        const forbiddenCapabilityNames = readForbiddenCapabilityNames(this, itemIndex);
+        const systemPrompt = buildSystemPrompt(promptConfig);
+
+        returnData.push(
+          toOutputItem(
+            {
+              systemPrompt,
+              maxToolCallsPerTurn: promptConfig.maxToolCallsPerTurn,
+              forbiddenCapabilityNames,
+            },
+            itemIndex,
+          ),
+        );
+      } catch (error: unknown) {
+        if (this.continueOnFail()) {
+          returnData.push(
+            toOutputItem(
+              {
+                error: serializeErrorForContinueOnFail(error),
+              },
+              itemIndex,
+            ),
+          );
+          continue;
+        }
+
+        throw error;
       }
-
-      throw error;
     }
+
+    return [returnData];
   }
 }

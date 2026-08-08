@@ -2,6 +2,9 @@ import type { ParamSchema, ValidationResult } from "./contracts";
 
 const isNullish = (value: unknown): boolean => value === null || value === undefined;
 
+const isBlankString = (value: unknown): boolean =>
+  typeof value === "string" && value.trim() === "";
+
 const coerceString = (value: unknown): string | undefined => {
   if (typeof value === "string") {
     return value;
@@ -58,7 +61,7 @@ const coerceParamValue = (
   schema: ParamSchema,
   rawValue: unknown,
 ): ValidationResult => {
-  if (isNullish(rawValue)) {
+  if (isNullish(rawValue) || (schema.required === true && isBlankString(rawValue))) {
     if (schema.required === true) {
       return { ok: false, error: `Parameter "${name}" is required.` };
     }
@@ -74,6 +77,9 @@ const coerceParamValue = (
       const stringValue = coerceString(rawValue);
       if (stringValue === undefined) {
         return { ok: false, error: `Parameter "${name}" must be a string.` };
+      }
+      if (schema.required === true && stringValue.trim() === "") {
+        return { ok: false, error: `Parameter "${name}" is required.` };
       }
       coerced = stringValue;
       break;

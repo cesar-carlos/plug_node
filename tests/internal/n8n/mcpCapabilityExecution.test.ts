@@ -4,7 +4,11 @@ import { describe, expect, it } from "vitest";
 
 import type { CapabilityDefinition } from "../../../shared/mcp/contracts";
 import { PlugValidationError } from "../../../shared/contracts/errors";
-import { executeSqlCapability } from "../../../shared/n8n/mcpCapabilityExecution";
+import {
+  executeSqlCapability,
+  executeToolsCapability,
+  resolveToolsMergedParams,
+} from "../../../shared/n8n/mcpCapabilityExecution";
 import { createMockExecuteContext } from "../../helpers/mockExecuteFunctions";
 
 const credentials = {
@@ -40,6 +44,26 @@ const sqlCapability = (sql: string, maxRows = 50): CapabilityDefinition => ({
     sql,
     channel: "rest",
     maxRows: maxRows * 2,
+  },
+});
+
+const toolsCapability = (): CapabilityDefinition => ({
+  name: "validar_documento",
+  displayName: "Validar CPF/CNPJ",
+  description: "Valida documento brasileiro.",
+  whenToUse: "Use para validar CPF ou CNPJ.",
+  whenNotToUse: "Nao use para consultas SQL.",
+  category: "compliance",
+  parameters: {
+    document: { type: "string", description: "CPF ou CNPJ.", required: true },
+    limite: { type: "number", description: "Limite.", default: 10, maximum: 10 },
+  },
+  governance: {
+    maxRows: 10,
+  },
+  executionConfig: {
+    providerType: "tools",
+    operation: "validateCpfCnpj",
   },
 });
 
@@ -135,6 +159,47 @@ describe("mcpCapabilityExecution", () => {
           },
         },
       },
+    });
+  });
+
+  it("should honor limite when resolving effectiveMaxRows for tools capabilities", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        agentId: "agent-1",
+        clientToken: "client-token",
+      },
+      responses: [],
+    });
+
+    const result = await executeToolsCapability(
+      context,
+      toolsCapability(),
+      { document: "39053344705", limite: 3 },
+      {
+        supportsSocket: false,
+        credentialName: "plugDatabaseAccountApi",
+        nodeDisplayName: "Plug MCP Server",
+      },
+    );
+
+    expect(result.effectiveMaxRows).toBe(3);
+    expect(result.emptyResult).toBe(false);
+    expect(result.rowCount).toBe(1);
+  });
+
+  it("should let staticParams override AI-provided tools params", () => {
+    expect(
+      resolveToolsMergedParams(
+        { document: "from-ai", eventName: "client:custom.fromAi" },
+        { eventName: "client:custom.locked" },
+        "publishSocketEvent",
+      ),
+    ).toEqual({
+      document: "from-ai",
+      eventName: "client:custom.locked",
+      operation: "publishSocketEvent",
+      resource: "tools",
     });
   });
 });

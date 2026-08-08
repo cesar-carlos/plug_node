@@ -1,0 +1,277 @@
+[
+  {
+    "name": "consultar_cliente",
+    "displayName": "Consultar Cliente",
+    "description": "Busca dados cadastrais de um cliente: nome, telefone, e-mail, endereco, CNPJ.",
+    "whenToUse": "Use para identificar o cliente antes de consultar financeiro ou historico.",
+    "whenNotToUse": "Nao use para financeiro, pedidos, estoque ou qualquer alteracao de cadastro.",
+    "category": "crm",
+    "tags": ["cliente", "telefone", "endereco", "cadastro", "contato", "email"],
+    "parameters": {
+      "codCliente": {
+        "type": "number",
+        "description": "Codigo do cliente no ERP."
+      },
+      "nomeCliente": {
+        "type": "string",
+        "description": "Nome parcial — aceita % para busca."
+      },
+      "limite": {
+        "type": "number",
+        "description": "Quantidade maxima de registros.",
+        "default": 10,
+        "maximum": 50,
+        "minimum": 1
+      }
+    },
+    "governance": {
+      "maxRows": 50,
+      "requireAtLeastOneFilter": true,
+      "filterParamNames": ["codCliente", "nomeCliente"],
+      "maskedColumns": ["CNPJ"]
+    },
+    "executionConfig": {
+      "providerType": "sql",
+      "sql": "SELECT TOP :limite c.CodCliente, c.Nome, c.Telefone, c.Email, c.Cidade, c.Estado, c.CNPJ FROM Cliente c WHERE c.Ativo = 1 AND (:codCliente IS NULL OR c.CodCliente = :codCliente) AND (:nomeCliente IS NULL OR c.Nome LIKE :nomeCliente) ORDER BY c.Nome",
+      "channel": "rest",
+      "maxRows": 50
+    }
+  },
+  {
+    "name": "contas_receber_vencidas",
+    "displayName": "Contas a Receber Vencidas",
+    "description": "Lista titulos com vencimento anterior a data atual.",
+    "whenToUse": "Use para cobranca, analise de inadimplencia e saldo devedor do cliente.",
+    "whenNotToUse": "Nao use para titulos a vencer, baixa de titulos ou fluxo de caixa.",
+    "category": "financeiro",
+    "tags": [
+      "contas a receber",
+      "vencido",
+      "inadimplente",
+      "cobranca",
+      "debito",
+      "titulo"
+    ],
+    "parameters": {
+      "codCliente": {
+        "type": "number",
+        "description": "Codigo do cliente no ERP."
+      },
+      "nomeCliente": {
+        "type": "string",
+        "description": "Nome parcial do cliente."
+      },
+      "limite": {
+        "type": "number",
+        "description": "Quantidade maxima de registros.",
+        "default": 50,
+        "maximum": 100,
+        "minimum": 1
+      }
+    },
+    "governance": {
+      "maxRows": 100,
+      "requireAtLeastOneFilter": false,
+      "filterParamNames": ["codCliente", "nomeCliente"]
+    },
+    "executionConfig": {
+      "providerType": "sql",
+      "sql": "SELECT TOP :limite t.NumeroTitulo, c.CodCliente, c.Nome, t.Valor, t.Vencimento, t.Situacao, DATEDIFF(day, t.Vencimento, GETDATE()) AS DiasAtraso FROM TituloReceber t INNER JOIN Cliente c ON c.CodCliente = t.CodCliente WHERE t.Vencimento < CAST(GETDATE() AS date) AND t.Situacao NOT IN ('Baixado', 'Cancelado') AND (:codCliente IS NULL OR t.CodCliente = :codCliente) AND (:nomeCliente IS NULL OR c.Nome LIKE :nomeCliente) ORDER BY t.Vencimento ASC",
+      "channel": "rest",
+      "maxRows": 100
+    }
+  },
+  {
+    "name": "contas_receber_a_vencer",
+    "displayName": "Contas a Receber a Vencer",
+    "description": "Lista titulos com vencimento a partir de hoje.",
+    "whenToUse": "Use para previsao de recebimento e fluxo de caixa.",
+    "whenNotToUse": "Nao use para vencidos, baixas ou inadimplencia.",
+    "category": "financeiro",
+    "tags": ["contas a receber", "a vencer", "fluxo de caixa", "previsao"],
+    "parameters": {
+      "codCliente": {
+        "type": "number",
+        "description": "Codigo do cliente no ERP."
+      },
+      "diasAdiante": {
+        "type": "number",
+        "description": "Quantidade de dias a frente para filtrar.",
+        "default": 30,
+        "minimum": 1,
+        "maximum": 365
+      },
+      "limite": {
+        "type": "number",
+        "description": "Quantidade maxima de registros.",
+        "default": 50,
+        "maximum": 100,
+        "minimum": 1
+      }
+    },
+    "governance": {
+      "maxRows": 100,
+      "requireAtLeastOneFilter": false,
+      "filterParamNames": ["codCliente", "diasAdiante"]
+    },
+    "executionConfig": {
+      "providerType": "sql",
+      "sql": "SELECT TOP :limite t.NumeroTitulo, c.CodCliente, c.Nome, t.Valor, t.Vencimento FROM TituloReceber t INNER JOIN Cliente c ON c.CodCliente = t.CodCliente WHERE t.Vencimento >= CAST(GETDATE() AS date) AND t.Vencimento <= DATEADD(day, :diasAdiante, CAST(GETDATE() AS date)) AND t.Situacao NOT IN ('Baixado', 'Cancelado') AND (:codCliente IS NULL OR t.CodCliente = :codCliente) ORDER BY t.Vencimento ASC",
+      "channel": "rest",
+      "maxRows": 100
+    }
+  },
+  {
+    "name": "saldo_estoque",
+    "displayName": "Saldo em Estoque",
+    "description": "Consulta quantidade disponivel de um produto.",
+    "whenToUse": "Use para verificar disponibilidade antes de confirmar pedido.",
+    "whenNotToUse": "Nao use para preco, cadastro do produto ou movimentacao de estoque.",
+    "category": "estoque",
+    "tags": ["estoque", "produto", "saldo", "quantidade", "disponivel"],
+    "parameters": {
+      "codProduto": {
+        "type": "string",
+        "description": "Codigo do produto."
+      },
+      "nomeProduto": {
+        "type": "string",
+        "description": "Descricao parcial do produto."
+      },
+      "limite": {
+        "type": "number",
+        "description": "Quantidade maxima de registros.",
+        "default": 20,
+        "maximum": 50,
+        "minimum": 1
+      }
+    },
+    "governance": {
+      "maxRows": 50,
+      "requireAtLeastOneFilter": true,
+      "filterParamNames": ["codProduto", "nomeProduto"]
+    },
+    "executionConfig": {
+      "providerType": "sql",
+      "sql": "SELECT TOP :limite p.CodProduto, p.Descricao, e.Saldo, e.SaldoReservado, e.SaldoDisponivel, p.UnidadeMedida FROM Produto p INNER JOIN Estoque e ON e.CodProduto = p.CodProduto WHERE p.Ativo = 1 AND (:codProduto IS NULL OR p.CodProduto = :codProduto) AND (:nomeProduto IS NULL OR p.Descricao LIKE :nomeProduto) ORDER BY p.Descricao",
+      "channel": "rest",
+      "maxRows": 50
+    }
+  },
+  {
+    "name": "consultar_produto",
+    "displayName": "Consultar Produto",
+    "description": "Busca dados cadastrais basicos de produtos ativos.",
+    "whenToUse": "Use para identificar um produto por codigo ou descricao.",
+    "whenNotToUse": "Nao use para saldo de estoque, preco ou movimentacao.",
+    "category": "estoque",
+    "tags": ["produto", "cadastro", "descricao", "sku"],
+    "parameters": {
+      "codProduto": {
+        "type": "string",
+        "description": "Codigo do produto."
+      },
+      "nomeProduto": {
+        "type": "string",
+        "description": "Descricao parcial do produto."
+      },
+      "limite": {
+        "type": "number",
+        "description": "Quantidade maxima de registros.",
+        "default": 20,
+        "maximum": 50,
+        "minimum": 1
+      }
+    },
+    "governance": {
+      "maxRows": 50,
+      "requireAtLeastOneFilter": true,
+      "filterParamNames": ["codProduto", "nomeProduto"]
+    },
+    "executionConfig": {
+      "providerType": "sql",
+      "sql": "SELECT TOP :limite p.CodProduto, p.Descricao, p.UnidadeMedida, p.Ativo FROM Produto p WHERE p.Ativo = 1 AND (:codProduto IS NULL OR p.CodProduto = :codProduto) AND (:nomeProduto IS NULL OR p.Descricao LIKE :nomeProduto) ORDER BY p.Descricao",
+      "channel": "rest",
+      "maxRows": 50
+    }
+  },
+  {
+    "name": "publicar_evento_status",
+    "displayName": "Publicar Evento de Status",
+    "description": "Publica um evento customizado no socket do Plug para notificar consumidores.",
+    "whenToUse": "Use para notificar o ERP ou outros consumidores sobre mudanca de status.",
+    "whenNotToUse": "Nao use para consultar dados. Nao use para enviar mensagens ao usuario final.",
+    "category": "automacao",
+    "tags": ["evento", "socket", "notificacao", "status", "atualizacao"],
+    "parameters": {
+      "eventName": {
+        "type": "string",
+        "description": "Nome exato do evento customizado.",
+        "required": true
+      },
+      "payloadJson": {
+        "type": "object",
+        "description": "Payload JSON do evento.",
+        "required": true
+      }
+    },
+    "governance": {
+      "maxRows": 1
+    },
+    "executionConfig": {
+      "providerType": "tools",
+      "operation": "publishSocketEvent"
+    }
+  },
+  {
+    "name": "validar_documento",
+    "displayName": "Validar CPF/CNPJ",
+    "description": "Valida um CPF ou CNPJ brasileiro e retorna o resultado da validacao.",
+    "whenToUse": "Use para validar CPF ou CNPJ informado pelo usuario.",
+    "whenNotToUse": "Nao use para consultas SQL, financeiro ou cadastro de clientes.",
+    "category": "compliance",
+    "tags": ["cpf", "cnpj", "documento", "validacao"],
+    "parameters": {
+      "document": {
+        "type": "string",
+        "description": "CPF ou CNPJ a validar.",
+        "required": true
+      }
+    },
+    "governance": {
+      "maxRows": 1
+    },
+    "executionConfig": {
+      "providerType": "tools",
+      "operation": "validateCpfCnpj"
+    }
+  },
+  {
+    "name": "gerar_pdf_documento",
+    "displayName": "Gerar PDF de Documento",
+    "description": "Gera um PDF a partir de HTML para documentos operacionais.",
+    "whenToUse": "Use quando o usuario pedir um PDF gerado a partir de conteudo HTML.",
+    "whenNotToUse": "Nao use para consultas ERP ou publicacao de eventos.",
+    "category": "documentos",
+    "tags": ["pdf", "documento", "html", "relatorio"],
+    "parameters": {
+      "html": {
+        "type": "string",
+        "description": "Conteudo HTML a converter em PDF.",
+        "required": true
+      },
+      "fileName": {
+        "type": "string",
+        "description": "Nome do arquivo PDF de saida.",
+        "default": "documento.pdf"
+      }
+    },
+    "governance": {
+      "maxRows": 1
+    },
+    "executionConfig": {
+      "providerType": "tools",
+      "operation": "htmlToPdf"
+    }
+  }
+]

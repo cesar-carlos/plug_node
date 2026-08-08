@@ -1,0 +1,227 @@
+{
+  "name": "Plug MCP Hub Reference",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "When clicking ‘Execute workflow’",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "identity": "You are the operational ERP assistant. Your role is to query information and support decisions using real system data.",
+        "scope": "You can use only the tools connected to you. Consult customers, receivables, stock, and document helpers.",
+        "maxToolCallsPerTurn": 5,
+        "forbiddenCapabilityNamesJson": "[]"
+      },
+      "id": "plug-ai-hub",
+      "name": "Plug AI Hub",
+      "type": "n8n-nodes-plug-database.plugAiHub",
+      "typeVersion": 1,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const hub = $input.first().json;\nconst chatSessionId = $('When clicking ‘Execute workflow’').first().json.sessionId ?? $execution.id;\nconst toolCallCount = Number(hub.toolCallCount ?? 1);\n\nreturn [{\n  json: {\n    ...hub,\n    wiring: {\n      systemPrompt: hub.systemPrompt,\n      maxToolCallsPerTurn: hub.maxToolCallsPerTurn,\n      forbiddenCapabilityNamesJson: JSON.stringify(hub.forbiddenCapabilityNames ?? []),\n      auditSessionId: String(chatSessionId),\n      toolCallCount,\n      includeAuditInOutput: false\n    }\n  }\n}];"
+      },
+      "id": "wire-hub-config",
+      "name": "Wire Hub Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mcpOperation }}",
+                    "rightValue": "list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "list"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.mcpOperation }}",
+                    "rightValue": "call",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "call"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "switch-operation",
+      "name": "Switch Operation",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [780, 300]
+    },
+    {
+      "parameters": {
+        "operation": "list",
+        "authoringMode": "json",
+        "capabilityDefinitionsJson": "={{ /* paste docs/mcp-hub/examples/pilot-capabilities.json here or keep the node default */ $json.capabilityDefinitionsJson }}",
+        "forbiddenCapabilityNamesJson": "={{ $json.wiring.forbiddenCapabilityNamesJson }}"
+      },
+      "id": "mcp-list",
+      "name": "Plug MCP Server (list)",
+      "type": "n8n-nodes-plug-database.plugMcpServer",
+      "typeVersion": 1,
+      "position": [1040, 160],
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "REPLACE_ME",
+          "name": "Plug Database Account API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "call",
+        "authoringMode": "json",
+        "capabilityDefinitionsJson": "={{ /* paste docs/mcp-hub/examples/pilot-capabilities.json here or keep the node default */ $json.capabilityDefinitionsJson }}",
+        "capabilityName": "={{ $json.capabilityName }}",
+        "paramsInputMode": "json",
+        "capabilityParamsJson": "={{ $json.capabilityParamsJson }}",
+        "auditUserId": "={{ $json.auditUserId || 'anonymous' }}",
+        "auditSessionId": "={{ $json.wiring.auditSessionId }}",
+        "includeAuditInOutput": "={{ $json.wiring.includeAuditInOutput }}",
+        "forbiddenCapabilityNamesJson": "={{ $json.wiring.forbiddenCapabilityNamesJson }}",
+        "maxToolCallsPerTurn": "={{ $json.wiring.maxToolCallsPerTurn }}",
+        "toolCallCount": "={{ $json.wiring.toolCallCount }}"
+      },
+      "id": "mcp-call",
+      "name": "Plug MCP Server (call)",
+      "type": "n8n-nodes-plug-database.plugMcpServer",
+      "typeVersion": 1,
+      "position": [1040, 360],
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "REPLACE_ME",
+          "name": "Plug Database Account API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "validate",
+        "authoringMode": "json",
+        "capabilityDefinitionsJson": "={{ $json.capabilityDefinitionsJson }}"
+      },
+      "id": "mcp-validate",
+      "name": "Plug MCP Server (validate)",
+      "type": "n8n-nodes-plug-database.plugMcpServer",
+      "typeVersion": 1,
+      "position": [1040, 560],
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "REPLACE_ME",
+          "name": "Plug Database Account API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Plug AI Hub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plug AI Hub": {
+      "main": [
+        [
+          {
+            "node": "Wire Hub Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wire Hub Config": {
+      "main": [
+        [
+          {
+            "node": "Switch Operation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Operation": {
+      "main": [
+        [
+          {
+            "node": "Plug MCP Server (list)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plug MCP Server (call)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Plug MCP Server (validate)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

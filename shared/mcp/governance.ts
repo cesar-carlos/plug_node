@@ -10,8 +10,8 @@ const isActiveFilter = (value: unknown): boolean => {
   }
 
   if (typeof value === "boolean") {
-    // Boolean filters are only active when explicitly true.
-    return value === true;
+    // Explicit true/false both count as an active filter (e.g. ativo=false).
+    return true;
   }
 
   return true;
@@ -88,12 +88,18 @@ export const maskSensitiveColumns = (
     return [...rows];
   }
 
-  const maskedSet = new Set(maskedColumns);
+  const maskedSet = new Set(
+    maskedColumns.map((column) => column.trim().toLowerCase()).filter((column) => column !== ""),
+  );
+  if (maskedSet.size === 0) {
+    return [...rows];
+  }
+
   return rows.map((row) => {
     const nextRow: Record<string, unknown> = { ...row };
-    for (const column of maskedSet) {
-      if (column in nextRow) {
-        nextRow[column] = "[redacted]";
+    for (const key of Object.keys(nextRow)) {
+      if (maskedSet.has(key.toLowerCase())) {
+        nextRow[key] = "[redacted]";
       }
     }
     return nextRow;

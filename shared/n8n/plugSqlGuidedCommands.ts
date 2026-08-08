@@ -47,16 +47,25 @@ const findTemplateMarker = (sql: string): string | undefined => {
   );
 };
 
-const findNamedSqlParameters = (sql: string): string[] => {
+/**
+ * Named SQL bindings (`:param`) after stripping comments and string literals.
+ * Shared by guided SQL validation and MCP capability definition cross-checks.
+ */
+export const listNamedSqlParameters = (sql: string): string[] => {
   const cleanSql = stripSqlCommentsAndStrings(sql);
   const parameters = new Set<string>();
 
   for (const match of cleanSql.matchAll(sqlNamedParameterPattern)) {
-    parameters.add(match[1]);
+    const name = match[1];
+    if (name !== undefined) {
+      parameters.add(name);
+    }
   }
 
   return [...parameters];
 };
+
+const findNamedSqlParameters = (sql: string): string[] => listNamedSqlParameters(sql);
 
 const validateNamedSqlParameters = (
   sql: string,

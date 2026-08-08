@@ -3,6 +3,18 @@ import { PlugValidationError } from "../contracts/errors";
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+export const normalizeJsonParameter = (value: unknown, fallback = ""): string => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+
+  return JSON.stringify(value);
+};
+
 export const stringifyJson = (value: unknown): string => JSON.stringify(value);
 
 export const estimateJsonUtf8Bytes = (value: unknown): number =>

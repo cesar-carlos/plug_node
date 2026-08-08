@@ -60,16 +60,13 @@ describe("assertSqlIsReadOnly", () => {
 });
 
 describe("mcp governance extras", () => {
-  it("should treat boolean false and whitespace as inactive filters", () => {
+  it("should treat whitespace as inactive and boolean false as an active filter", () => {
     expect(
       enforceGovernance(capability(), {
         ativo: false,
         limite: 10,
       }),
-    ).toEqual({
-      ok: false,
-      error: "At least one business filter is required before running this capability.",
-    });
+    ).toEqual({ ok: true });
 
     expect(
       enforceGovernance(capability(), {

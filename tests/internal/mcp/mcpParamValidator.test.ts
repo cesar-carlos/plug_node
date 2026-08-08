@@ -62,4 +62,22 @@ describe("mcp paramValidator", () => {
       error: 'Unknown parameter "extra" is not accepted by this capability.',
     });
   });
+
+  it("should reject blank required string parameters", () => {
+    const result = validateParams(
+      {
+        document: {
+          type: "string",
+          description: "CPF ou CNPJ.",
+          required: true,
+        },
+      },
+      { document: "   " },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'Parameter "document" is required.',
+    });
+  });
 });

@@ -33,6 +33,10 @@ The node handles login, session refresh, command execution, response normalizati
 - `Plug Database` — consolidated node with `Resource = SQL | Client Access | User Access | Tools`
 - `Plug Database Socket Event Trigger` — continuous listener for `client:custom.*` events or `client:agent.profile.updated`
 - `Plug Database Plura.ai Automations Trigger` — webhook receiver for Plura.ai automation nodes
+- `Plug MCP Server` — MCP-style `list` / `call` / `validate` over governed SQL/Tools capability definitions (JSON or Visual Builder)
+- `Plug AI Hub` — emits system prompt + tool-call budget + forbidden capability names for agent wiring
+
+Governed AI flows: see [mcp-hub/](./mcp-hub/).
 
 ## Resources and operations
 

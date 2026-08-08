@@ -14,6 +14,10 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Local scratch (e2e captures, ad-hoc dumps) — keep repo root clean
+tmp/**
+!tmp/README.md
+
 # Environment and local secrets
 .env
 .env.*

@@ -10,6 +10,13 @@ export interface AiHubDescriptionOptions {
 
 const buildAiHubProperties = (): INodeProperties[] => [
   {
+    displayName:
+      "Plug AI Hub does not execute capabilities. It only emits { systemPrompt, maxToolCallsPerTurn, forbiddenCapabilityNames } for wiring into the AI Agent system message and Plug MCP Server fields.",
+    name: "aiHubNotice",
+    type: "notice",
+    default: "",
+  },
+  {
     displayName: "Identity",
     name: "identity",
     type: "string",

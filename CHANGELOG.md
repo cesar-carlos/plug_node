@@ -6,9 +6,22 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 ## [Unreleased]
 
+### Added
+
+- Plug MCP Server UX: Visual Builder (`authoringMode`), Validate Definitions operation, capability-name dropdown (`loadOptions`), resource-mapper params mode, `includeAuditInOutput` toggle, advanced-options disclosure, field notices, and numeric bounds on tool-call budget fields.
+- MCP Hub examples: pilot capability pack (`docs/mcp-hub/examples/pilot-capabilities.json`) and importable reference workflow (`docs/mcp-hub/examples/mcp-hub-reference.workflow.json`).
+
 ### Fixed
 
-- Harden Plug MCP Hub: enforce SELECT-only SQL capabilities, unify effective `maxRows` for hub + truncation metadata, filter forbidden/admin capabilities on `tools/list` and `tools/call`, map unmapped Plug errors to generic friendly messages (no technical leak), treat boolean `false` / whitespace as inactive governance filters, and return MCP error envelopes (with audit) for forbidden capabilities and tool-call budget overruns.
+- Plug MCP capability definition parsing: reject non-integer / non-finite `maxRows` and `minimum`/`maximum`, cross-validate `filterParamNames` and SQL `:bindings` against declared parameters, and keep flat-list `rowCount` aligned with filtered rows.
+- Honor `limite`/`limit` when resolving `effectiveMaxRows` for Tools capabilities (truncation metadata now matches governance).
+- Friendlier MCP `tools/call` error when the capability registry is empty.
+- Deduplicate `normalizeJsonParameter` into shared JSON utils (MCP Server + AI Hub).
+- MCP Hub hardening follow-ups: strip SQL string/comment literals when cross-checking `:bindings`; keep Tools `staticParams` above AI params; reject blank required strings; apply `maskedColumns` on Tools results (case-insensitive); treat explicit boolean `false` as an active filter; accept string integer `maxRows`; process all input items on MCP Server / AI Hub; fail `validate` when admin capabilities are present; default `toolCallCount` to `1` when a turn budget is set but the counter was omitted.
+
+### Fixed (prior MCP hardenings)
+
+- Harden Plug MCP Hub: enforce SELECT-only SQL capabilities, unify effective `maxRows` for hub + truncation metadata, filter forbidden/admin capabilities on `tools/list` and `tools/call`, map unmapped Plug errors to generic friendly messages (no technical leak), treat whitespace-only filter strings as inactive, and return MCP error envelopes (with audit) for forbidden capabilities and tool-call budget overruns.
 - Enable Tools provider execution in MCP Server V1 via shared Plug Tools dispatch (with single-call input isolation).
 - Clamp AI Hub `maxToolCallsPerTurn` to 1–20 and wire forbidden capability names / tool-call budget fields on MCP Server for workflow enforcement.
 

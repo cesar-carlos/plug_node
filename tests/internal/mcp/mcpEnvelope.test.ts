@@ -57,6 +57,18 @@ describe("mcp envelope", () => {
       content: [{ type: "text", text: "Access is not authorized for this capability." }],
     });
   });
+
+  it("should keep flat-list rowCount aligned with filtered rows", () => {
+    const extracted = extractPlugExecutionResult([
+      { Nome: "Joao" },
+      "not-a-record" as unknown as Record<string, unknown>,
+      { Nome: "Maria" },
+    ]);
+
+    expect(extracted.rows).toEqual([{ Nome: "Joao" }, { Nome: "Maria" }]);
+    expect(extracted.rowCount).toBe(2);
+    expect(extracted.emptyResult).toBe(false);
+  });
 });
 
 describe("mcp errorMapper via envelope consumers", () => {

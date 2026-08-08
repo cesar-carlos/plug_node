@@ -162,6 +162,17 @@ export const executeSqlCapability = async (
   };
 };
 
+export const resolveToolsMergedParams = (
+  params: Readonly<Record<string, unknown>>,
+  staticParams: Readonly<Record<string, unknown>> | undefined,
+  operation: string,
+): Record<string, unknown> => ({
+  ...params,
+  ...(staticParams ?? {}),
+  operation,
+  resource: "tools",
+});
+
 export const executeToolsCapability = async (
   context: IExecuteFunctions,
   capability: CapabilityDefinition,
@@ -173,12 +184,7 @@ export const executeToolsCapability = async (
   }
 
   const { operation, staticParams } = capability.executionConfig;
-  const mergedParams: Record<string, unknown> = {
-    ...(staticParams ?? {}),
-    ...params,
-    operation,
-    resource: "tools",
-  };
+  const mergedParams = resolveToolsMergedParams(params, staticParams, operation);
 
   const toolContext = withMergedToolParameters(context, mergedParams);
   const result = await executePlugToolsResource(toolContext, {
@@ -187,14 +193,17 @@ export const executeToolsCapability = async (
   });
 
   const items = result[0] ?? [];
-  const rows = extractToolsRows(items);
+  const rows = maskSensitiveColumns(
+    extractToolsRows(items),
+    capability.governance.maskedColumns,
+  );
   const emptyResult = rows.length === 0;
 
   return {
     rows,
     rowCount: rows.length,
     emptyResult,
-    effectiveMaxRows: Math.max(1, capability.governance.maxRows),
+    effectiveMaxRows: resolveEffectiveMaxRows(capability, params),
   };
 };
 

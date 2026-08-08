@@ -11,6 +11,8 @@ alwaysApply: true
   - `shared`
   - `docs`
   - `scripts`
+  - `tests`
+  - `tmp` (local scratch only; see `tmp/README.md`)
 - The package should follow n8n conventions at the package root:
   - `nodes/`
   - `credentials/`
@@ -21,4 +23,5 @@ alwaysApply: true
 - Keep generated copies of shared code clearly marked as generated and avoid editing them manually when a sync script owns them.
 - Keep documentation under `docs/`, especially project summary, architecture, communication patterns, UX decisions, and testing strategy.
 - Keep automation or sync helpers in `scripts/`.
+- Do not drop scratch files, e2e capture logs, or ad-hoc dumps in the repository root. Put them under `tmp/` (for e2e captures, prefer `tmp/e2e-logs/`). Contents of `tmp/` are gitignored except `tmp/README.md`.
 - Avoid inventing `src/app.ts`, `src/server.ts`, REST route folders, or backend bootstrap files for this repository.
