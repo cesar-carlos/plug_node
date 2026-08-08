@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseCapabilityDefinitions,
   parseCapabilityParams,
+  readForbiddenCapabilityNames,
   readToolCallBudget,
 } from "../../../packages/n8n-nodes-plug-database/nodes/PlugMcpServer/mcpServerHelpers";
 import { createMockExecuteContext } from "../../helpers/mockExecuteFunctions";
@@ -315,5 +316,61 @@ describe("mcpServerHelpers readToolCallBudget", () => {
       maxToolCallsPerTurn: 0,
       toolCallCount: 0,
     });
+  });
+
+  it("should inherit budget and forbidden names from input wiring when params are default", () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        maxToolCallsPerTurn: 0,
+        toolCallCount: 0,
+        forbiddenCapabilityNamesJson: "[]",
+      },
+      responses: [],
+      inputData: [
+        {
+          json: {
+            wiring: {
+              maxToolCallsPerTurn: 4,
+              forbiddenCapabilityNamesJson: JSON.stringify(["blocked_tool"]),
+            },
+          },
+        },
+      ],
+    });
+
+    expect(readToolCallBudget(context, 0)).toEqual({
+      maxToolCallsPerTurn: 4,
+      toolCallCount: 1,
+    });
+    expect(readForbiddenCapabilityNames(context, 0)).toEqual(["blocked_tool"]);
+  });
+
+  it("should resolve Hub wiring from aiHubNodeName via evaluateExpression", () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        maxToolCallsPerTurn: 0,
+        toolCallCount: 0,
+        forbiddenCapabilityNamesJson: "[]",
+        aiHubNodeName: "Plug AI Hub",
+      },
+      responses: [],
+      evaluateExpression: (expression) => {
+        expect(expression).toContain("Plug AI Hub");
+        return {
+          wiring: {
+            maxToolCallsPerTurn: 2,
+            forbiddenCapabilityNamesJson: JSON.stringify(["from_hub"]),
+          },
+        };
+      },
+    });
+
+    expect(readToolCallBudget(context, 0)).toEqual({
+      maxToolCallsPerTurn: 2,
+      toolCallCount: 1,
+    });
+    expect(readForbiddenCapabilityNames(context, 0)).toEqual(["from_hub"]);
   });
 });

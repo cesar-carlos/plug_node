@@ -204,4 +204,116 @@ describe("createRelayStreamPullSession", () => {
     await expect(pullPromise).rejects.toBeTruthy();
     session.dispose();
   });
+
+  it("rejects malformed success pull_response (non-positive windowSize) for in-flight pulls", async () => {
+    const transport = new MockPullTransport();
+    const session = createRelayStreamPullSession(transport);
+
+    const pullPromise = session.requestPull({
+      conversationId: "conversation-1",
+      requestId: "req-1",
+      streamId: "stream-1",
+      timeoutMs: 1_000,
+    });
+
+    transport.dispatch("relay:rpc.stream.pull_response", {
+      success: true,
+      conversationId: "conversation-1",
+      requestId: "req-1",
+      streamId: "stream-1",
+      windowSize: 0,
+    });
+
+    await expect(pullPromise).rejects.toMatchObject({
+      code: "PLUG_VALIDATION_ERROR",
+    });
+    session.dispose();
+  });
+
+  it("ignores unmatched success responses and times out the pending pull", async () => {
+    const transport = new MockPullTransport();
+    const session = createRelayStreamPullSession(transport);
+
+    const pullPromise = session.requestPull({
+      conversationId: "conversation-1",
+      requestId: "req-1",
+      streamId: "stream-1",
+      timeoutMs: 80,
+    });
+
+    transport.dispatch("relay:rpc.stream.pull_response", {
+      success: true,
+      conversationId: "conversation-1",
+      requestId: "other-req",
+      streamId: "stream-1",
+      windowSize: 16,
+    });
+
+    await expect(pullPromise).rejects.toBeInstanceOf(PlugTimeoutError);
+    session.dispose();
+  });
+
+  it("ignores failure responses that do not match pending ids", async () => {
+    const transport = new MockPullTransport();
+    const session = createRelayStreamPullSession(transport);
+
+    const pullPromise = session.requestPull({
+      conversationId: "conversation-1",
+      requestId: "req-1",
+      streamId: "stream-1",
+      timeoutMs: 80,
+    });
+
+    transport.dispatch("relay:rpc.stream.pull_response", {
+      success: false,
+      requestId: "other-req",
+      streamId: "stream-1",
+      error: { code: "STREAM_LOST", message: "other stream" },
+    });
+
+    await expect(pullPromise).rejects.toBeInstanceOf(PlugTimeoutError);
+    session.dispose();
+  });
+
+  it("rejects pending pulls on connect_error and disconnect when listeners are attached", async () => {
+    const connectTransport = new MockPullTransport();
+    const connectSession = createRelayStreamPullSession(connectTransport, {
+      attachTerminalListeners: true,
+    });
+    const connectPromise = connectSession.requestPull({
+      conversationId: "conversation-1",
+      requestId: "req-1",
+      streamId: "stream-1",
+      timeoutMs: 5_000,
+    });
+    connectTransport.dispatch("connect_error", { message: "connect failed" });
+    await expect(connectPromise).rejects.toBeTruthy();
+    connectSession.dispose();
+
+    const disconnectTransport = new MockPullTransport();
+    const disconnectSession = createRelayStreamPullSession(disconnectTransport, {
+      attachTerminalListeners: true,
+    });
+    const disconnectPromise = disconnectSession.requestPull({
+      conversationId: "conversation-1",
+      requestId: "req-2",
+      streamId: "stream-1",
+      timeoutMs: 5_000,
+    });
+    disconnectTransport.dispatch("disconnect", "io server disconnect");
+    await expect(disconnectPromise).rejects.toBeTruthy();
+    disconnectSession.dispose();
+  });
+
+  it("double dispose is a no-op", () => {
+    const transport = new MockPullTransport();
+    const session = createRelayStreamPullSession(transport, {
+      attachTerminalListeners: true,
+    });
+    expect(transport.listenerCount("relay:rpc.stream.pull_response")).toBe(1);
+    session.dispose();
+    expect(transport.listenerCount("relay:rpc.stream.pull_response")).toBe(0);
+    session.dispose();
+    expect(transport.listenerCount("relay:rpc.stream.pull_response")).toBe(0);
+  });
 });

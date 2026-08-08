@@ -35,6 +35,9 @@ playwright-report/
 # npm pack / release artifacts (optional local)
 *.tgz
 
+# Transient Linux CI baseline calibration (download artifact; do not commit)
+scripts/benchmarks/payload-frame-baseline.ci.json
+
 # OS
 .DS_Store
 Thumbs.db

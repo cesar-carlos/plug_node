@@ -5,6 +5,7 @@ import {
   decodeConsumerCommandWirePayload,
   isConsumerNotificationResponse,
   normalizeConsumerCommandResponse,
+  normalizeConsumerConnectionReady,
   normalizeConsumerStreamChunkPayload,
   normalizeConsumerStreamCompletePayload,
   normalizeConsumerStreamPullResponse,
@@ -134,5 +135,78 @@ describe("consumerCommandWire helpers", () => {
       }),
     ).toBe(true);
     expect(isConsumerNotificationResponse({ type: "notification" })).toBe(false);
+  });
+
+  it("normalizeConsumerConnectionReady decodes PayloadFrame connection payloads", async () => {
+    const frame = encodePayloadFrame(
+      { ready: true, namespace: "/consumers" },
+      { requestId: "ready-1", compression: "none" },
+    );
+    await expect(normalizeConsumerConnectionReady(frame)).resolves.toEqual({
+      ready: true,
+      namespace: "/consumers",
+    });
+  });
+
+  it("rejects blank optional ids on command_response and pull_response failures", () => {
+    expect(() =>
+      normalizeConsumerCommandResponse({
+        success: true,
+        requestId: "req-1",
+        response: { ok: true },
+        clientRequestId: " ",
+      }),
+    ).toThrow(/clientRequestId/i);
+
+    expect(() =>
+      normalizeConsumerCommandResponse({
+        success: false,
+        error: { code: "X", message: "fail" },
+        requestId: "",
+      }),
+    ).toThrow(/requestId must be a non-empty string/i);
+
+    expect(() =>
+      normalizeConsumerCommandResponse({
+        success: false,
+        error: { code: "X", message: "fail" },
+        streamId: "   ",
+      }),
+    ).toThrow(/streamId must be a non-empty string/i);
+
+    expect(() =>
+      normalizeConsumerCommandResponse({
+        success: true,
+        requestId: "req-1",
+      }),
+    ).toThrow(/must include response/i);
+
+    expect(
+      normalizeConsumerStreamPullResponse({
+        success: false,
+        error: { code: "STREAM_LOST", message: "gone" },
+        requestId: "req-1",
+        streamId: "stream-1",
+      }),
+    ).toMatchObject({
+      success: false,
+      error: { code: "STREAM_LOST", message: "gone" },
+    });
+
+    expect(() =>
+      normalizeConsumerStreamPullResponse({
+        success: false,
+        error: { code: "STREAM_LOST", message: "gone" },
+        requestId: " ",
+      }),
+    ).toThrow(/requestId must be a non-empty string/i);
+
+    expect(() =>
+      normalizeConsumerStreamPullResponse({
+        success: false,
+        error: { code: "STREAM_LOST", message: "gone" },
+        streamId: "",
+      }),
+    ).toThrow(/streamId must be a non-empty string/i);
   });
 });

@@ -489,12 +489,27 @@ const buildOperationProperties = (): INodeProperties[] => [
       "When enabled, attaches the sanitized audit object to the MCP response item. Disable when the item is forwarded directly to an AI Agent.",
   },
   {
+    displayName:
+      "When Forbidden / Max Tool Calls stay at their defaults, Plug MCP Server reads governance from the input item `wiring` block (or Hub-shaped fields). Optionally set AI Hub Node Name to resolve a sibling Plug AI Hub when the Agent tool branch does not carry that item.",
+    name: "aiHubWiringNotice",
+    type: "notice",
+    default: "",
+  },
+  {
+    displayName: "AI Hub Node Name",
+    name: "aiHubNodeName",
+    type: "string",
+    default: "",
+    description:
+      "Optional Plug AI Hub node name. When set and Forbidden / Max Tool Calls are at defaults, resolve governance via that node's output (`$('Name').first().json`). Leave empty to use the current input item only.",
+  },
+  {
     displayName: "Forbidden Capability Names JSON",
     name: "forbiddenCapabilityNamesJson",
     type: "json",
     default: "[]",
     description:
-      "Capability names excluded from tools/list and rejected on tools/call for this agent profile. Wire from Plug AI Hub when available.",
+      "Capability names excluded from tools/list and rejected on tools/call for this agent profile. Leave at `[]` to inherit from Plug AI Hub wiring on the input item (or AI Hub Node Name).",
   },
   {
     displayName: "Max Tool Calls Per Turn",
@@ -511,7 +526,7 @@ const buildOperationProperties = (): INodeProperties[] => [
       },
     },
     description:
-      "Optional hard limit for tool calls in the current turn. Set 0 to disable. Wire from Plug AI Hub when available.",
+      "Optional hard limit for tool calls in the current turn. Set 0 to inherit from Plug AI Hub wiring when present.",
   },
   {
     displayName: "Tool Call Count",

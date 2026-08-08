@@ -18,6 +18,7 @@ export interface MockExecuteContextOptions {
   readonly inputData?: INodeExecutionData[];
   readonly continueOnFail?: boolean;
   readonly nodeTypeVersion?: number;
+  readonly evaluateExpression?: (expression: string, itemIndex?: number) => unknown;
 }
 
 const defaultNode: INode = {
@@ -68,6 +69,11 @@ export const createMockExecuteContext = (
 
       return fallbackValue;
     },
+    evaluateExpression:
+      options.evaluateExpression ??
+      ((_expression: string, _itemIndex?: number) => {
+        throw new Error("evaluateExpression is not mocked");
+      }),
     httpRequestMock,
   };
 

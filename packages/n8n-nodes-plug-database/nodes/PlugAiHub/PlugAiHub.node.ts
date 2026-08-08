@@ -53,6 +53,11 @@ export class PlugAiHub implements INodeType {
               systemPrompt,
               maxToolCallsPerTurn: promptConfig.maxToolCallsPerTurn,
               forbiddenCapabilityNames,
+              wiring: {
+                systemPrompt,
+                maxToolCallsPerTurn: promptConfig.maxToolCallsPerTurn,
+                forbiddenCapabilityNamesJson: JSON.stringify(forbiddenCapabilityNames),
+              },
             },
             itemIndex,
           ),

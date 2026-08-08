@@ -55,7 +55,7 @@ Owner governance smoke (`tests/e2e/user-access.e2e.test.ts`) uses optional owner
 
 When unset, the owner E2E test is skipped. `PLUG_E2E_BASE_URL` is shared with other live suites.
 
-The job runs `npm run test:e2e:ci` and is marked `continue-on-error: true` so missing secrets do not block merges. For full hub coverage against staging, run `npm run test:e2e:hub` locally or extend the workflow once `PLUG_E2E_DENIED_RESOURCE` and optional cancel/bulk env vars are configured in secrets.
+The job runs `npm run test:e2e:hub` (live REST + Socket SQL smoke) and is marked `continue-on-error: true` so missing secrets or flaky staging do not block merges. Optional socket-specific secrets (`PLUG_E2E_SOCKET_AGENT_ID`, `PLUG_E2E_SOCKET_CLIENT_TOKEN`) fall back to the default agent/token when unset. Keep `npm run test:e2e:ci` for cheap PR-adjacent smoke (auth + mocked custom events); use `test:e2e:hub` for staging hub coverage.
 
 ## Scope
 

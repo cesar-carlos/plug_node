@@ -499,6 +499,11 @@ describe("Plug AI Hub node", () => {
       maxToolCallsPerTurn: 5,
       forbiddenCapabilityNames: ["client_access"],
       systemPrompt: expect.stringContaining("Voce e o assistente comercial."),
+      wiring: {
+        systemPrompt: expect.stringContaining("Voce e o assistente comercial."),
+        maxToolCallsPerTurn: 5,
+        forbiddenCapabilityNamesJson: JSON.stringify(["client_access"]),
+      },
     });
   });
 

@@ -13,6 +13,24 @@ env:
   CHANGESET_RELEASE_BRANCH: changeset-release/main
 
 jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
   socket-protocol:
     runs-on: ubuntu-latest
     strategy:
@@ -65,8 +83,21 @@ jobs:
       - name: Run PayloadFrame benchmark
         run: PLUG_BENCH_ITERATIONS=25 npm run bench:payload-frame
 
+      - name: Calibrate Linux baseline artifact
+        run: |
+          npm run sync-shared
+          npm run build --workspace n8n-nodes-plug-database
+          PLUG_BENCH_ITERATIONS=100 node ./scripts/calibrate-payload-frame-baseline.mjs scripts/benchmarks/payload-frame-baseline.ci.json
+
+      - name: Upload calibrated baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: payload-frame-baseline-linux
+          path: scripts/benchmarks/payload-frame-baseline.ci.json
+
   verify:
     runs-on: ubuntu-latest
+    needs: [format]
 
     steps:
       - name: Checkout
@@ -116,12 +147,14 @@ jobs:
       - name: Repair optional native bindings on Linux
         run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
 
-      - name: Run staging E2E smoke
+      - name: Run staging E2E hub (REST + Socket)
         env:
           PLUG_E2E_USER: ${{ secrets.PLUG_E2E_USER }}
           PLUG_E2E_PASSWORD: ${{ secrets.PLUG_E2E_PASSWORD }}
           PLUG_E2E_AGENT_ID: ${{ secrets.PLUG_E2E_AGENT_ID }}
           PLUG_E2E_CLIENT_TOKEN: ${{ secrets.PLUG_E2E_CLIENT_TOKEN }}
           PLUG_E2E_BASE_URL: ${{ secrets.PLUG_E2E_BASE_URL }}
+          PLUG_E2E_SOCKET_AGENT_ID: ${{ secrets.PLUG_E2E_SOCKET_AGENT_ID }}
+          PLUG_E2E_SOCKET_CLIENT_TOKEN: ${{ secrets.PLUG_E2E_SOCKET_CLIENT_TOKEN }}
           PLUG_E2E_TIMEOUT_MS: ${{ vars.PLUG_E2E_TIMEOUT_MS || '30000' }}
-        run: npm run test:e2e:ci
+        run: npm run test:e2e:hub

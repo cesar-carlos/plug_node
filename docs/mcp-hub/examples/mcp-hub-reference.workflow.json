@@ -24,7 +24,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const hub = $input.first().json;\nconst chatSessionId = $('When clicking ‘Execute workflow’').first().json.sessionId ?? $execution.id;\nconst toolCallCount = Number(hub.toolCallCount ?? 1);\n\nreturn [{\n  json: {\n    ...hub,\n    wiring: {\n      systemPrompt: hub.systemPrompt,\n      maxToolCallsPerTurn: hub.maxToolCallsPerTurn,\n      forbiddenCapabilityNamesJson: JSON.stringify(hub.forbiddenCapabilityNames ?? []),\n      auditSessionId: String(chatSessionId),\n      toolCallCount,\n      includeAuditInOutput: false\n    }\n  }\n}];"
+        "jsCode": "const hub = $input.first().json;\nconst chatSessionId = $('When clicking ‘Execute workflow’').first().json.sessionId ?? $execution.id;\nconst hubWiring = hub.wiring ?? {};\n\nreturn [{\n  json: {\n    ...hub,\n    wiring: {\n      ...hubWiring,\n      auditSessionId: String(chatSessionId),\n      toolCallCount: Number(hubWiring.toolCallCount ?? hub.toolCallCount ?? 1),\n      includeAuditInOutput: false\n    }\n  }\n}];"
       },
       "id": "wire-hub-config",
       "name": "Wire Hub Config",
@@ -96,8 +96,7 @@
       "parameters": {
         "operation": "list",
         "authoringMode": "json",
-        "capabilityDefinitionsJson": "={{ /* paste docs/mcp-hub/examples/pilot-capabilities.json here or keep the node default */ $json.capabilityDefinitionsJson }}",
-        "forbiddenCapabilityNamesJson": "={{ $json.wiring.forbiddenCapabilityNamesJson }}"
+        "capabilityDefinitionsJson": "={{ /* paste docs/mcp-hub/examples/pilot-capabilities.json here or keep the node default */ $json.capabilityDefinitionsJson }}"
       },
       "id": "mcp-list",
       "name": "Plug MCP Server (list)",
@@ -122,8 +121,6 @@
         "auditUserId": "={{ $json.auditUserId || 'anonymous' }}",
         "auditSessionId": "={{ $json.wiring.auditSessionId }}",
         "includeAuditInOutput": "={{ $json.wiring.includeAuditInOutput }}",
-        "forbiddenCapabilityNamesJson": "={{ $json.wiring.forbiddenCapabilityNamesJson }}",
-        "maxToolCallsPerTurn": "={{ $json.wiring.maxToolCallsPerTurn }}",
         "toolCallCount": "={{ $json.wiring.toolCallCount }}"
       },
       "id": "mcp-call",

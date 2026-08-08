@@ -45,8 +45,8 @@ Oito capabilities em [examples/pilot-capabilities.json](./examples/pilot-capabil
 - [x] Visual Builder + resource mapper + loadOptions
 - [x] Pack piloto + workflow de referência em `examples/`
 - [x] Docs de authoring alinhadas à implementação
-- [ ] Piloto validado em produção do cliente
-- [ ] Wiring automático AI Hub → MCP Server (hoje Code node / expressões)
+- [x] Wiring automático AI Hub → MCP Server (`wiring` no output do Hub; fallback no Server + `aiHubNodeName` opcional)
+- [ ] Piloto validado em produção do cliente (checklist em [examples/README.md](./examples/README.md))
 
 ### Fora da V1
 
@@ -82,6 +82,7 @@ Resources estáticos, sub-workflows, REST externo, SQL livre, clientes MCP fora 
 | Definitions SQL + Tools + governance      | X   |     |     |
 | Authoring UX (validate, visual, mapper)   | X   |     |     |
 | Pack piloto + workflow referência         | X   |     |     |
+| Wiring automático AI Hub → MCP Server     | X   |     |     |
 | Resources / sub-workflow / REST           |     | X   |     |
 | SQL assistido / MCP externo / marketplace |     |     | X   |
 

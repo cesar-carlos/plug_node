@@ -515,6 +515,87 @@ export const readAuditContext = (
   };
 };
 
+export type AiHubWiringFields = {
+  readonly maxToolCallsPerTurn?: number;
+  readonly forbiddenCapabilityNamesJson?: string;
+  readonly systemPrompt?: string;
+};
+
+const normalizeAiHubWiring = (value: Record<string, unknown>): AiHubWiringFields => {
+  const maxRaw = Number(value.maxToolCallsPerTurn);
+  const forbiddenRaw = value.forbiddenCapabilityNamesJson;
+  return {
+    ...(Number.isFinite(maxRaw) && maxRaw > 0
+      ? { maxToolCallsPerTurn: Math.trunc(maxRaw) }
+      : {}),
+    ...(typeof forbiddenRaw === "string" && forbiddenRaw.trim() !== ""
+      ? { forbiddenCapabilityNamesJson: forbiddenRaw }
+      : Array.isArray(value.forbiddenCapabilityNames)
+        ? {
+            forbiddenCapabilityNamesJson: JSON.stringify(
+              value.forbiddenCapabilityNames.filter(
+                (entry): entry is string => typeof entry === "string",
+              ),
+            ),
+          }
+        : {}),
+    ...(typeof value.systemPrompt === "string"
+      ? { systemPrompt: value.systemPrompt }
+      : {}),
+  };
+};
+
+const readSiblingAiHubJson = (context: IExecuteFunctions, itemIndex: number): unknown => {
+  const nodeName = String(
+    context.getNodeParameter("aiHubNodeName", itemIndex, ""),
+  ).trim();
+  if (nodeName === "") {
+    return undefined;
+  }
+
+  if (typeof context.evaluateExpression !== "function") {
+    return undefined;
+  }
+
+  const escaped = nodeName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  try {
+    return context.evaluateExpression(`$('${escaped}').first().json`, itemIndex);
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Resolve Plug AI Hub governance fields from optional sibling node output or
+ * the current input item (`wiring` block or Hub-shaped top-level fields).
+ */
+export const resolveAiHubWiring = (
+  context: IExecuteFunctions,
+  itemIndex = 0,
+): AiHubWiringFields | undefined => {
+  const sources: unknown[] = [readSiblingAiHubJson(context, itemIndex)];
+  const inputItems = context.getInputData();
+  sources.push(inputItems[itemIndex]?.json ?? inputItems[0]?.json);
+
+  for (const source of sources) {
+    if (!isRecord(source)) {
+      continue;
+    }
+    if (isRecord(source.wiring)) {
+      return normalizeAiHubWiring(source.wiring);
+    }
+    if (
+      Array.isArray(source.forbiddenCapabilityNames) ||
+      typeof source.maxToolCallsPerTurn === "number" ||
+      typeof source.systemPrompt === "string"
+    ) {
+      return normalizeAiHubWiring(source);
+    }
+  }
+
+  return undefined;
+};
+
 export const readForbiddenCapabilityNames = (
   context: IExecuteFunctions,
   itemIndex = 0,
@@ -524,9 +605,14 @@ export const readForbiddenCapabilityNames = (
     itemIndex,
     "[]",
   );
+  const normalized = normalizeJsonParameter(rawValue, "[]").trim();
+  const isDefault = normalized === "" || normalized === "[]";
+  const effectiveRaw = isDefault
+    ? (resolveAiHubWiring(context, itemIndex)?.forbiddenCapabilityNamesJson ?? "[]")
+    : normalized;
   const entries =
     parseOptionalJsonArray(
-      normalizeJsonParameter(rawValue, "[]"),
+      normalizeJsonParameter(effectiveRaw, "[]"),
       "Forbidden Capability Names JSON",
     ) ?? [];
   return filterForbiddenCapabilityNames(
@@ -550,8 +636,14 @@ export const readToolCallBudget = (
 ): { readonly maxToolCallsPerTurn: number; readonly toolCallCount: number } => {
   const maxRaw = Number(context.getNodeParameter("maxToolCallsPerTurn", itemIndex, 0));
   const countRaw = Number(context.getNodeParameter("toolCallCount", itemIndex, 0));
-  const maxToolCallsPerTurn =
+  let maxToolCallsPerTurn =
     Number.isFinite(maxRaw) && maxRaw > 0 ? Math.trunc(maxRaw) : 0;
+  if (maxToolCallsPerTurn === 0) {
+    const wiredMax = resolveAiHubWiring(context, itemIndex)?.maxToolCallsPerTurn;
+    if (typeof wiredMax === "number" && wiredMax > 0) {
+      maxToolCallsPerTurn = Math.trunc(wiredMax);
+    }
+  }
   const parsedCount =
     Number.isFinite(countRaw) && countRaw > 0 ? Math.trunc(countRaw) : 0;
   // When a hard max is configured but the workflow omits the counter, treat this

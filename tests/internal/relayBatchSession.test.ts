@@ -179,6 +179,88 @@ describe("executeRelayBatchCommand", () => {
     ).rejects.toThrow(/at most 32/i);
   });
 
+  it("rejects empty batches and duplicate JSON-RPC ids", async () => {
+    const transport = new MockRelayBatchTransport();
+
+    await expect(
+      executeRelayBatchCommand({
+        transport,
+        session,
+        agentId: "agent-1",
+        commands: [],
+        responseMode: "aggregatedJson",
+      }),
+    ).rejects.toThrow(/at least one/i);
+
+    await expect(
+      executeRelayBatchCommand({
+        transport,
+        session,
+        agentId: "agent-1",
+        commands: [buildCommand("same-id"), buildCommand("same-id")],
+        responseMode: "aggregatedJson",
+      }),
+    ).rejects.toThrow(/unique JSON-RPC id/i);
+  });
+
+  it("maps omitted accept clientRequestId to per-item missing errors", async () => {
+    class OmittedAcceptRelayBatchTransport extends MockRelayBatchTransport {
+      override emit(event: string, payload?: unknown): void {
+        this.emittedEvents.push({ event, payload });
+
+        if (event === "relay:conversation.start") {
+          queueMicrotask(() => {
+            this.dispatch("relay:conversation.started", {
+              success: true,
+              conversationId: "conversation-batch",
+              agentId: "agent-1",
+            });
+          });
+          return;
+        }
+
+        if (event === "relay:rpc.request.batch") {
+          queueMicrotask(() => {
+            this.dispatch("relay:rpc.batch_accepted", {
+              success: true,
+              conversationId: "conversation-batch",
+              batchSize: 1,
+              items: [
+                {
+                  clientRequestId: "other-client",
+                  requestId: "hub-other",
+                },
+              ],
+            });
+          });
+        }
+      }
+    }
+
+    const transport = new OmittedAcceptRelayBatchTransport();
+    transport.connect();
+
+    const results = await executeRelayBatchCommand({
+      transport,
+      session,
+      agentId: "agent-1",
+      commands: [buildCommand("client-1")],
+      responseMode: "aggregatedJson",
+      managedTransport: true,
+      skipConversationEnd: true,
+    });
+
+    expect(results).toHaveLength(1);
+    const first = results[0]?.response;
+    expect(first && !first.notification && first.response.type === "single").toBe(true);
+    if (first && !first.notification && first.response.type === "single") {
+      expect(first.response.item.success).toBe(false);
+      expect(String(first.response.item.error?.message ?? "")).toMatch(
+        /omitted clientRequestId/i,
+      );
+    }
+  });
+
   it("routes batch relay responses without relay:rpc.batch_accepted when fastPath is enabled", async () => {
     class FastPathRelayBatchTransport extends MockRelayBatchTransport {
       override emit(event: string, payload?: unknown): void {

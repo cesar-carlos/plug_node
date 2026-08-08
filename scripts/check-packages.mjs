@@ -3,6 +3,22 @@ import { spawnSync } from "node:child_process";
 import { plugPackageSurface } from "./package-surface.config.mjs";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const WARN_USAGE_RATIO = 0.85;
+
+const formatPercent = (used, limit) =>
+  `${((used / limit) * 100).toFixed(1)}% of ${limit}`;
+
+const warnIfNearLimit = (label, used, limit) => {
+  if (limit <= 0 || used / limit < WARN_USAGE_RATIO) {
+    return;
+  }
+  const message = `${label} is ${formatPercent(used, limit)} (warning at ${Math.round(WARN_USAGE_RATIO * 100)}%)`;
+  if (process.env.GITHUB_ACTIONS === "true") {
+    console.log(`::warning::${message}`);
+  } else {
+    console.warn(message);
+  }
+};
 
 const runPackDryRun = (workspace) => {
   const result = spawnSync(
@@ -72,7 +88,18 @@ for (const pkg of plugPackageSurface) {
     );
   }
 
+  warnIfNearLimit(
+    `Packed tarball for ${pkg.workspace}`,
+    packResult.size,
+    pkg.maxPackedSizeBytes,
+  );
+  warnIfNearLimit(
+    `Unpacked tarball for ${pkg.workspace}`,
+    packResult.unpackedSize,
+    pkg.maxUnpackedSizeBytes,
+  );
+
   console.log(
-    `Validated npm pack output for ${pkg.workspace} (${packResult.size} packed bytes, ${packResult.unpackedSize} unpacked bytes)`,
+    `Validated npm pack output for ${pkg.workspace} (${packResult.size} packed bytes = ${formatPercent(packResult.size, pkg.maxPackedSizeBytes)}, ${packResult.unpackedSize} unpacked bytes = ${formatPercent(packResult.unpackedSize, pkg.maxUnpackedSizeBytes)})`,
   );
 }

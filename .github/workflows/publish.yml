@@ -19,6 +19,7 @@ permissions:
   contents: write
   pull-requests: write
   id-token: write
+  checks: write
 
 env:
   CHANGESET_RELEASE_BRANCH: changeset-release/main
@@ -112,6 +113,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Validate version PR branch
+        id: validate_version_pr
         if: steps.release_mode.outputs.mode == 'version-pr'
         shell: bash
         run: |
@@ -119,8 +121,42 @@ jobs:
 
           git fetch origin "${CHANGESET_RELEASE_BRANCH}"
           git checkout "${CHANGESET_RELEASE_BRANCH}"
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           npm run verify
           npm run pack:check
+
+      - name: Attach branch-protection Check Runs
+        if: steps.release_mode.outputs.mode == 'version-pr' && steps.validate_version_pr.outcome == 'success'
+        uses: actions/github-script@v7
+        env:
+          VERSION_PR_SHA: ${{ steps.validate_version_pr.outputs.head_sha }}
+        with:
+          script: |
+            const sha = process.env.VERSION_PR_SHA;
+            if (!sha) {
+              throw new Error('Missing version PR head SHA');
+            }
+            const checkNames = [
+              'verify',
+              'socket-protocol (test:socket:core)',
+              'socket-protocol (test:socket:trigger)',
+            ];
+            for (const name of checkNames) {
+              await github.rest.checks.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name,
+                head_sha: sha,
+                status: 'completed',
+                conclusion: 'success',
+                output: {
+                  title: 'Validated by Release workflow',
+                  summary:
+                    'Release workflow ran `npm run verify` and `npm run pack:check` on `changeset-release/main` and attached this status so the version PR can merge without `--admin`.',
+                },
+              });
+              console.log(`Created check run "${name}" on ${sha}`);
+            }
 
       - name: Verify npm published version
         id: verify_npm

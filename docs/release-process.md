@@ -18,12 +18,12 @@ The official publish path is GitHub Actions.
 
 The version PR is created by `changesets/action` with the default GitHub token. GitHub may not trigger pull request checks for commits created by that token, so the version PR can appear without checks even when the `main` branch is green. The CI workflow includes `changeset-release/main` for direct branch validation when GitHub emits a push event, but local validation remains the reliable fallback. After npm publish succeeds, the `Release` workflow removes `changeset-release/main` automatically; the branch is recreated the next time a version PR is opened.
 
-When the `Release` workflow opens or updates a version PR, it also runs `npm run verify` and `npm run pack:check` directly on `changeset-release/main` so the version branch is validated even when GitHub does not attach PR checks.
+When the `Release` workflow opens or updates a version PR, it also runs `npm run verify` and `npm run pack:check` directly on `changeset-release/main`. On success it attaches completed Check Runs named `verify`, `socket-protocol (test:socket:core)`, and `socket-protocol (test:socket:trigger)` to the version-PR commit so branch protection can merge without `--admin`.
 
 Before merging the version PR:
 
 1. Confirm the latest `main` `CI` and `Release` workflow runs are successful.
-2. Run `npm run verify` and `npm run pack:check` locally, or manually run the `CI` workflow against the `changeset-release/main` branch from GitHub Actions.
+2. Confirm the Release workflow attached the three required Check Runs (or run `npm run verify` / `npm run pack:check` locally as fallback).
 3. Confirm the version bump and changelog match `npm run changeset:status`.
 4. For any credential or published-node hard break, confirm the version PR is cutting the next major release for `n8n-nodes-plug-database`.
 
@@ -40,6 +40,11 @@ Repository policy keeps `main` as the only permanent branch:
 
 - `n8n-nodes-plug-database`
   - canonical REST + Socket package
+
+## Changelogs
+
+- `packages/n8n-nodes-plug-database/CHANGELOG.md` is canonical for published package versions (generated/updated by Changesets).
+- Root `CHANGELOG.md` is a workspace summary; after each release, fold matching `[Unreleased]` bullets into a dated `## [x.y.z]` section that mirrors the package release.
 
 ## Notes
 
