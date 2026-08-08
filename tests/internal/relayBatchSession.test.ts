@@ -427,4 +427,122 @@ describe("executeRelayBatchCommand", () => {
 
     expect(offSpy).toHaveBeenCalledWith("relay:rpc.response", expect.any(Function));
   });
+
+  it("aggregates stream chunks when a batch item response includes stream_id", async () => {
+    class StreamingRelayBatchTransport extends MockRelayBatchTransport {
+      override emit(event: string, payload?: unknown): void {
+        this.emittedEvents.push({ event, payload });
+
+        if (event === "relay:conversation.start") {
+          queueMicrotask(() => {
+            this.dispatch("relay:conversation.started", {
+              success: true,
+              conversationId: "conversation-batch",
+              agentId: "agent-1",
+            });
+          });
+          return;
+        }
+
+        if (event === "relay:rpc.request.batch") {
+          queueMicrotask(() => {
+            this.dispatch("relay:rpc.batch_accepted", {
+              success: true,
+              conversationId: "conversation-batch",
+              batchSize: 2,
+              items: [
+                { clientRequestId: "client-1", requestId: "hub-1" },
+                { clientRequestId: "client-2", requestId: "hub-2" },
+              ],
+            });
+
+            this.dispatch(
+              "relay:rpc.response",
+              encodePayloadFrame(
+                {
+                  jsonrpc: "2.0",
+                  id: "client-1",
+                  result: {
+                    rows: [{ id: 1 }],
+                    stream_id: "stream-1",
+                  },
+                },
+                { requestId: "hub-1", compression: "none" },
+              ),
+            );
+            this.dispatch(
+              "relay:rpc.response",
+              encodePayloadFrame(
+                {
+                  jsonrpc: "2.0",
+                  id: "client-2",
+                  result: { rows: [{ id: 99 }] },
+                },
+                { requestId: "hub-2", compression: "none" },
+              ),
+            );
+          });
+          return;
+        }
+
+        if (event === "relay:rpc.stream.pull") {
+          queueMicrotask(() => {
+            this.dispatch("relay:rpc.stream.pull_response", {
+              success: true,
+              conversationId: "conversation-batch",
+              requestId: "hub-1",
+              streamId: "stream-1",
+              windowSize: 8,
+            });
+            this.dispatch(
+              "relay:rpc.chunk",
+              encodePayloadFrame(
+                {
+                  request_id: "hub-1",
+                  stream_id: "stream-1",
+                  rows: [{ id: 2 }],
+                },
+                { requestId: "hub-1", compression: "none" },
+              ),
+            );
+            this.dispatch(
+              "relay:rpc.complete",
+              encodePayloadFrame(
+                {
+                  request_id: "hub-1",
+                  stream_id: "stream-1",
+                  total_rows: 2,
+                  terminal_status: "completed",
+                },
+                { requestId: "hub-1", compression: "none" },
+              ),
+            );
+          });
+        }
+      }
+    }
+
+    const transport = new StreamingRelayBatchTransport();
+    transport.connect();
+
+    const results = await executeRelayBatchCommand({
+      transport,
+      session,
+      agentId: "agent-1",
+      commands: [buildCommand("client-1"), buildCommand("client-2")],
+      responseMode: "aggregatedJson",
+      managedTransport: true,
+      skipConversationEnd: true,
+    });
+
+    expect(results).toHaveLength(2);
+    expect(results[0]?.requestId).toBe("hub-1");
+    expect(results[1]?.requestId).toBe("hub-2");
+    expect(
+      transport.emittedEvents.some((entry) => entry.event === "relay:rpc.stream.pull"),
+    ).toBe(true);
+    expect(results[0]?.response.metrics?.streamPullRequests).toBeGreaterThan(0);
+    expect(results[0]?.response.metrics?.streamChunks).toBeGreaterThan(0);
+    expect(results[1]?.response.metrics?.streamPullRequests ?? 0).toBe(0);
+  });
 });
