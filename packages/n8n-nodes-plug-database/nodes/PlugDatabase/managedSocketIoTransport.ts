@@ -96,12 +96,15 @@ export class ManagedSocketIoTransport {
         if (tokenRotated) {
           this.transport.updateAccessToken?.(accessToken);
         }
-        plugLogger.debug(`transport.socket.${this.options.logEventKey}.reuse_while_active`, {
-          socketMode: this.options.socketMode,
-          namespaceUrl,
-          activeCount: this.activeCount,
-          tokenRotated,
-        });
+        plugLogger.debug(
+          `transport.socket.${this.options.logEventKey}.reuse_while_active`,
+          {
+            socketMode: this.options.socketMode,
+            namespaceUrl,
+            activeCount: this.activeCount,
+            tokenRotated,
+          },
+        );
         return this.transport;
       }
 
@@ -130,11 +133,14 @@ export class ManagedSocketIoTransport {
           this.stale = true;
           this.disposePending = true;
           this.transport?.updateAccessToken?.(accessToken);
-          plugLogger.debug(`transport.socket.${this.options.logEventKey}.token_rotated_deferred`, {
-            socketMode: this.options.socketMode,
-            namespaceUrl,
-            activeCount: this.activeCount,
-          });
+          plugLogger.debug(
+            `transport.socket.${this.options.logEventKey}.token_rotated_deferred`,
+            {
+              socketMode: this.options.socketMode,
+              namespaceUrl,
+              activeCount: this.activeCount,
+            },
+          );
           return this.transport as SocketIoTransportLike;
         }
 
@@ -148,10 +154,13 @@ export class ManagedSocketIoTransport {
         this.accessToken = accessToken;
         this.stale = false;
         this.disposePending = false;
-        plugLogger.debug(`transport.socket.${this.options.logEventKey}.recreated_after_token_rotation`, {
-          socketMode: this.options.socketMode,
-          namespaceUrl,
-        });
+        plugLogger.debug(
+          `transport.socket.${this.options.logEventKey}.recreated_after_token_rotation`,
+          {
+            socketMode: this.options.socketMode,
+            namespaceUrl,
+          },
+        );
         return transport;
       }
 

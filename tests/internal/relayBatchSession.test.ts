@@ -367,7 +367,9 @@ describe("executeRelayBatchCommand", () => {
     expect(results[0]?.requestId).toBe("hub-1");
     expect(results[1]?.clientRequestId).toBe("client-2");
     const second = results[1]?.response;
-    expect(second && !second.notification && second.response.type === "single").toBe(true);
+    expect(second && !second.notification && second.response.type === "single").toBe(
+      true,
+    );
     if (second && !second.notification && second.response.type === "single") {
       expect(second.response.item.success).toBe(false);
       expect(second.response.item.error?.message).toBe("Item rejected by hub");

@@ -556,8 +556,7 @@ export const readToolCallBudget = (
     Number.isFinite(countRaw) && countRaw > 0 ? Math.trunc(countRaw) : 0;
   // When a hard max is configured but the workflow omits the counter, treat this
   // execution as call #1 so the budget is still enforced on subsequent wired calls.
-  const toolCallCount =
-    maxToolCallsPerTurn > 0 && parsedCount === 0 ? 1 : parsedCount;
+  const toolCallCount = maxToolCallsPerTurn > 0 && parsedCount === 0 ? 1 : parsedCount;
   return { maxToolCallsPerTurn, toolCallCount };
 };
 

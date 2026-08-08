@@ -184,9 +184,18 @@ describe("requestConsumerStreamPull", () => {
     await expect(pullPromise).resolves.toBe(24);
 
     await expect(
-      requestConsumerStreamPull(transport, "req-2", "stream-2", 20, 8, undefined, undefined, {
-        attachTerminalListeners: false,
-      }),
+      requestConsumerStreamPull(
+        transport,
+        "req-2",
+        "stream-2",
+        20,
+        8,
+        undefined,
+        undefined,
+        {
+          attachTerminalListeners: false,
+        },
+      ),
     ).rejects.toBeInstanceOf(PlugTimeoutError);
   });
 

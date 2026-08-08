@@ -43,6 +43,7 @@ Map those fields into Plug MCP Server:
 - `Include Audit In Output` ← `false` when the item goes back to an AI Agent
 
 `Operation = Validate Definitions` fails when the registry includes forbidden admin capabilities (`clientAccess` / `userAccess` naming).
+
 ## Recommended production checklist
 
 - [ ] Validate definitions before enabling the agent path

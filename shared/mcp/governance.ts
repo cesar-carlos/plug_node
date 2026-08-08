@@ -89,7 +89,9 @@ export const maskSensitiveColumns = (
   }
 
   const maskedSet = new Set(
-    maskedColumns.map((column) => column.trim().toLowerCase()).filter((column) => column !== ""),
+    maskedColumns
+      .map((column) => column.trim().toLowerCase())
+      .filter((column) => column !== ""),
   );
   if (maskedSet.size === 0) {
     return [...rows];

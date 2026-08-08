@@ -53,7 +53,9 @@ describe("consumerCommandWire helpers", () => {
   });
 
   it("normalize stream chunk/complete/pull_response payloads", () => {
-    expect(normalizeConsumerStreamChunkPayload({ stream_id: "s1", rows: [] })).toMatchObject({
+    expect(
+      normalizeConsumerStreamChunkPayload({ stream_id: "s1", rows: [] }),
+    ).toMatchObject({
       stream_id: "s1",
     });
     expect(() => normalizeConsumerStreamChunkPayload({ stream_id: " " })).toThrow(
@@ -66,9 +68,9 @@ describe("consumerCommandWire helpers", () => {
         terminal_status: "completed",
       }),
     ).toMatchObject({ terminal_status: "completed" });
-    expect(() =>
-      normalizeConsumerStreamCompletePayload({ terminal_status: 1 }),
-    ).toThrow(/terminal_status/i);
+    expect(() => normalizeConsumerStreamCompletePayload({ terminal_status: 1 })).toThrow(
+      /terminal_status/i,
+    );
 
     expect(
       normalizeConsumerStreamPullResponse({

@@ -76,26 +76,26 @@ Resources estáticos, sub-workflows, REST externo, SQL livre, clientes MCP fora 
 
 ## Resumo
 
-| Entrega | V1 | V2 | V3 |
-| ------- | -- | -- | -- |
-| Plug MCP Server + AI Hub | X | | |
-| Definitions SQL + Tools + governance | X | | |
-| Authoring UX (validate, visual, mapper) | X | | |
-| Pack piloto + workflow referência | X | | |
-| Resources / sub-workflow / REST | | X | |
-| SQL assistido / MCP externo / marketplace | | | X |
+| Entrega                                   | V1  | V2  | V3  |
+| ----------------------------------------- | --- | --- | --- |
+| Plug MCP Server + AI Hub                  | X   |     |     |
+| Definitions SQL + Tools + governance      | X   |     |     |
+| Authoring UX (validate, visual, mapper)   | X   |     |     |
+| Pack piloto + workflow referência         | X   |     |     |
+| Resources / sub-workflow / REST           |     | X   |     |
+| SQL assistido / MCP externo / marketplace |     |     | X   |
 
 ---
 
 ## Decisões já tomadas (V1)
 
-| Tópico | Decisão |
-| ------ | -------- |
-| Host do transporte | Nó n8n `Plug MCP Server` |
-| Registro | Manual (JSON / Visual); auto-discovery = V3 |
-| Escopo do catálogo | Por workflow / instância do nó |
-| `usableAsTool` vs MCP | Coexistem; MCP é o caminho governado |
-| Audit | Campo `audit` no output; correlação via `auditSessionId` do workflow |
+| Tópico                | Decisão                                                              |
+| --------------------- | -------------------------------------------------------------------- |
+| Host do transporte    | Nó n8n `Plug MCP Server`                                             |
+| Registro              | Manual (JSON / Visual); auto-discovery = V3                          |
+| Escopo do catálogo    | Por workflow / instância do nó                                       |
+| `usableAsTool` vs MCP | Coexistem; MCP é o caminho governado                                 |
+| Audit                 | Campo `audit` no output; correlação via `auditSessionId` do workflow |
 
 Decisões abertas (V2+): destino externo de audit, ranking semântico, superfície de SQL assistido.
 

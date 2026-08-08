@@ -15,10 +15,10 @@ Autor define (na definição):          IA controla (params):
 
 Caminhos de authoring:
 
-| Modo | Quando usar |
-| ---- | ----------- |
-| **JSON** | Import/export, pack piloto, versionamento no git |
-| **Visual Builder** | Criar/editar capabilities no formulário do nó |
+| Modo               | Quando usar                                      |
+| ------------------ | ------------------------------------------------ |
+| **JSON**           | Import/export, pack piloto, versionamento no git |
+| **Visual Builder** | Criar/editar capabilities no formulário do nó    |
 
 O pack piloto pronto para colar está em [examples/pilot-capabilities.json](./examples/pilot-capabilities.json). Use **Operation = Validate Definitions** antes de ligar o agente.
 
@@ -28,11 +28,11 @@ O pack piloto pronto para colar está em [examples/pilot-capabilities.json](./ex
 
 ### 1. Identidade
 
-| Campo | Regra |
-| ----- | ----- |
-| `name` | Identificador técnico estável (`consultar_cliente`) |
-| `displayName` | Nome de negócio (`Consultar Cliente`) |
-| `category` / `tags` | Ajuda a IA a achar a tool certa |
+| Campo               | Regra                                               |
+| ------------------- | --------------------------------------------------- |
+| `name`              | Identificador técnico estável (`consultar_cliente`) |
+| `displayName`       | Nome de negócio (`Consultar Cliente`)               |
+| `category` / `tags` | Ajuda a IA a achar a tool certa                     |
 
 ### 2. Semantic contract
 
@@ -75,12 +75,12 @@ Operação allowlisted do Plug Tools (ex.: `validateCpfCnpj`, `publishSocketEven
 
 ### 5. Governance
 
-| Campo | Efeito |
-| ----- | ------ |
-| `maxRows` | Teto de linhas (combinado com execution + `limite`/`limit`) |
-| `requireAtLeastOneFilter` | Exige ao menos um filtro de `filterParamNames` |
-| `filterParamNames` | Params que contam como filtro (devem existir em `parameters`) |
-| `maskedColumns` | Colunas substituídas por `[redacted]` no resultado |
+| Campo                     | Efeito                                                        |
+| ------------------------- | ------------------------------------------------------------- |
+| `maxRows`                 | Teto de linhas (combinado com execution + `limite`/`limit`)   |
+| `requireAtLeastOneFilter` | Exige ao menos um filtro de `filterParamNames`                |
+| `filterParamNames`        | Params que contam como filtro (devem existir em `parameters`) |
+| `maskedColumns`           | Colunas substituídas por `[redacted]` no resultado            |
 
 `maxRows` efetivo:
 
@@ -114,11 +114,11 @@ Mencione o teto no semantic contract quando fizer sentido.
 
 ## O que não pode ser capability de agente
 
-| Superfície | Motivo |
-| ---------- | ------ |
-| Client Access / User Access | Admin — bloqueado pelo MCP Server |
-| Socket Event / Plura triggers | Fontes de evento, não tools de consulta |
-| Advanced JSON-RPC livre | Sem guided SQL — fora do contrato V1 |
+| Superfície                         | Motivo                                        |
+| ---------------------------------- | --------------------------------------------- |
+| Client Access / User Access        | Admin — bloqueado pelo MCP Server             |
+| Socket Event / Plura triggers      | Fontes de evento, não tools de consulta       |
+| Advanced JSON-RPC livre            | Sem guided SQL — fora do contrato V1          |
 | SQL com `UPDATE`/`DELETE`/`INSERT` | Mutação — rejeitada na governance SELECT-only |
 
 ## Pack piloto

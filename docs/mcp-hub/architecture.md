@@ -45,11 +45,11 @@ Padrão suportado: [examples/README.md](./examples/README.md).
 
 Contrato MCP-style dentro do n8n:
 
-| Operação | Função |
-| -------- | ------ |
-| `list` | Catálogo `tools/list` (omite admin + nomes proibidos) |
-| `call` | Validar → governar → executar → envelope |
-| `validate` | Parse/checagem das definitions sem executar |
+| Operação   | Função                                                |
+| ---------- | ----------------------------------------------------- |
+| `list`     | Catálogo `tools/list` (omite admin + nomes proibidos) |
+| `call`     | Validar → governar → executar → envelope              |
+| `validate` | Parse/checagem das definitions sem executar           |
 
 Authoring:
 
@@ -113,19 +113,19 @@ MCP Server
 
 ## Matriz de responsabilidade
 
-| Responsabilidade | AI Hub | MCP Server | Definition | Infra |
-| ---------------- | ------ | ---------- | ---------- | ----- |
-| Prompt / tom / escopo | X | | | |
-| Regras de tool no prompt | X | | | |
-| Catálogo de capabilities | | X | | |
-| Validação de params de negócio | | X | | |
-| Filtros / máscara | | X | X (SQL filters) | |
-| Campo audit no output | | X | | |
-| SQL / Tools fixos | | | X | |
-| SELECT-only / admin block | | X | | |
-| maxRows efetivo | | X | X | |
-| Auth hub / rate limit / policy | | | | X |
-| Validação guided SQL | | X (pré-check) | | X |
+| Responsabilidade               | AI Hub | MCP Server    | Definition      | Infra |
+| ------------------------------ | ------ | ------------- | --------------- | ----- |
+| Prompt / tom / escopo          | X      |               |                 |       |
+| Regras de tool no prompt       | X      |               |                 |       |
+| Catálogo de capabilities       |        | X             |                 |       |
+| Validação de params de negócio |        | X             |                 |       |
+| Filtros / máscara              |        | X             | X (SQL filters) |       |
+| Campo audit no output          |        | X             |                 |       |
+| SQL / Tools fixos              |        |               | X               |       |
+| SELECT-only / admin block      |        | X             |                 |       |
+| maxRows efetivo                |        | X             | X               |       |
+| Auth hub / rate limit / policy |        |               |                 | X     |
+| Validação guided SQL           |        | X (pré-check) |                 | X     |
 
 ## Contrato de saída (`tools/call`)
 
@@ -172,12 +172,12 @@ Padrão: [examples/README.md](./examples/README.md).
 
 ## Hosting e protocolo
 
-| Tópico | V1 |
-| ------ | -- |
-| Host | Nó `Plug MCP Server` |
-| Declaração de protocolo | `2024-11-05` |
-| Transporte | Interno ao n8n (sem stdio/SSE) |
-| Clientes MCP externos | Roadmap V3 |
+| Tópico                  | V1                             |
+| ----------------------- | ------------------------------ |
+| Host                    | Nó `Plug MCP Server`           |
+| Declaração de protocolo | `2024-11-05`                   |
+| Transporte              | Interno ao n8n (sem stdio/SSE) |
+| Clientes MCP externos   | Roadmap V3                     |
 
 ## Relação com `usableAsTool`
 

@@ -17,11 +17,8 @@ const effectiveIterations =
 const codec =
   await import("../packages/n8n-nodes-plug-database/dist/generated/shared/socket/payloadFrameCodec.js");
 
-const {
-  decodePayloadFrame,
-  decodePayloadFrameAsync,
-  encodePayloadFrame,
-} = codec.default ?? codec;
+const { decodePayloadFrame, decodePayloadFrameAsync, encodePayloadFrame } =
+  codec.default ?? codec;
 
 const buildRows = (count) =>
   Array.from({ length: count }, (_, index) => ({

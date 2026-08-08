@@ -201,7 +201,10 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
     // Persist dedupe across reconnects for the lifetime of this trigger activation.
     const isDuplicateEventId =
       deduplicateEvents && deduplicationTtlMs > 0
-        ? createEventIdDedupe(deduplicationTtlMs, defaultSocketEventDeduplicationMaxEntries)
+        ? createEventIdDedupe(
+            deduplicationTtlMs,
+            defaultSocketEventDeduplicationMaxEntries,
+          )
         : undefined;
 
     const reconnectManager = new TriggerReconnectManager({

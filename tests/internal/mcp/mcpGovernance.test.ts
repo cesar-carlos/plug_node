@@ -66,9 +66,7 @@ describe("mcp governance", () => {
       ["cnpj", "EMAIL"],
     );
 
-    expect(masked).toEqual([
-      { Nome: "Joao", CNPJ: "[redacted]", Email: "[redacted]" },
-    ]);
+    expect(masked).toEqual([{ Nome: "Joao", CNPJ: "[redacted]", Email: "[redacted]" }]);
   });
 
   it("should treat explicit boolean false as an active filter", () => {

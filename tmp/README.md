@@ -4,10 +4,10 @@ Local scratch only. Keep the repository root clean.
 
 ## Layout
 
-| Path | Use |
-| ---- | --- |
+| Path            | Use                                                                                      |
+| --------------- | ---------------------------------------------------------------------------------------- |
 | `tmp/e2e-logs/` | Captured stdout/stderr from local `npm run test:e2e*` runs (for example `tmp-e2e-*.log`) |
-| `tmp/` | Other short-lived dumps, benches, or debug artifacts that must not land in the repo root |
+| `tmp/`          | Other short-lived dumps, benches, or debug artifacts that must not land in the repo root |
 
 ## Rules
 

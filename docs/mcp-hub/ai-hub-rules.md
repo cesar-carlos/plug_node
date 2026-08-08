@@ -72,14 +72,14 @@ Para resposta ao usuário final em português, configure **identity** / **scope*
 
 ## Formatação da resposta ao usuário
 
-| Volume | Formato |
-| ------ | ------- |
-| 1 registro | Campos relevantes |
-| 2–10 | Lista com campos principais |
-| 11–50 | Tabela resumida + oferecer detalhar |
-| > 50 | Contagem + resumo + filtrar/detalhar |
-| 0 | Sem dados para os filtros — não tratar como falha de sistema |
-| `meta.truncated: true` | Avisar resultado parcial; sugerir filtros |
+| Volume                 | Formato                                                      |
+| ---------------------- | ------------------------------------------------------------ |
+| 1 registro             | Campos relevantes                                            |
+| 2–10                   | Lista com campos principais                                  |
+| 11–50                  | Tabela resumida + oferecer detalhar                          |
+| > 50                   | Contagem + resumo + filtrar/detalhar                         |
+| 0                      | Sem dados para os filtros — não tratar como falha de sistema |
+| `meta.truncated: true` | Avisar resultado parcial; sugerir filtros                    |
 
 Valores monetários e datas no formato local do usuário. Não despejar JSON técnico.
 
@@ -87,37 +87,37 @@ Valores monetários e datas no formato local do usuário. Não despejar JSON té
 
 ### Já no plug_node / plug_server
 
-| Guardrail | Onde |
-| --------- | ---- |
-| Named params / template markers | `validateGuidedSql` |
-| Client token + policy de tabelas | hub |
-| Rate limit / replay / payload size | hub + PayloadFrame |
-| Max rows no transporte SQL | execução Plug |
+| Guardrail                          | Onde                |
+| ---------------------------------- | ------------------- |
+| Named params / template markers    | `validateGuidedSql` |
+| Client token + policy de tabelas   | hub                 |
+| Rate limit / replay / payload size | hub + PayloadFrame  |
+| Max rows no transporte SQL         | execução Plug       |
 
 ### No MCP Server (V1)
 
-| Guardrail | Comportamento |
-| --------- | ------------- |
-| Validação de params | Tipo, required, min/max antes do banco |
-| `requireAtLeastOneFilter` | Recusa call sem filtro |
-| `maxToolCallsPerTurn` | Recusa se `toolCallCount` exceder (wire do workflow) |
-| `maskedColumns` | `[redacted]` |
-| SELECT-only | Rejeita SQL que não seja SELECT |
-| Admin block | `clientAccess` / `userAccess` fora do catálogo e do call |
-| `truncated` | `rowCount >= maxRows` efetivo e não vazio |
-| Audit | Campo `audit` se `includeAuditInOutput=true` — não enviar ao modelo |
-| Forbidden names | `forbiddenCapabilityNamesJson` omite/rejeita capabilities listadas |
+| Guardrail                 | Comportamento                                                       |
+| ------------------------- | ------------------------------------------------------------------- |
+| Validação de params       | Tipo, required, min/max antes do banco                              |
+| `requireAtLeastOneFilter` | Recusa call sem filtro                                              |
+| `maxToolCallsPerTurn`     | Recusa se `toolCallCount` exceder (wire do workflow)                |
+| `maskedColumns`           | `[redacted]`                                                        |
+| SELECT-only               | Rejeita SQL que não seja SELECT                                     |
+| Admin block               | `clientAccess` / `userAccess` fora do catálogo e do call            |
+| `truncated`               | `rowCount >= maxRows` efetivo e não vazio                           |
+| Audit                     | Campo `audit` se `includeAuditInOutput=true` — não enviar ao modelo |
+| Forbidden names           | `forbiddenCapabilityNamesJson` omite/rejeita capabilities listadas  |
 
 ## Erros → mensagem amigável
 
-| Situação | O que dizer ao usuário |
-| -------- | ---------------------- |
+| Situação                         | O que dizer ao usuário                        |
+| -------------------------------- | --------------------------------------------- |
 | Validação de params / governance | Parâmetros inválidos ou filtros insuficientes |
-| Timeout / agent offline | Sistema indisponível; tentar de novo |
-| 403 / denied | Acesso não autorizado |
-| 429 | Muitas consultas; aguardar |
-| `emptyResult` | Sem registros para os filtros |
-| Replay `-32014` | Transparente (retry interno) |
+| Timeout / agent offline          | Sistema indisponível; tentar de novo          |
+| 403 / denied                     | Acesso não autorizado                         |
+| 429                              | Muitas consultas; aguardar                    |
+| `emptyResult`                    | Sem registros para os filtros                 |
+| Replay `-32014`                  | Transparente (retry interno)                  |
 
 Nunca expor `code`, `correlationId`, stack ou JSON-RPC ao usuário.
 
@@ -134,23 +134,23 @@ Nunca expor Client Access / User Access a agentes de atendimento.
 
 ## Pode / não pode
 
-| Ação | |
-| ---- | - |
-| Consultar via capabilities publicadas | Pode |
+| Ação                                              |                                          |
+| ------------------------------------------------- | ---------------------------------------- |
+| Consultar via capabilities publicadas             | Pode                                     |
 | Publicar evento / gerar PDF via Tools allowlisted | Pode (com confirmação se efeito externo) |
-| SQL arbitrário / mudar joins | Não |
-| Mutar cadastros/títulos | Não |
-| Client/User Access | Não |
-| Inventar dados | Não |
-| Exceder `maxToolCallsPerTurn` | Não (enforcement no Server se wired) |
+| SQL arbitrário / mudar joins                      | Não                                      |
+| Mutar cadastros/títulos                           | Não                                      |
+| Client/User Access                                | Não                                      |
+| Inventar dados                                    | Não                                      |
+| Exceder `maxToolCallsPerTurn`                     | Não (enforcement no Server se wired)     |
 
 ## Limite de tool calls
 
-| Cenário | Sugestão |
-| ------- | -------- |
-| Consulta simples | 2–3 |
-| Análise multi-capability | 3–5 |
-| Relatório composto | 5–8 (ou sub-workflow na V2) |
+| Cenário                  | Sugestão                    |
+| ------------------------ | --------------------------- |
+| Consulta simples         | 2–3                         |
+| Análise multi-capability | 3–5                         |
+| Relatório composto       | 5–8 (ou sub-workflow na V2) |
 
 ## Checklist AI Hub + MCP
 
