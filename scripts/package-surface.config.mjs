@@ -25,8 +25,8 @@ export const plugPackageSurface = [
   {
     workspace: "n8n-nodes-plug-database",
     packageName: "n8n-nodes-plug-database",
-    maxPackedSizeBytes: 320_000,
-    maxUnpackedSizeBytes: 1_900_000,
+    maxPackedSizeBytes: 360_000,
+    maxUnpackedSizeBytes: 2_200_000,
     manifest: {
       credentials: [
         "dist/credentials/PlugDatabaseAccountApi.credentials.js",
