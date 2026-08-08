@@ -38,4 +38,59 @@ describe("triggerBackpressureQueue", () => {
     releaseBlocker?.();
     queue.close();
   });
+
+  it("does not grow the queue when dropOldest and maxQueueSize is 0", async () => {
+    const onDrop = vi.fn();
+    let releaseBlocker: (() => void) | undefined;
+    const blocker = new Promise<void>((resolve) => {
+      releaseBlocker = resolve;
+    });
+
+    const queue = createBackpressureQueue({
+      maxInflightEvents: 1,
+      maxQueueSize: 0,
+      overflowPolicy: "dropOldest",
+      emitError: vi.fn(),
+      onDrop,
+    });
+
+    queue.enqueue(() => blocker);
+    queue.enqueue(async () => undefined);
+    queue.enqueue(async () => undefined);
+
+    expect(queue.getStats().queuedCount).toBe(0);
+    expect(onDrop).toHaveBeenCalledWith("dropOldest", { queueSize: 0 });
+    expect(queue.getStats().droppedOldestCount).toBe(2);
+
+    releaseBlocker?.();
+    queue.close();
+  });
+
+  it("emits SOCKET_EVENT_BACKPRESSURE_LIMIT when overflowPolicy is fail", async () => {
+    const emitError = vi.fn();
+    let releaseBlocker: (() => void) | undefined;
+    const blocker = new Promise<void>((resolve) => {
+      releaseBlocker = resolve;
+    });
+
+    const queue = createBackpressureQueue({
+      maxInflightEvents: 1,
+      maxQueueSize: 0,
+      overflowPolicy: "fail",
+      emitError,
+    });
+
+    queue.enqueue(() => blocker);
+    queue.enqueue(async () => undefined);
+
+    expect(emitError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "SOCKET_EVENT_BACKPRESSURE_LIMIT",
+      }),
+    );
+    expect(queue.getStats().queuedCount).toBe(0);
+
+    releaseBlocker?.();
+    queue.close();
+  });
 });

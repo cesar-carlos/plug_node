@@ -198,12 +198,15 @@ describe("RelaySocketExecutionManager", () => {
     executor.close();
   });
 
-  it("reuses the transport when only the access token changes", async () => {
+  it("recreates the transport when the access token changes while idle", async () => {
     const { createRelaySocketCommandExecutor } =
       await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/relaySocketExecutionManager");
 
-    const transport = buildMockTransport();
-    createSocketIoTransportMock.mockImplementation(() => transport);
+    const firstTransport = buildMockTransport();
+    const secondTransport = buildMockTransport();
+    createSocketIoTransportMock
+      .mockImplementationOnce(() => firstTransport)
+      .mockImplementationOnce(() => secondTransport);
 
     const executor = createRelaySocketCommandExecutor();
     const baseInput = {
@@ -242,8 +245,8 @@ describe("RelaySocketExecutionManager", () => {
       },
     });
 
-    expect(createSocketIoTransportMock).toHaveBeenCalledTimes(1);
-    expect(transport.updateAccessToken).toHaveBeenCalledWith("token-b");
+    expect(createSocketIoTransportMock).toHaveBeenCalledTimes(2);
+    expect(firstTransport.disconnect).toHaveBeenCalled();
   });
 
   it("marks the manager stale after executeRelayCommand fails", async () => {
@@ -323,5 +326,65 @@ describe("RelaySocketExecutionManager", () => {
     await executor.execute(input);
 
     expect(createSocketIoTransportMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes concurrent executes for the same agentId", async () => {
+    const { createRelaySocketCommandExecutor } =
+      await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/relaySocketExecutionManager");
+
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const order: string[] = [];
+
+    executeRelayCommandMock.mockImplementationOnce(async () => {
+      order.push("first-start");
+      await firstGate;
+      order.push("first-end");
+      return relaySuccess;
+    });
+    executeRelayCommandMock.mockImplementationOnce(async () => {
+      order.push("second-start");
+      return {
+        ...relaySuccess,
+        conversationId: "conversation-2",
+        requestId: "req-2",
+      };
+    });
+
+    const executor = createRelaySocketCommandExecutor();
+    const input = {
+      session: {
+        credentials: {
+          baseUrl: "https://plug-server.example.com/api/v1",
+          user: "u",
+          password: "p",
+        },
+        accessToken: "token-a",
+        loginResponse: {},
+      },
+      agentId: "agent-1",
+      command: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "sql.execute",
+        params: { sql: "SELECT TOP 1 * FROM Cliente" },
+      },
+      responseMode: "aggregatedJson" as const,
+    };
+
+    const first = executor.execute(input);
+    const second = executor.execute({
+      ...input,
+      command: { ...input.command, id: 2 },
+    });
+
+    await vi.waitFor(() => {
+      expect(order).toEqual(["first-start"]);
+    });
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(["first-start", "first-end", "second-start"]);
   });
 });

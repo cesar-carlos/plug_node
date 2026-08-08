@@ -186,15 +186,8 @@ const resolveVerificationKeys = (
   return keys;
 };
 
-const signaturesMatch = (provided: string, expected: string): boolean => {
-  const expectedBytes = Buffer.from(expected, "utf8");
-  const providedBytes = Buffer.from(provided, "utf8");
-
-  return (
-    providedBytes.length === expectedBytes.length &&
-    timingSafeEqual(providedBytes, expectedBytes)
-  );
-};
+const signaturesMatch = (provided: Buffer, expected: Buffer): boolean =>
+  provided.length === expected.length && timingSafeEqual(provided, expected);
 
 const buildSignatureInput = (
   frame: PayloadFrameEnvelope,
@@ -407,7 +400,8 @@ const preparePayloadAsync = async (
 
 const parseDecodedPayload = <TData>(decodedBytes: Buffer): TData => {
   try {
-    return JSON.parse(decodedBytes.toString("utf8")) as TData;
+    // Node >=24 accepts Buffer in JSON.parse, avoiding an intermediate utf8 string.
+    return JSON.parse(decodedBytes as unknown as string) as TData;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Invalid JSON payload";
     throw new PlugValidationError("PayloadFrame contains invalid JSON", {
@@ -523,12 +517,13 @@ const verifyFrameSignature = (
     throw new PlugValidationError("PayloadFrame signature value is required");
   }
 
+  const providedDigest = Buffer.from(provided, "base64");
   const signatureInput = buildSignatureInput(frame, binaryPayload);
   for (const entry of candidateKeys) {
-    const expected = createHmac("sha256", entry.key)
+    const expectedDigest = createHmac("sha256", entry.key)
       .update(signatureInput)
-      .digest("base64");
-    if (signaturesMatch(provided, expected)) {
+      .digest();
+    if (signaturesMatch(providedDigest, expectedDigest)) {
       return;
     }
   }

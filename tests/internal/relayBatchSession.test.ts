@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { RpcSingleCommand } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 import {
@@ -290,5 +290,141 @@ describe("executeRelayBatchCommand", () => {
     if (isRecord(batchRequest?.payload)) {
       expect(batchRequest.payload.timeoutMs).toBe(90_000);
     }
+  });
+
+  it("maps classic batch accept failures to per-item error results in command order", async () => {
+    class MixedAcceptRelayBatchTransport extends MockRelayBatchTransport {
+      override emit(event: string, payload?: unknown): void {
+        this.emittedEvents.push({ event, payload });
+
+        if (event === "relay:conversation.start") {
+          queueMicrotask(() => {
+            this.dispatch("relay:conversation.started", {
+              success: true,
+              conversationId: "conversation-batch",
+              agentId: "agent-1",
+            });
+          });
+          return;
+        }
+
+        if (event === "relay:rpc.request.batch") {
+          queueMicrotask(() => {
+            this.dispatch("relay:rpc.batch_accepted", {
+              success: true,
+              conversationId: "conversation-batch",
+              batchSize: 2,
+              items: [
+                {
+                  clientRequestId: "client-1",
+                  requestId: "hub-1",
+                },
+                {
+                  clientRequestId: "client-2",
+                  error: {
+                    code: "RELAY_ITEM_REJECTED",
+                    message: "Item rejected by hub",
+                    statusCode: 400,
+                    itemIndex: 1,
+                  },
+                },
+              ],
+            });
+
+            setTimeout(() => {
+              this.dispatch(
+                "relay:rpc.response",
+                encodePayloadFrame(
+                  {
+                    jsonrpc: "2.0",
+                    id: "client-1",
+                    result: { rows: [{ id: 1 }] },
+                  },
+                  { requestId: "hub-1", compression: "none" },
+                ),
+              );
+            }, 0);
+          });
+        }
+      }
+    }
+
+    const transport = new MixedAcceptRelayBatchTransport();
+    transport.connect();
+
+    const results = await executeRelayBatchCommand({
+      transport,
+      session,
+      agentId: "agent-1",
+      commands: [buildCommand("client-1"), buildCommand("client-2")],
+      responseMode: "aggregatedJson",
+      managedTransport: true,
+      skipConversationEnd: true,
+    });
+
+    expect(results).toHaveLength(2);
+    expect(results[0]?.clientRequestId).toBe("client-1");
+    expect(results[0]?.requestId).toBe("hub-1");
+    expect(results[1]?.clientRequestId).toBe("client-2");
+    const second = results[1]?.response;
+    expect(second && !second.notification && second.response.type === "single").toBe(true);
+    if (second && !second.notification && second.response.type === "single") {
+      expect(second.response.item.success).toBe(false);
+      expect(second.response.item.error?.message).toBe("Item rejected by hub");
+    }
+  });
+
+  it("removes the relay:rpc.response listener when a batch item times out", async () => {
+    class TimeoutRelayBatchTransport extends MockRelayBatchTransport {
+      override emit(event: string, payload?: unknown): void {
+        this.emittedEvents.push({ event, payload });
+
+        if (event === "relay:conversation.start") {
+          queueMicrotask(() => {
+            this.dispatch("relay:conversation.started", {
+              success: true,
+              conversationId: "conversation-batch",
+              agentId: "agent-1",
+            });
+          });
+          return;
+        }
+
+        if (event === "relay:rpc.request.batch") {
+          queueMicrotask(() => {
+            this.dispatch("relay:rpc.batch_accepted", {
+              success: true,
+              conversationId: "conversation-batch",
+              batchSize: 1,
+              items: [
+                {
+                  clientRequestId: "client-1",
+                  requestId: "hub-1",
+                },
+              ],
+            });
+          });
+        }
+      }
+    }
+
+    const transport = new TimeoutRelayBatchTransport();
+    transport.connect();
+    const offSpy = vi.spyOn(transport, "off");
+
+    await expect(
+      executeRelayBatchCommand({
+        transport,
+        session,
+        agentId: "agent-1",
+        commands: [buildCommand("client-1")],
+        responseMode: "aggregatedJson",
+        timeoutMs: 30,
+        managedTransport: true,
+        skipConversationEnd: true,
+      }),
+    ).rejects.toThrow(/Timed out/i);
+
+    expect(offSpy).toHaveBeenCalledWith("relay:rpc.response", expect.any(Function));
   });
 });

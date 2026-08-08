@@ -355,6 +355,7 @@ export const executeConsumerCommand = async (
             });
           },
           input.payloadFrameSigning,
+          { attachTerminalListeners: false },
         );
         shouldRequestAdditionalWindow = finishStreamPull(
           streamAggregation.state,

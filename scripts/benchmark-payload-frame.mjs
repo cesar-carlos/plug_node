@@ -17,7 +17,11 @@ const effectiveIterations =
 const codec =
   await import("../packages/n8n-nodes-plug-database/dist/generated/shared/socket/payloadFrameCodec.js");
 
-const { decodePayloadFrame, encodePayloadFrame } = codec.default ?? codec;
+const {
+  decodePayloadFrame,
+  decodePayloadFrameAsync,
+  encodePayloadFrame,
+} = codec.default ?? codec;
 
 const buildRows = (count) =>
   Array.from({ length: count }, (_, index) => ({
@@ -60,7 +64,22 @@ const measure = (name, fn, count = effectiveIterations) => {
   };
 };
 
-export const runPayloadFrameBenchmark = () => {
+const measureAsync = async (name, fn, count = effectiveIterations) => {
+  const startedAt = performance.now();
+  for (let index = 0; index < count; index += 1) {
+    await fn();
+  }
+  const durationMs = performance.now() - startedAt;
+  return {
+    name,
+    iterations: count,
+    totalMs: Number(durationMs.toFixed(2)),
+    avgMs: Number((durationMs / count).toFixed(4)),
+    opsPerSecond: Number(((count / durationMs) * 1000).toFixed(1)),
+  };
+};
+
+export const runPayloadFrameBenchmark = async () => {
   const commandPayload = { method: "sql.execute", params: { sql: "SELECT TOP 1 1" } };
   const withTraceId = encodePayloadFrame(commandPayload, {
     requestId: "bench-trace",
@@ -71,6 +90,8 @@ export const runPayloadFrameBenchmark = () => {
     compression: "none",
     omitTraceId: true,
   });
+
+  const gzipAsyncIterations = Math.max(10, Math.floor(effectiveIterations / 4));
 
   return [
     measure("encode PayloadFrame with traceId", () => {
@@ -103,7 +124,7 @@ export const runPayloadFrameBenchmark = () => {
       () => {
         decodePayloadFrame(frames.forcedGzip);
       },
-      Math.max(10, Math.floor(effectiveIterations / 4)),
+      gzipAsyncIterations,
     ),
     measure("reject unsafe gzip inflation metadata", () => {
       try {
@@ -113,6 +134,16 @@ export const runPayloadFrameBenchmark = () => {
       }
       throw new Error("Expected unsafe PayloadFrame to be rejected");
     }),
+    await measureAsync("async decode small PayloadFrame without gzip", async () => {
+      await decodePayloadFrameAsync(frames.smallNone);
+    }),
+    await measureAsync(
+      "async decode large PayloadFrame with gzip",
+      async () => {
+        await decodePayloadFrameAsync(frames.largeGzip);
+      },
+      gzipAsyncIterations,
+    ),
   ];
 };
 
@@ -125,7 +156,7 @@ const isMainModule =
   path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
 if (isMainModule) {
-  const results = runPayloadFrameBenchmark();
+  const results = await runPayloadFrameBenchmark();
   console.table(results);
 
   const outputPath = process.env.PLUG_BENCH_OUTPUT ?? process.argv[2];

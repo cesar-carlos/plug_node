@@ -15,6 +15,7 @@ import {
   defaultManualListenTimeoutMs,
   defaultSocketEventAckTimeoutMs,
   defaultSocketEventDeduplicationTtlMs,
+  defaultSocketEventDeduplicationMaxEntries,
   defaultConsumerIdleKeepaliveIntervalMs,
   maxConsumerIdleKeepaliveIntervalMs,
   minConsumerIdleKeepaliveIntervalMs,
@@ -29,6 +30,7 @@ import {
   startCustomSocketEventSession,
   type CustomSocketEventSession,
 } from "../../generated/shared/socket/customSocketEventSession";
+import { createEventIdDedupe } from "../../generated/shared/socket/customSocketEventSessionSupport";
 import { plugDatabaseSocketEventTriggerDescription } from "../../generated/shared/n8n/plugSocketEventTriggerDescription";
 import { createTriggerSocketTransport } from "../PlugDatabase/socketIoTransport";
 import {
@@ -196,8 +198,11 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
     let customEventSession: CustomSocketEventSession | undefined;
     let manualTimer: NodeJS.Timeout | undefined;
     let closed = false;
-    const subscriptionRefreshCount = 0;
-    const lastSubscriptionRefreshAt: string | undefined = undefined;
+    // Persist dedupe across reconnects for the lifetime of this trigger activation.
+    const isDuplicateEventId =
+      deduplicateEvents && deduplicationTtlMs > 0
+        ? createEventIdDedupe(deduplicationTtlMs, defaultSocketEventDeduplicationMaxEntries)
+        : undefined;
 
     const reconnectManager = new TriggerReconnectManager({
       reconnectOnDisconnect,
@@ -300,6 +305,7 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
                   deduplicateEvents && deduplicationTtlMs > 0
                     ? deduplicationTtlMs
                     : undefined,
+                isDuplicateEventId,
                 onEvent: async (event, metadata: SocketEventRuntimeMetadata) => {
                   if (closed) {
                     return;
@@ -312,10 +318,6 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
                     includeMetadata,
                     metadata,
                     eventQueue.getStats(),
-                    {
-                      refreshCount: subscriptionRefreshCount,
-                      lastRefreshedAt: lastSubscriptionRefreshAt,
-                    },
                   );
                   if (closed) {
                     return;
@@ -324,6 +326,14 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
                   this.emit([[item]]);
                 },
               });
+
+        if (closed) {
+          try {
+            await customEventSession.close();
+          } finally {
+            customEventSession = undefined;
+          }
+        }
       });
     };
 

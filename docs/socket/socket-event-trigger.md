@@ -49,8 +49,8 @@ O trigger prepara itens n8n de forma assíncrona. A fila limita todo o trabalho 
 
 Para evitar acúmulo ilimitado:
 
-- `Max Inflight Events`: quantos eventos podem ser preparados ao mesmo tempo. Padrão `8`.
-- `Max Queue Size`: quantos eventos ficam em fila quando todos os slots estão ocupados. Padrão `128`.
+- `Max Inflight Events`: quantos eventos podem ser preparados ao mesmo tempo. Padrão `8`. Valores > `1` podem emitir itens fora da ordem de chegada quando a preparação tem latências diferentes (por exemplo anexos grandes). Use `1` se a ordem FIFO for obrigatória.
+- `Max Queue Size`: quantos eventos ficam em fila quando todos os slots estão ocupados. Padrão `128`. `0` significa sem capacidade de fila (overflow aplica-se imediatamente ao próximo evento).
 - `Overflow Policy`:
   - `Fail`: emite erro quando a fila está cheia.
   - `Drop Newest`: descarta o evento novo.
@@ -85,7 +85,11 @@ Campos:
 - `Deduplicate Events`: ignora eventos customizados repetidos com o mesmo `eventId`.
 - `Deduplication TTL (MS)`: tempo em memória para lembrar IDs já emitidos. Padrão `300000`.
 
-A deduplicação é local ao processo n8n. Se houver múltiplas instâncias n8n, **cada instância mantém sua própria memória de IDs**. Em deploys com múltiplos workers n8n (queue mode ou horizontally scaled), o mesmo evento pode ser processado por cada instância que estiver conectada ao mesmo namespace — deduplicação local não elimina duplicatas entre instâncias. Para garantir entrega única em clusters, use uma chave de idempotência na lógica de negócio do workflow (por exemplo, verificar `eventId` contra um banco de dados externo antes de processar).
+A deduplicação é local ao processo n8n e **persiste across reconnects** na mesma ativação do trigger. Se houver múltiplas instâncias n8n, **cada instância mantém sua própria memória de IDs**. Em deploys com múltiplos workers n8n (queue mode ou horizontally scaled), o mesmo evento pode ser processado por cada instância que estiver conectada ao mesmo namespace — deduplicação local não elimina duplicatas entre instâncias. Para garantir entrega única em clusters, use uma chave de idempotência na lógica de negócio do workflow (por exemplo, verificar `eventId` contra um banco de dados externo antes de processar).
+
+## Keepalive de idle do consumer
+
+O trigger envia periodicamente um `socket:event.subscribe` de toque (padrão ~20 min, configurável) para evitar o idle timeout do hub no namespace `/consumers` em listeners de longa duração. O intervalo `0` desativa o keepalive.
 
 ## Assinatura de Payload
 

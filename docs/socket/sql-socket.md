@@ -87,7 +87,8 @@ O node ignora mensagens que não batem com a correlação ativa. Isso protege ex
 
 `Response Mode` controla como a resposta chega ao n8n:
 
-- `Aggregated JSON`: padrão. Linhas SQL viram itens quando possível; outros retornos viram JSON agregado.
+- `Aggregated JSON`: padrão. Linhas SQL viram **um item n8n por linha** quando possível; outros retornos viram JSON agregado.
+- `Aggregated Single Item`: um único item n8n com `rowCount` e `rows[]` (útil quando o downstream não deve fazer fan-out por linha).
 - `Chunk Items`: útil para streams SQL via Socket. Chunks são convertidos em itens sem esperar montar tudo em uma lista única.
 - `Raw JSON-RPC`: preserva o envelope RPC normalizado para depuração e fluxos avançados.
 
@@ -115,7 +116,7 @@ O tamanho da janela de pull não é fixo. O runtime lê as dicas de janela envia
 1. Valor configurado manualmente no node (quando disponível)
 2. Valor recomendado pelo servidor (do `connection:ready`)
 3. Máximo permitido pelo servidor (teto)
-4. Padrão local como fallback
+4. Padrão local como fallback (**256** chunks quando não há dica do agent/hub)
 
 O teto absoluto do cliente é 1 000 chunks por pull. Quando o servidor envia um `maxStreamPullWindowSize` menor, esse valor vence.
 

@@ -233,7 +233,8 @@ export const plugDatabaseSocketEventTriggerDescription: INodeTypeDescription = {
       typeOptions: {
         minValue: 1,
       },
-      description: "Maximum custom socket events processed concurrently",
+      description:
+        "Maximum custom socket events processed concurrently. Values greater than 1 may emit items out of arrival order when preparation latency differs (for example large attachments).",
     },
     {
       displayName: "Max Queue Size",

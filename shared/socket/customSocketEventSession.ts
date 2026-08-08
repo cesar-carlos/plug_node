@@ -207,10 +207,9 @@ export const startCustomSocketEventSession = async (
   const timeoutMs = input.ackTimeoutMs ?? defaultSocketEventAckTimeoutMs;
   const reconnectAttempt = Math.max(0, Math.floor(input.reconnectAttempt ?? 0));
   const dedupeTtlMs = normalizeNonNegativeInteger(input.deduplicateEventIdsTtlMs);
-  const isDuplicateEventId = createEventIdDedupe(
-    dedupeTtlMs,
-    defaultCustomSocketEventDeduplicationMaxEntries,
-  );
+  const isDuplicateEventId =
+    input.isDuplicateEventId ??
+    createEventIdDedupe(dedupeTtlMs, defaultCustomSocketEventDeduplicationMaxEntries);
   const subscribed = new Set<string>();
   const eventHandlers = new Map<string, (payload: unknown) => void>();
   let closing = false;

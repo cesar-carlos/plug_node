@@ -52,14 +52,15 @@ Do not log payload JSON, binary base64, access tokens, refresh tokens, client to
 
 ## Connection model
 
-Each node execution that uses `Channel = Socket` opens a Socket.IO connection through `ManagedSocketIoTransport`. Within the same executor instance the transport is reused across items when healthy. Soft JWT refresh updates `socket.auth.token` without reconnecting. There is **no persistent connection pool across separate n8n executions**. Implications:
+Each node execution that uses `Channel = Socket` opens a Socket.IO connection through `ManagedSocketIoTransport`. Within the same executor instance the transport is reused across items when healthy. JWT string rotation marks the managed transport stale and updates `socket.auth.token` for the **next** handshake — Socket.IO does not re-authenticate an already-open connection (`reconnection: false`). When idle, token rotation **recreates** the socket immediately; while commands are in flight, recreate is deferred until the refcount hits 0. Dispose is deferred while in-flight commands hold a refcount so a capability probe timeout cannot tear down siblings. There is **no persistent connection pool across separate n8n executions**. Implications:
 
 - The first Socket command in an execution incurs connect + `connection:ready` (typically < 200 ms on LAN, higher on WAN); later items on the same managed transport skip that when the socket stays connected.
-- Soft token rotation no longer forces a full reconnect solely because the access token string changed.
+- Soft token rotation recreates the socket on the next idle `ensureTransport` (immediately when no command is active).
 - When many **separate** executions run in parallel each holds its own connection for the duration of the command.
 - The `connectTimeoutMs` is always capped to `commandTimeoutMs`, so a very low `Timeout (MS)` on the node also constrains how long the client waits for `connection:ready`.
 - For high-frequency, low-latency use cases, prefer `Execute Batch` (single connection, multiple commands) over multiple individual executions, or use `Channel = REST` when sub-second latency is not critical.
 - Failed relay commands end the conversation even when conversation reuse is enabled, so agent stream capacity is released.
+- Relay executes for the same `agentId` are serialized so a shared conversation is never ended while another command is in flight.
 
 The `commandTimeoutMs` behaves as an **idle timer**, not a wall-clock deadline. It resets on every incoming event (chunk, response, stream pull ACK). A slow stream that produces one chunk every N seconds will keep resetting the timer as long as N < `commandTimeoutMs`. There is currently no separate maximum-total-duration limit at the transport layer.
 
@@ -67,7 +68,7 @@ The `commandTimeoutMs` behaves as an **idle timer**, not a wall-clock deadline. 
 
 ### Capability probe and token rotation
 
-`ConsumerSocketExecutionManager` caches the `agents:command` capability check with a 60-second TTL. The cache key is the `/consumers` **namespace URL** only (not the access token). Soft JWT refresh keeps the live Socket.IO transport and calls `updateAccessToken`; a fresh capability probe is skipped while the TTL is still valid for that URL. Homogeneous replicas share the same capability surface; if replicas can diverge, shorten the TTL or force a reconnect that clears the manager.
+`ConsumerSocketExecutionManager` caches the `agents:command` capability check with a 60-second TTL. The cache key is the `/consumers` **namespace URL** only (not the access token). Token rotation marks the managed transport stale for recreate-on-idle and calls `updateAccessToken` for the next handshake; a fresh capability probe is skipped while the TTL is still valid for that URL. Homogeneous replicas share the same capability surface; if replicas can diverge, shorten the TTL or force a reconnect that clears the manager.
 
 ### Parallel subscribe and unsubscribe in `startCustomSocketEventSession`
 
@@ -75,7 +76,7 @@ The `commandTimeoutMs` behaves as an **idle timer**, not a wall-clock deadline. 
 
 ### Chunk decode overlaps; merge stays ordered
 
-`relayStreamAggregation` and `consumerCommandSession` use `createParallelChunkDecodeQueue`: up to `MAX_PARALLEL_CHUNK_DECODES` (4) PayloadFrame/wire decodes may run concurrently, while row merge, credit accounting, and stream pulls stay on an ordered chain. Prefetch when remaining credits fall to ≤ 25% of the last granted window (`shouldPrefetchStreamPull`). Tiny stream-pull control frames use sync `encodePayloadFrame` with `compression: "none"`.
+`relayStreamAggregation` and `consumerCommandSession` use `createParallelChunkDecodeQueue`: up to `MAX_PARALLEL_CHUNK_DECODES` (8) PayloadFrame/wire decodes may run concurrently, while row merge, credit accounting, and stream pulls stay on an ordered chain. Prefetch when remaining credits fall to ≤ 25% of the last granted window (`shouldPrefetchStreamPull`). Tiny stream-pull control frames use sync `encodePayloadFrame` with `compression: "none"`.
 
 ### Buffer estimation on non-PayloadFrame wire messages
 
@@ -88,6 +89,10 @@ The `commandTimeoutMs` behaves as an **idle timer**, not a wall-clock deadline. 
 ### Relay batch items that open streams
 
 `executeRelayBatchCommand` continues with `waitForRelayStreamAggregation({ seededResponse })` when a batch item response includes `result.stream_id`, so batch SQL that streams is pulled and aggregated instead of hanging on the unary response only.
+
+### Regression tests
+
+Focused regressions for transport refcount, relay serialization/batch accept failures, parallel decode clear, trigger reconnect mutex, persistent eventId dedupe, and backpressure edge cases live under `tests/internal/` and `tests/public/` and are included in `npm run test:socket`.
 
 ## Troubleshooting
 

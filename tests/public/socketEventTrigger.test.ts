@@ -13,11 +13,14 @@ const socketMock = vi.hoisted(() => {
     readyFrame?: unknown;
     subscribeFailureSocketIndices: Set<number>;
     sockets: MockSocket[];
+    holdConnectionReady: boolean;
+    releaseHeldConnectionReady?: () => void;
   } = {
     connectErrorsBeforeReady: 0,
     connectErrorPayloads: [],
     subscribeFailureSocketIndices: new Set<number>(),
     sockets: [],
+    holdConnectionReady: false,
   };
 
   class MockSocket {
@@ -52,9 +55,14 @@ const socketMock = vi.hoisted(() => {
       }
 
       this.connected = true;
-      queueMicrotask(() => {
+      const dispatchReady = (): void => {
         this.dispatch("connection:ready", state.readyFrame);
-      });
+      };
+      if (state.holdConnectionReady) {
+        state.releaseHeldConnectionReady = dispatchReady;
+        return;
+      }
+      queueMicrotask(dispatchReady);
     }
 
     disconnect(): void {
@@ -829,5 +837,116 @@ describe("PlugDatabaseSocketEventTrigger", () => {
     expect(
       (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit,
     ).not.toHaveBeenCalled();
+  });
+
+  it("closes a session that finishes connecting after the trigger was closed", async () => {
+    socketMock.state.sockets = [];
+    socketMock.state.subscribeFailureSocketIndices = new Set<number>();
+    socketMock.state.connectErrorsBeforeReady = 0;
+    socketMock.state.holdConnectionReady = false;
+    socketMock.state.releaseHeldConnectionReady = undefined;
+    socketMock.state.readyFrame = encodePayloadFrame(
+      {
+        id: "socket-1",
+        message: "ready",
+        user: { sub: "client-1" },
+      },
+      { requestId: "handshake", compression: "none" },
+    );
+
+    const node = new PlugDatabaseSocketEventTrigger();
+    const context = createContext({
+      reconnectInitialDelayMs: 20,
+      reconnectMaxDelayMs: 40,
+    });
+
+    const response = await node.trigger.call(context);
+    expect(socketMock.state.sockets).toHaveLength(1);
+
+    socketMock.state.holdConnectionReady = true;
+    socketMock.state.sockets[0].dispatch("disconnect", "transport close");
+
+    await vi.waitFor(
+      () => {
+        expect(socketMock.state.sockets.length).toBeGreaterThanOrEqual(2);
+        expect(socketMock.state.releaseHeldConnectionReady).toBeTypeOf("function");
+      },
+      { timeout: 2000 },
+    );
+
+    await response.closeFunction?.();
+    socketMock.state.holdConnectionReady = false;
+    socketMock.state.releaseHeldConnectionReady?.();
+    await flushAsync(8);
+
+    const reconnectSocket = socketMock.state.sockets[socketMock.state.sockets.length - 1];
+    expect(reconnectSocket.connected).toBe(false);
+    expect(
+      (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit,
+    ).not.toHaveBeenCalled();
+
+    socketMock.state.holdConnectionReady = false;
+    socketMock.state.releaseHeldConnectionReady = undefined;
+  });
+
+  it("keeps eventId dedupe across reconnects for the same trigger activation", async () => {
+    socketMock.state.sockets = [];
+    socketMock.state.subscribeFailureSocketIndices = new Set<number>();
+    socketMock.state.connectErrorsBeforeReady = 0;
+    socketMock.state.holdConnectionReady = false;
+    socketMock.state.readyFrame = encodePayloadFrame(
+      {
+        id: "socket-1",
+        message: "ready",
+        user: { sub: "client-1" },
+      },
+      { requestId: "handshake", compression: "none" },
+    );
+
+    const node = new PlugDatabaseSocketEventTrigger();
+    const context = createContext({
+      deduplicateEvents: true,
+      deduplicationTtlMs: 300_000,
+      reconnectInitialDelayMs: 20,
+      reconnectMaxDelayMs: 40,
+      maxInflightEvents: 1,
+    });
+
+    const response = await node.trigger.call(context);
+    const firstSocket = socketMock.state.sockets[0];
+    const frame = encodePayloadFrame(
+      {
+        eventId: "event-persistent",
+        eventName: "client:custom.status.changed",
+        emittedAt: "2026-05-11T12:00:00.000Z",
+        publisher: { principalType: "client", clientId: "client-1" },
+        payload: { status: "ready" },
+        attachments: [],
+      },
+      { requestId: "event-persistent", compression: "none" },
+    );
+
+    firstSocket.dispatch("client:custom.status.changed", frame);
+    await flushAsync(6);
+
+    const emit = (context as unknown as { __emit: ReturnType<typeof vi.fn> }).__emit;
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    firstSocket.dispatch("disconnect", "transport close");
+    await vi.waitFor(
+      () => {
+        expect(socketMock.state.sockets.length).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: 2000 },
+    );
+    await flushAsync(6);
+
+    const secondSocket = socketMock.state.sockets[socketMock.state.sockets.length - 1];
+    secondSocket.dispatch("client:custom.status.changed", frame);
+    await flushAsync(6);
+
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    await response.closeFunction?.();
   });
 });

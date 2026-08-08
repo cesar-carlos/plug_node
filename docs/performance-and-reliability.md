@@ -12,7 +12,7 @@ Guidance for running the Plug Database n8n node efficiently and safely against t
 | Several result sets in one SQL text    | **Execute SQL** + **Multi Result** (not batch)                                                        |
 | Large lists without loading everything | Pagination (`page` + `pageSize`) with stable **`ORDER BY`** (for example `CodCliente`, `CodVendedor`) |
 
-Socket typeVersion 2 reuses the consumer transport for all items in one node execution. Relay fallback reuses the relay transport the same way (conversation per command; socket stays connected when healthy).
+Socket typeVersion 2 reuses the consumer transport for all items in one node execution. Relay fallback reuses the relay transport the same way (**conversation reuse across successful commands** for the same `agentId`; the conversation ends on failure even when reuse is enabled; the socket stays connected when healthy).
 
 ## SQL conventions (ERP)
 
@@ -33,10 +33,11 @@ Defaults (per item): 512 chunks, 50,000 rows, 8 MB. Tune under **Socket Options*
 
 **Aggregated Single Item** emits **one n8n item** with `rowCount` and `rows[]` for SQL result sets. Use it when downstream nodes should process the full result set without per-row fan-out (for example a single Code node or HTTP request). Socket streaming still aggregates chunks in memory before output, same as Aggregated JSON.
 
-For large reads:
+For large reads, the biggest wins are usually **response shaping and streaming**, not further PayloadFrame micro-opts (decode already overlaps up to 8 chunk decodes with ordered merge):
 
 - Prefer **Socket** + **Prefer DB Streaming** + **Chunk Items** response mode when you need bounded memory during transport, or
 - Use **Aggregated Single Item** when the full result fits in memory but you want one workflow item, or
+- Keep **Auto Performance Hints** on so `aggregatedJson` results with more than 1000 rows are promoted to a single item, or
 - Use pagination (`page` / `pageSize`) with a stable `ORDER BY`.
 
 ## Relay Fast Path

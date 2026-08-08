@@ -59,11 +59,6 @@ export const resolveTriggerPayloadFrameSigning = (
   };
 };
 
-export interface SubscriptionRefreshSnapshot {
-  readonly refreshCount: number;
-  readonly lastRefreshedAt?: string;
-}
-
 export const buildTriggerItem = async (
   context: ITriggerFunctions,
   event: CustomSocketEventFramePayload,
@@ -71,7 +66,6 @@ export const buildTriggerItem = async (
   includeMetadata: boolean,
   metadata: SocketEventRuntimeMetadata,
   backpressure: BackpressureSnapshot,
-  subscriptionRefresh: SubscriptionRefreshSnapshot,
 ): Promise<INodeExecutionData> => {
   const binary: IBinaryKeyData = {};
 
@@ -104,8 +98,6 @@ export const buildTriggerItem = async (
             reconnectAttempt: metadata.reconnectAttempt,
             subscriptionCount: metadata.subscriptionCount,
             payloadFrameRequestId: metadata.payloadFrameRequestId,
-            subscriptionRefreshCount: subscriptionRefresh.refreshCount,
-            lastSubscriptionRefreshAt: subscriptionRefresh.lastRefreshedAt,
             backpressure,
           },
         }

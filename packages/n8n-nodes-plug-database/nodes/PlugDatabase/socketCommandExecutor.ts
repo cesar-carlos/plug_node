@@ -160,6 +160,7 @@ export class ConsumerSocketExecutionManager {
       );
 
       this.capabilityProbeInFlight = (async () => {
+        this.managedTransport.acquire();
         try {
           const probeResult = await executeConsumerCommand({
             transport,
@@ -219,6 +220,7 @@ export class ConsumerSocketExecutionManager {
             this.capabilityCacheKey = capabilityKey;
             this.capabilityCheckedAtMs = Date.now();
             this.managedTransport.markStale();
+            // Deferred when other commands still hold the transport (parallel items).
             this.managedTransport.dispose();
             plugLogger.warn("transport.socket.capability_probe.fallback", {
               socketMode: "agentsCommand",
@@ -241,6 +243,7 @@ export class ConsumerSocketExecutionManager {
 
           throw error;
         } finally {
+          this.managedTransport.release();
           this.capabilityProbeInFlight = undefined;
         }
       })();
@@ -295,6 +298,7 @@ export class ConsumerSocketExecutionManager {
     );
     const executionStartedAt = Date.now();
 
+    this.managedTransport.acquire();
     try {
       const result = await executeConsumerCommand({
         transport,
@@ -336,6 +340,8 @@ export class ConsumerSocketExecutionManager {
       }
 
       throw error;
+    } finally {
+      this.managedTransport.release();
     }
   }
 

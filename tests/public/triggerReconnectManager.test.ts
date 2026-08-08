@@ -141,4 +141,54 @@ describe("TriggerReconnectManager", () => {
     expect(closeSession).toHaveBeenCalledTimes(1);
     expect(connect).toHaveBeenCalled();
   });
+
+  it("does not schedule a second reconnect while connectWithRetry is active", async () => {
+    const { manager } = createManager();
+    let connectCalls = 0;
+    let releaseConnect!: () => void;
+    const connectGate = new Promise<void>((resolve) => {
+      releaseConnect = resolve;
+    });
+
+    const connectPromise = manager.connectWithRetry(async () => {
+      connectCalls += 1;
+      if (connectCalls === 1) {
+        await connectGate;
+        throw retryableSocketError;
+      }
+    });
+
+    expect(manager.isConnectLoopActive()).toBe(true);
+    await manager.handleRuntimeError(
+      retryableSocketError,
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined),
+    );
+    expect(manager.isReconnecting()).toBe(false);
+
+    releaseConnect();
+    await vi.advanceTimersByTimeAsync(500);
+    await connectPromise;
+
+    expect(connectCalls).toBe(2);
+  });
+
+  it("counts a single failure for one connectWithRetry attempt", async () => {
+    const { manager, onFatalError } = createManager({
+      maxReconnectFailuresInWindow: 1,
+      maxReconnectAttempts: 0,
+    });
+    const connect = vi.fn(async () => {
+      throw retryableSocketError;
+    });
+    const closeSession = vi.fn(async () => undefined);
+
+    await manager.handleRuntimeError(retryableSocketError, connect, closeSession);
+    // First attempt fails (counts 1), second attempt opens the circuit (counts 2 > 1).
+    await vi.runAllTimersAsync();
+
+    expect(onFatalError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "SOCKET_RECONNECT_CIRCUIT_OPEN" }),
+    );
+  });
 });

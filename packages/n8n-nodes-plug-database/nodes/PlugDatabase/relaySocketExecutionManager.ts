@@ -119,6 +119,9 @@ export class RelaySocketExecutionManager {
 
   private readonly agentSessions = new Map<string, AgentRelaySessionState>();
 
+  /** Serialize executes per agent so a shared conversation is never torn down mid-flight. */
+  private readonly agentExecuteQueues = new Map<string, Promise<unknown>>();
+
   private activeTransport?: RelaySocketTransport;
 
   private getAgentSession(agentId: string): AgentRelaySessionState {
@@ -164,7 +167,26 @@ export class RelaySocketExecutionManager {
     });
   }
 
+  private enqueueAgentExecute<T>(agentId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.agentExecuteQueues.get(agentId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(work);
+    this.agentExecuteQueues.set(
+      agentId,
+      next.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return next;
+  }
+
   async execute(
+    input: Parameters<PlugSocketExecutor>[0],
+  ): Promise<Awaited<ReturnType<PlugSocketExecutor>>> {
+    return this.enqueueAgentExecute(input.agentId, () => this.executeUnlocked(input));
+  }
+
+  private async executeUnlocked(
     input: Parameters<PlugSocketExecutor>[0],
   ): Promise<Awaited<ReturnType<PlugSocketExecutor>>> {
     const transport = this.managedTransport.ensureTransport(
@@ -174,6 +196,7 @@ export class RelaySocketExecutionManager {
     this.activeTransport = transport;
     const agentSession = this.getAgentSession(input.agentId);
 
+    this.managedTransport.acquire();
     try {
       if (Array.isArray(input.command)) {
         const batchResults = await executeRelayBatchCommand({
@@ -231,13 +254,14 @@ export class RelaySocketExecutionManager {
 
       return result;
     } catch (error: unknown) {
-      const conversationId = this.agentSessions.get(input.agentId)?.conversationId;
-      if (conversationId && this.activeTransport) {
-        this.activeTransport.emit(relayConversationEndEvent, { conversationId });
-      }
-      this.managedTransport.markStale();
+      // executeRelayCommand / batch already ends the conversation on failure when
+      // skipConversationEnd is set. Clear local reuse state and mark transport stale
+      // without a second conversation.end.
       this.agentSessions.delete(input.agentId);
+      this.managedTransport.markStale();
       throw error;
+    } finally {
+      this.managedTransport.release();
     }
   }
 
@@ -253,6 +277,7 @@ export class RelaySocketExecutionManager {
     }
 
     this.agentSessions.clear();
+    this.agentExecuteQueues.clear();
     this.activeTransport = undefined;
     this.managedTransport.close();
   }

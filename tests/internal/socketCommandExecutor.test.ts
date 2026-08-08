@@ -297,7 +297,8 @@ describe("ConsumerSocketExecutionManager", () => {
     });
 
     expect(probeEmitCount).toBe(1);
-    expect(createdSockets).toHaveLength(1);
+    // JWT rotation recreates the Socket.IO handshake; capability TTL stays URL-scoped.
+    expect(createdSockets).toHaveLength(2);
     manager.close();
   }, 15_000);
 

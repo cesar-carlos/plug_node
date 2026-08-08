@@ -62,6 +62,7 @@ The job runs `npm run test:e2e:ci` and is marked `continue-on-error: true` so mi
 - Auth: login, refresh, invalid refresh, session-runner retry
 - REST and Socket SQL (`agents:command`, node typeVersion 2)
 - Aggregated JSON smoke and empty-result output
+- Socket multi-item parallelism smoke (2 input items, `maxParallelInputItems: 2`)
 - Raw JSON-RPC negative probes (authorization, invalid SQL, multi_result)
 - `sql.executeBatch` via **Execute Batch** (`PLUG_E2E_BATCH_COMMANDS_JSON`)
 - Hub SQL options smoke (`PLUG_E2E_SQL_HUB_OPTIONS_QUERY`: preserve, pagination, streaming)

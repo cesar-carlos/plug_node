@@ -17,6 +17,10 @@ export class ManagedSocketIoTransport {
 
   private accessToken?: string;
 
+  private activeCount = 0;
+
+  private disposePending = false;
+
   stale = false;
 
   constructor(private readonly options: ManagedSocketIoTransportOptions) {}
@@ -25,7 +29,26 @@ export class ManagedSocketIoTransport {
     this.stale = true;
   };
 
-  dispose(): void {
+  /**
+   * Track in-flight work that depends on the live socket so dispose can be deferred.
+   */
+  acquire(): void {
+    this.activeCount += 1;
+  }
+
+  release(): void {
+    this.activeCount = Math.max(0, this.activeCount - 1);
+    if (this.disposePending && this.activeCount === 0) {
+      this.disposePending = false;
+      this.disposeNow();
+    }
+  }
+
+  getActiveCount(): number {
+    return this.activeCount;
+  }
+
+  private disposeNow(): void {
     if (this.transport) {
       for (const event of socketTerminalEvents) {
         this.transport.off(event, this.handleTerminalEvent);
@@ -36,7 +59,22 @@ export class ManagedSocketIoTransport {
     this.transport = undefined;
     this.namespaceUrl = undefined;
     this.accessToken = undefined;
+    this.disposePending = false;
     this.options.onDispose?.();
+  }
+
+  dispose(): void {
+    if (this.activeCount > 0) {
+      this.stale = true;
+      this.disposePending = true;
+      plugLogger.debug(`transport.socket.${this.options.logEventKey}.dispose_deferred`, {
+        socketMode: this.options.socketMode,
+        activeCount: this.activeCount,
+      });
+      return;
+    }
+
+    this.disposeNow();
   }
 
   markStale(): void {
@@ -49,7 +87,25 @@ export class ManagedSocketIoTransport {
       this.transport === undefined || this.stale || this.namespaceUrl !== namespaceUrl;
 
     if (shouldRecreate) {
-      this.dispose();
+      if (this.transport !== undefined && this.activeCount > 0) {
+        // Keep the live socket for in-flight work; recreate once the refcount hits 0.
+        this.disposePending = true;
+        this.stale = true;
+        const tokenRotated = this.accessToken !== accessToken;
+        this.accessToken = accessToken;
+        if (tokenRotated) {
+          this.transport.updateAccessToken?.(accessToken);
+        }
+        plugLogger.debug(`transport.socket.${this.options.logEventKey}.reuse_while_active`, {
+          socketMode: this.options.socketMode,
+          namespaceUrl,
+          activeCount: this.activeCount,
+          tokenRotated,
+        });
+        return this.transport;
+      }
+
+      this.disposeNow();
 
       const transport = createSocketIoTransport({ baseUrl, accessToken });
       for (const event of socketTerminalEvents) {
@@ -60,21 +116,49 @@ export class ManagedSocketIoTransport {
       this.namespaceUrl = namespaceUrl;
       this.accessToken = accessToken;
       this.stale = false;
+      this.disposePending = false;
       plugLogger.debug(`transport.socket.${this.options.logEventKey}.created`, {
         socketMode: this.options.socketMode,
         namespaceUrl,
       });
     } else {
-      // Soft-refresh: keep the live socket when only the JWT string rotates.
+      // Token rotation requires a new handshake (reconnection is disabled).
       const tokenRotated = this.accessToken !== accessToken;
       this.accessToken = accessToken;
       if (tokenRotated) {
-        this.transport?.updateAccessToken?.(accessToken);
+        if (this.activeCount > 0) {
+          this.stale = true;
+          this.disposePending = true;
+          this.transport?.updateAccessToken?.(accessToken);
+          plugLogger.debug(`transport.socket.${this.options.logEventKey}.token_rotated_deferred`, {
+            socketMode: this.options.socketMode,
+            namespaceUrl,
+            activeCount: this.activeCount,
+          });
+          return this.transport as SocketIoTransportLike;
+        }
+
+        this.disposeNow();
+        const transport = createSocketIoTransport({ baseUrl, accessToken });
+        for (const event of socketTerminalEvents) {
+          transport.on(event, this.handleTerminalEvent);
+        }
+        this.transport = transport;
+        this.namespaceUrl = namespaceUrl;
+        this.accessToken = accessToken;
+        this.stale = false;
+        this.disposePending = false;
+        plugLogger.debug(`transport.socket.${this.options.logEventKey}.recreated_after_token_rotation`, {
+          socketMode: this.options.socketMode,
+          namespaceUrl,
+        });
+        return transport;
       }
+
       plugLogger.debug(`transport.socket.${this.options.logEventKey}.reused`, {
         socketMode: this.options.socketMode,
         namespaceUrl,
-        tokenRotated,
+        tokenRotated: false,
       });
     }
 
@@ -82,7 +166,9 @@ export class ManagedSocketIoTransport {
   }
 
   close(): void {
-    this.dispose();
+    this.disposePending = false;
+    this.activeCount = 0;
+    this.disposeNow();
     this.stale = false;
   }
 }

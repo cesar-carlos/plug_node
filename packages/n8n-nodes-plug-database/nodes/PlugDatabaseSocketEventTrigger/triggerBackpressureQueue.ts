@@ -136,6 +136,40 @@ export const createBackpressureQueue = (input: {
       }
 
       if (queue.length >= input.maxQueueSize) {
+        if (input.maxQueueSize <= 0) {
+          // No queue capacity: discard the incoming event for drop policies.
+          if (input.overflowPolicy === "dropNewest" || input.overflowPolicy === "dropOldest") {
+            if (input.overflowPolicy === "dropNewest") {
+              droppedNewestCount += 1;
+            } else {
+              droppedOldestCount += 1;
+            }
+            input.onDrop?.(input.overflowPolicy, { queueSize: queue.length });
+            if (input.reportDropAsError) {
+              input.emitError(
+                new PlugError("Plug socket event was dropped because the queue is full.", {
+                  code: "SOCKET_EVENT_BACKPRESSURE_DROPPED",
+                  description:
+                    "Increase Max Queue Size, reduce event volume, or switch overflow policy.",
+                  details: { policy: input.overflowPolicy, queueSize: queue.length },
+                }),
+              );
+            }
+            maybeLogStats("drop");
+            return;
+          }
+
+          input.emitError(
+            new PlugError("Plug socket event queue is full.", {
+              code: "SOCKET_EVENT_BACKPRESSURE_LIMIT",
+              description:
+                "Increase Max Queue Size or reduce event volume before retrying.",
+              retryable: true,
+            }),
+          );
+          return;
+        }
+
         if (input.overflowPolicy === "dropNewest") {
           droppedNewestCount += 1;
           input.onDrop?.("dropNewest", { queueSize: queue.length });
@@ -154,6 +188,23 @@ export const createBackpressureQueue = (input: {
         }
 
         if (input.overflowPolicy === "dropOldest") {
+          if (queue.length === 0) {
+            droppedOldestCount += 1;
+            input.onDrop?.("dropOldest", { queueSize: 0 });
+            if (input.reportDropAsError) {
+              input.emitError(
+                new PlugError("Plug socket event was dropped because the queue is full.", {
+                  code: "SOCKET_EVENT_BACKPRESSURE_DROPPED",
+                  description:
+                    "Increase Max Queue Size, reduce event volume, or switch overflow policy.",
+                  details: { policy: "dropOldest", queueSize: 0 },
+                }),
+              );
+            }
+            maybeLogStats("drop");
+            return;
+          }
+
           queue.shift();
           droppedOldestCount += 1;
           input.onDrop?.("dropOldest", { queueSize: queue.length });

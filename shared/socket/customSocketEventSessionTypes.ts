@@ -24,6 +24,8 @@ export interface StartCustomSocketEventSessionInput {
   readonly reconnectAttempt?: number;
   readonly requirePayloadSignature?: boolean;
   readonly deduplicateEventIdsTtlMs?: number;
+  /** When set, overrides per-session dedupe so callers can persist across reconnects. */
+  readonly isDuplicateEventId?: (eventId: string, nowMs: number) => boolean;
   readonly consumerIdleKeepaliveIntervalMs?: number;
   readonly scheduleEvent?: (task: () => Promise<void>) => void;
   readonly onEvent: (

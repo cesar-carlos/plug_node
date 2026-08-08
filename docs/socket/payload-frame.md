@@ -111,10 +111,11 @@ Se o frame chega com assinatura mas a credencial não tem chave, a decodificaç�
 
 ## Benchmark local
 
-Para medir o custo local de decode em caminhos comuns e rejeições de segurança:
+Para medir o custo local de decode em caminhos comuns (sync e async) e rejeições de segurança:
 
 ```bash
 npm run bench:payload-frame
+npm run bench:payload-frame:check
 ```
 
-O script sincroniza `shared`, compila o pacote e mede PayloadFrames pequenos, gzip normal, gzip forçado e rejeição por metadados de inflação. Ajuste `PLUG_BENCH_ITERATIONS` para aumentar ou reduzir as iterações.
+O script sincroniza `shared`, compila o pacote e mede PayloadFrames pequenos, gzip normal, gzip forçado, rejeição por metadados de inflação, e os caminhos `decodePayloadFrameAsync` (small/none e large/gzip) usados no hot path Socket. O check compara `avgMs` com o baseline em `scripts/benchmarks/payload-frame-baseline.json` (margem padrão 15%, `PLUG_BENCH_MAX_REGRESSION`; benches com baseline `< 0.005ms` também recebem um piso absoluto de `+0.001ms` contra ruído de timer). Ajuste `PLUG_BENCH_ITERATIONS` para aumentar ou reduzir as iterações.

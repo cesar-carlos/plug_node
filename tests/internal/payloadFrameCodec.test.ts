@@ -426,4 +426,47 @@ describe("payloadFrameCodec", () => {
       expect(() => decodePayloadFrame(tampered)).toThrow();
     }
   });
+
+  it("sync and async decode return the same data for none and gzip frames", async () => {
+    const noneFrame = encodePayloadFrame(
+      { ok: true, rows: [{ id: 1, value: "none" }] },
+      { requestId: "sync-async-none", compression: "none" },
+    );
+    const gzipFrame = encodePayloadFrame(
+      {
+        ok: true,
+        rows: Array.from({ length: 2_000 }, (_, index) => ({
+          id: index,
+          value: `gzip-row-${index}`,
+        })),
+      },
+      { requestId: "sync-async-gzip", compression: "always" },
+    );
+
+    expect(gzipFrame.cmp).toBe("gzip");
+    expect(decodePayloadFrame(noneFrame).data).toEqual(
+      (await decodePayloadFrameAsync(noneFrame)).data,
+    );
+    expect(decodePayloadFrame(gzipFrame).data).toEqual(
+      (await decodePayloadFrameAsync(gzipFrame)).data,
+    );
+  });
+
+  it("rejects unsafe inflation metadata before gunzip on both sync and async paths", async () => {
+    const frame = encodePayloadFrame(
+      { text: "small payload" },
+      { requestId: "inflation-both-paths", compression: "always" },
+    );
+    const tampered: PayloadFrameEnvelope = {
+      ...frame,
+      originalSize: frame.compressedSize * 21,
+    };
+
+    expect(() => decodePayloadFrame(tampered)).toThrow(
+      "PayloadFrame exceeded the allowed gzip inflation ratio",
+    );
+    await expect(decodePayloadFrameAsync(tampered)).rejects.toThrow(
+      "PayloadFrame exceeded the allowed gzip inflation ratio",
+    );
+  });
 });

@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 ## [Unreleased]
 
+### Changed
+
+- Socket PayloadFrame hot path: HMAC verify compares raw digests; JSON parse accepts Buffer on Node 24; parallel chunk decode overlap raised to 8; `bench:payload-frame:check` covers async decode and uses a refreshed baseline to catch performance regressions.
+
 ### Added
 
 - Plug MCP Server UX: Visual Builder (`authoringMode`), Validate Definitions operation, capability-name dropdown (`loadOptions`), resource-mapper params mode, `includeAuditInOutput` toggle, advanced-options disclosure, field notices, and numeric bounds on tool-call budget fields.
@@ -27,6 +31,7 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 ### Fixed (socket / transport)
 
+- Socket reliability hardenings: serialize relay executes per `agentId`; defer managed-transport dispose while commands are in flight; map classic relay batch accept failures to per-item errors; always detach `relay:rpc.response` listeners/timers on batch timeout; reject orphaned parallel chunk-decode promises on clear; serialize trigger reconnect (no dual sockets); single circuit-breaker failure accounting; safe `dropOldest` with `maxQueueSize=0`; persist event-id dedupe across trigger reconnects; recreate idle sockets on JWT rotation; skip duplicate terminal listeners on consumer stream pull.
 - Stop falling back from timed-out `agents:command` to relay (and stop transient-retrying Socket command timeouts) to avoid double-execution when the hub may still complete the original request.
 - Omit relay `fastPath` automatically for streaming-capable commands (`prefer_db_streaming`, `multi_result`, `sql.executeBatch`) so the hub does not reject the combination.
 - Treat socket auth codes such as `TOKEN_EXPIRED` / `INVALID_TOKEN` as refreshable even when `statusCode` is omitted on `app:error` / `connect_error`.

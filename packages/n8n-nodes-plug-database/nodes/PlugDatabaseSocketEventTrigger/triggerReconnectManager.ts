@@ -24,7 +24,12 @@ export class TriggerReconnectManager {
 
   private reconnectTimer: NodeJS.Timeout | undefined;
 
+  private delayTimer: NodeJS.Timeout | undefined;
+
   private reconnecting = false;
+
+  /** True while connectWithRetry owns the connect loop (blocks dual scheduleReconnect). */
+  private connectLoopActive = false;
 
   private closed = false;
 
@@ -51,6 +56,7 @@ export class TriggerReconnectManager {
   markClosed(): void {
     this.closed = true;
     this.clearReconnectTimer();
+    this.clearDelayTimer();
   }
 
   clearReconnectTimer(): void {
@@ -60,8 +66,19 @@ export class TriggerReconnectManager {
     }
   }
 
+  private clearDelayTimer(): void {
+    if (this.delayTimer) {
+      clearTimeout(this.delayTimer);
+      this.delayTimer = undefined;
+    }
+  }
+
   isReconnecting(): boolean {
     return this.reconnecting;
+  }
+
+  isConnectLoopActive(): boolean {
+    return this.connectLoopActive;
   }
 
   resetAttempts(): void {
@@ -74,31 +91,40 @@ export class TriggerReconnectManager {
   }
 
   async connectWithRetry(connect: () => Promise<void>): Promise<void> {
-    for (;;) {
-      try {
-        await connect();
-        this.resetAttempts();
-        return;
-      } catch (error: unknown) {
-        const plugError = error instanceof PlugError ? error : undefined;
-        if (
-          !plugError ||
-          this.closed ||
-          !this.config.reconnectOnDisconnect ||
-          !plugError.retryable ||
-          (this.config.maxReconnectAttempts > 0 &&
-            this.reconnectAttempts >= this.config.maxReconnectAttempts)
-        ) {
-          throw error;
-        }
+    this.connectLoopActive = true;
+    try {
+      for (;;) {
+        try {
+          await connect();
+          this.resetAttempts();
+          return;
+        } catch (error: unknown) {
+          const plugError = error instanceof PlugError ? error : undefined;
+          if (
+            !plugError ||
+            this.closed ||
+            !this.config.reconnectOnDisconnect ||
+            !plugError.retryable ||
+            (this.config.maxReconnectAttempts > 0 &&
+              this.reconnectAttempts >= this.config.maxReconnectAttempts)
+          ) {
+            throw error;
+          }
 
-        if (this.recordReconnectFailureAndIsCircuitOpen()) {
-          throw createReconnectCircuitOpenError(plugError.message);
-        }
+          // Single failure accounting site (not also in scheduleReconnect).
+          if (this.recordReconnectFailureAndIsCircuitOpen()) {
+            throw createReconnectCircuitOpenError(plugError.message);
+          }
 
-        this.reconnectAttempts += 1;
-        await this.delay(this.getReconnectDelayMs());
+          this.reconnectAttempts += 1;
+          await this.delay(this.getReconnectDelayMs());
+          if (this.closed) {
+            throw error;
+          }
+        }
       }
+    } finally {
+      this.connectLoopActive = false;
     }
   }
 
@@ -106,12 +132,6 @@ export class TriggerReconnectManager {
     if (this.closed || !this.config.reconnectOnDisconnect || !error.retryable) {
       this.reconnecting = false;
       this.config.onFatalError(error);
-      return;
-    }
-
-    if (this.recordReconnectFailureAndIsCircuitOpen()) {
-      this.reconnecting = false;
-      this.config.onFatalError(createReconnectCircuitOpenError(error.message));
       return;
     }
 
@@ -135,7 +155,6 @@ export class TriggerReconnectManager {
     this.clearReconnectTimer();
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
-      this.reconnectAttempts += 1;
       this.reconnecting = false;
       this.connectWithRetry(connect).catch((connectError: unknown) => {
         const plugError =
@@ -147,6 +166,12 @@ export class TriggerReconnectManager {
                   connectError instanceof Error ? connectError.message : undefined,
                 retryable: true,
               });
+
+        if (plugError.code === "SOCKET_RECONNECT_CIRCUIT_OPEN") {
+          this.config.onFatalError(plugError);
+          return;
+        }
+
         void this.handleRuntimeError(plugError, connect, async () => undefined);
       });
     }, this.getReconnectDelayMs());
@@ -157,7 +182,9 @@ export class TriggerReconnectManager {
     connect: () => Promise<void>,
     closeSession: () => Promise<void>,
   ): Promise<void> {
-    if (this.closed || this.reconnecting) {
+    // Suppress dual reconnect when connectWithRetry already owns the attempt
+    // (e.g. disconnect during subscribe rejects both onFatalError and connect()).
+    if (this.closed || this.reconnecting || this.connectLoopActive) {
       return;
     }
 
@@ -194,7 +221,11 @@ export class TriggerReconnectManager {
 
   private delay(durationMs: number): Promise<void> {
     return new Promise((resolve) => {
-      setTimeout(resolve, durationMs);
+      this.clearDelayTimer();
+      this.delayTimer = setTimeout(() => {
+        this.delayTimer = undefined;
+        resolve();
+      }, durationMs);
     });
   }
 }

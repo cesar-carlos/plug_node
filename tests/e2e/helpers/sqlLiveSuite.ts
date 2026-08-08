@@ -143,6 +143,41 @@ export const registerPlugSqlLiveE2E = (
       }
     });
 
+    if (channel === "socket") {
+      it("executes two parallel input items over SOCKET without mid-flight conversation failure", async ({
+        skip,
+      }) => {
+        const node = new PublicPlugDatabase();
+        const context = createLiveExecuteContext({
+          credentials: credentials(),
+          requestTimeoutMs: e2eConfig.timeoutMs,
+          inputData: [{ json: { item: 1 } }, { json: { item: 2 } }],
+          parameters: baseParameters(channel, {
+            operation: "executeSql",
+            inputMode: "guided",
+            responseMode: "aggregatedJson",
+            sql: e2eConfig.emptySqlQuery,
+            sqlOptions: {
+              timeoutMs: e2eConfig.timeoutMs,
+              autoPerformanceHints: true,
+              maxParallelInputItems: 2,
+            },
+          }),
+        });
+
+        const result = await executeOrSkipInfrastructure(node, context, skip);
+        expect(result[0]).toHaveLength(2);
+        for (const item of result[0]) {
+          expect(item.json).toMatchObject({
+            __plug: {
+              channel: "socket",
+              agentId: credentials().agentId,
+            },
+          });
+        }
+      });
+    }
+
     it(`executes multi_result SQL over ${label} with two successful SELECT statements: ${compactQueryLabel(
       e2eConfig.multiResultSuccessSqlQuery,
     )}`, async ({ skip }) => {

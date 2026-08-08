@@ -124,6 +124,66 @@ const isBatchAcceptedSuccessItem = (
   item: import("../contracts/api").RelayRpcBatchAcceptedItem,
 ): item is RelayRpcBatchAcceptedItemSuccess => "requestId" in item;
 
+const isBatchAcceptedFailureItem = (
+  item: import("../contracts/api").RelayRpcBatchAcceptedItem,
+): item is import("../contracts/api").RelayRpcBatchAcceptedItemFailure =>
+  "error" in item && !("requestId" in item);
+
+const buildAcceptedFailureBatchResult = (
+  input: {
+    readonly agentId: string;
+    readonly conversationId: string;
+    readonly requestServerTimings: boolean | undefined;
+    readonly fastPath: boolean;
+  },
+  failure: import("../contracts/api").RelayRpcBatchAcceptedItemFailure,
+): RelayBatchCommandItemResult => {
+  const response: SocketTransportResult = {
+    channel: "socket",
+    socketMode: "relay",
+    agentId: input.agentId,
+    requestId: failure.clientRequestId,
+    notification: false,
+    conversationId: input.conversationId,
+    response: {
+      type: "single",
+      success: false,
+      item: {
+        id: failure.clientRequestId,
+        success: false,
+        error: {
+          code: -32000,
+          message: failure.error.message,
+          data: {
+            code: failure.error.code,
+            ...(failure.error.statusCode !== undefined
+              ? { statusCode: failure.error.statusCode }
+              : {}),
+            ...(failure.error.itemIndex !== undefined
+              ? { itemIndex: failure.error.itemIndex }
+              : {}),
+          },
+        },
+      },
+    },
+    rawResponsePayload: {
+      id: failure.clientRequestId,
+      error: failure.error,
+    },
+    chunkPayloads: [],
+    rawChunkFrames: [],
+    metrics: buildBatchMetrics(undefined, input.requestServerTimings, {
+      fastPath: input.fastPath,
+    }),
+  };
+
+  return {
+    clientRequestId: failure.clientRequestId,
+    requestId: failure.clientRequestId,
+    response,
+  };
+};
+
 const waitForRelayBatchAcceptedFailure = (
   transport: RelaySocketTransport,
 ): { readonly promise: Promise<never>; readonly cancel: () => void } => {
@@ -270,13 +330,13 @@ export const executeRelayBatchCommand = async (
             if (pending) {
               pendingFastPathResponses.delete(clientRequestId);
               pending.resolve(decodedItem);
-              if (pendingFastPathResponses.size === 0) {
-                input.transport.off(relayRpcResponseEvent, responseListener);
-              }
               return;
             }
 
-            bufferedFastPathResponses.set(clientRequestId, decodedItem);
+            // Cap early buffering to the batch size to avoid unbounded growth.
+            if (bufferedFastPathResponses.size < commands.length) {
+              bufferedFastPathResponses.set(clientRequestId, decodedItem);
+            }
             return;
           }
 
@@ -295,23 +355,24 @@ export const executeRelayBatchCommand = async (
               data: decoded.data,
               acceptedItem: pending.item,
             });
-            if (pendingClassicResponses.size === 0) {
-              input.transport.off(relayRpcResponseEvent, responseListener);
-            }
             return;
           }
 
-          bufferedClassicResponses.set(requestId, {
-            clientRequestId: "",
-            requestId,
-            frame: decoded.frame,
-            data: decoded.data,
-          });
+          if (bufferedClassicResponses.size < commands.length) {
+            bufferedClassicResponses.set(requestId, {
+              clientRequestId: "",
+              requestId,
+              frame: decoded.frame,
+              data: decoded.data,
+            });
+          }
         } catch {
           // Ignore unrelated frames until timeout handles failures.
         }
       })();
     };
+
+    const responseWaitTimers = new Set<NodeJS.Timeout>();
 
     input.transport.on(relayRpcResponseEvent, responseListener);
 
@@ -327,104 +388,161 @@ export const executeRelayBatchCommand = async (
     });
 
     let responses: DecodedBatchItemResponse[];
+    const acceptedFailures: import("../contracts/api").RelayRpcBatchAcceptedItemFailure[] =
+      [];
 
-    if (fastPath) {
-      const waitAllResponses = Promise.all(
-        commands.map(
-          (command) =>
-            new Promise<DecodedBatchItemResponse>((resolve, reject) => {
-              const clientRequestId = String(command.id);
-              const buffered = bufferedFastPathResponses.get(clientRequestId);
-              if (buffered !== undefined) {
-                bufferedFastPathResponses.delete(clientRequestId);
-                resolve(buffered);
-                return;
-              }
-
-              pendingFastPathResponses.set(clientRequestId, { resolve, reject });
-              setTimeout(() => {
-                if (!pendingFastPathResponses.has(clientRequestId)) {
+    try {
+      if (fastPath) {
+        const waitAllResponses = Promise.all(
+          commands.map(
+            (command) =>
+              new Promise<DecodedBatchItemResponse>((resolve, reject) => {
+                const clientRequestId = String(command.id);
+                const buffered = bufferedFastPathResponses.get(clientRequestId);
+                if (buffered !== undefined) {
+                  bufferedFastPathResponses.delete(clientRequestId);
+                  resolve(buffered);
                   return;
                 }
 
-                pendingFastPathResponses.delete(clientRequestId);
-                reject(
-                  buildSocketCommandTimeoutError({
-                    message: "Timed out while waiting for relay batch RPC response",
-                    timeoutMs: timeouts.commandTimeoutMs,
-                    eventName: relayRpcResponseEvent,
-                    details: {
-                      clientRequestId,
-                      conversationId,
-                    },
-                  }),
-                );
-              }, timeouts.commandTimeoutMs);
-            }),
-        ),
-      );
+                pendingFastPathResponses.set(clientRequestId, { resolve, reject });
+                const timer = setTimeout(() => {
+                  responseWaitTimers.delete(timer);
+                  if (!pendingFastPathResponses.has(clientRequestId)) {
+                    return;
+                  }
 
-      try {
-        responses = await Promise.race(
-          batchFailureWaiter
-            ? [waitAllResponses, batchFailureWaiter.promise]
-            : [waitAllResponses],
+                  pendingFastPathResponses.delete(clientRequestId);
+                  reject(
+                    buildSocketCommandTimeoutError({
+                      message: "Timed out while waiting for relay batch RPC response",
+                      timeoutMs: timeouts.commandTimeoutMs,
+                      eventName: relayRpcResponseEvent,
+                      details: {
+                        clientRequestId,
+                        conversationId,
+                      },
+                    }),
+                  );
+                }, timeouts.commandTimeoutMs);
+                responseWaitTimers.add(timer);
+              }),
+          ),
         );
-      } finally {
-        batchFailureWaiter?.cancel();
-      }
-    } else {
-      const batchAccepted = assertRelayBatchAcceptedPayload(
-        await waitForRelaySingleEvent(
-          input.transport,
-          relayRpcBatchAcceptedEvent,
-          timeouts.commandTimeoutMs,
-          normalizeRelayBatchAcceptedPayload,
-        ),
-      );
-      const acceptedItems = batchAccepted.items.filter(isBatchAcceptedSuccessItem);
 
-      responses = await Promise.all(
-        acceptedItems.map(
-          (item) =>
+        try {
+          responses = await Promise.race(
+            batchFailureWaiter
+              ? [waitAllResponses, batchFailureWaiter.promise]
+              : [waitAllResponses],
+          );
+        } finally {
+          batchFailureWaiter?.cancel();
+        }
+      } else {
+        const batchAccepted = assertRelayBatchAcceptedPayload(
+          await waitForRelaySingleEvent(
+            input.transport,
+            relayRpcBatchAcceptedEvent,
+            timeouts.commandTimeoutMs,
+            normalizeRelayBatchAcceptedPayload,
+          ),
+        );
+
+        const acceptedByClientRequestId = new Map(
+          batchAccepted.items.map((item) => [item.clientRequestId, item] as const),
+        );
+
+        responses = [];
+        const successWaiters: Array<Promise<DecodedBatchItemResponse>> = [];
+
+        for (const command of commands) {
+          const clientRequestId = String(command.id);
+          const acceptedItem = acceptedByClientRequestId.get(clientRequestId);
+          if (!acceptedItem) {
+            acceptedFailures.push({
+              clientRequestId,
+              error: {
+                code: "RELAY_BATCH_ITEM_MISSING",
+                message: `Relay batch accept omitted clientRequestId \"${clientRequestId}\".`,
+              },
+            });
+            continue;
+          }
+
+          if (isBatchAcceptedFailureItem(acceptedItem)) {
+            acceptedFailures.push(acceptedItem);
+            continue;
+          }
+
+          if (!isBatchAcceptedSuccessItem(acceptedItem)) {
+            acceptedFailures.push({
+              clientRequestId,
+              error: {
+                code: "RELAY_BATCH_ITEM_INVALID",
+                message: `Relay batch accept item for \"${clientRequestId}\" is invalid.`,
+              },
+            });
+            continue;
+          }
+
+          successWaiters.push(
             new Promise<DecodedBatchItemResponse>((resolve, reject) => {
-              const buffered = bufferedClassicResponses.get(item.requestId);
+              const buffered = bufferedClassicResponses.get(acceptedItem.requestId);
               if (buffered !== undefined) {
-                bufferedClassicResponses.delete(item.requestId);
+                bufferedClassicResponses.delete(acceptedItem.requestId);
                 resolve({
                   ...buffered,
-                  clientRequestId: item.clientRequestId,
-                  acceptedItem: item,
+                  clientRequestId: acceptedItem.clientRequestId,
+                  acceptedItem,
                 });
                 return;
               }
 
-              pendingClassicResponses.set(item.requestId, { item, resolve, reject });
-              setTimeout(() => {
-                if (!pendingClassicResponses.has(item.requestId)) {
+              pendingClassicResponses.set(acceptedItem.requestId, {
+                item: acceptedItem,
+                resolve,
+                reject,
+              });
+              const timer = setTimeout(() => {
+                responseWaitTimers.delete(timer);
+                if (!pendingClassicResponses.has(acceptedItem.requestId)) {
                   return;
                 }
 
-                pendingClassicResponses.delete(item.requestId);
+                pendingClassicResponses.delete(acceptedItem.requestId);
                 reject(
                   buildSocketCommandTimeoutError({
                     message: "Timed out while waiting for relay batch RPC response",
                     timeoutMs: timeouts.commandTimeoutMs,
                     eventName: relayRpcResponseEvent,
                     details: {
-                      requestId: item.requestId,
-                      clientRequestId: item.clientRequestId,
+                      requestId: acceptedItem.requestId,
+                      clientRequestId: acceptedItem.clientRequestId,
                       conversationId,
                     },
                   }),
                 );
               }, timeouts.commandTimeoutMs);
+              responseWaitTimers.add(timer);
             }),
-        ),
-      );
-    }
+          );
+        }
 
-    input.transport.off(relayRpcResponseEvent, responseListener);
+        responses = await Promise.all(successWaiters);
+      }
+    } finally {
+      // Always detach the shared response listener and clear timers, even on timeout.
+      input.transport.off(relayRpcResponseEvent, responseListener);
+      for (const timer of responseWaitTimers) {
+        clearTimeout(timer);
+      }
+      responseWaitTimers.clear();
+      pendingFastPathResponses.clear();
+      pendingClassicResponses.clear();
+      bufferedClassicResponses.clear();
+      bufferedFastPathResponses.clear();
+    }
 
     const finalizeBatchItem = async (
       decoded: DecodedBatchItemResponse,
@@ -527,13 +645,53 @@ export const executeRelayBatchCommand = async (
       };
     };
 
-    const batchResults = await Promise.all(responses.map(finalizeBatchItem));
+    const successResults = await Promise.all(responses.map(finalizeBatchItem));
+    const failureResults = acceptedFailures.map((failure) =>
+      buildAcceptedFailureBatchResult(
+        {
+          agentId: input.agentId,
+          conversationId: conversationId as string,
+          requestServerTimings: input.requestServerTimings,
+          fastPath,
+        },
+        failure,
+      ),
+    );
+
+    const resultsByClientRequestId = new Map<string, RelayBatchCommandItemResult>();
+    for (const result of [...successResults, ...failureResults]) {
+      resultsByClientRequestId.set(result.clientRequestId, result);
+    }
+
+    const batchResults = commands.map((command) => {
+      const clientRequestId = String(command.id);
+      const result = resultsByClientRequestId.get(clientRequestId);
+      if (!result) {
+        return buildAcceptedFailureBatchResult(
+          {
+            agentId: input.agentId,
+            conversationId: conversationId as string,
+            requestServerTimings: input.requestServerTimings,
+            fastPath,
+          },
+          {
+            clientRequestId,
+            error: {
+              code: "RELAY_BATCH_ITEM_MISSING",
+              message: `Relay batch did not resolve clientRequestId \"${clientRequestId}\".`,
+            },
+          },
+        );
+      }
+      return result;
+    });
 
     plugLogger.debug("transport.socket.batch_completed", {
       agentId: input.agentId,
       conversationId,
       batchSize: commands.length,
       resolvedCount: batchResults.length,
+      acceptedFailureCount: acceptedFailures.length,
       fastPath,
       streamPullWindowSize,
       streamedItems: batchResults.filter(

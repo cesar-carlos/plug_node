@@ -14,7 +14,7 @@ const regressionThreshold = Number.parseFloat(
 
 const baselinePath = process.env.PLUG_BENCH_BASELINE ?? defaultBenchmarkBaselinePath;
 const baseline = await readBenchmarkBaseline(baselinePath);
-const current = runPayloadFrameBenchmark();
+const current = await runPayloadFrameBenchmark();
 
 const encodeWithTraceId = current.find(
   (entry) => entry.name === "encode PayloadFrame with traceId",
@@ -43,7 +43,13 @@ for (const result of current) {
     continue;
   }
 
-  const allowedAvgMs = baselineEntry.avgMs * (1 + regressionThreshold);
+  // Sub-ms benches are dominated by timer noise on Windows; allow a small absolute
+  // floor in addition to the relative regression threshold.
+  const relativeAllowed = baselineEntry.avgMs * (1 + regressionThreshold);
+  const allowedAvgMs =
+    baselineEntry.avgMs < 0.005
+      ? Math.max(relativeAllowed, baselineEntry.avgMs + 0.001)
+      : relativeAllowed;
   if (result.avgMs > allowedAvgMs) {
     regressions.push(
       `${result.name}: avgMs ${result.avgMs} exceeded baseline ${baselineEntry.avgMs} by more than ${Math.round(regressionThreshold * 100)}% (allowed ${allowedAvgMs.toFixed(4)})`,

@@ -22,15 +22,18 @@ export const createParallelChunkDecodeQueue = (options?: {
   const maxParallel = options?.maxParallel ?? MAX_PARALLEL_CHUNK_DECODES;
   let orderedChain = Promise.resolve();
   let inflightDecodes = 0;
-  const pendingDecodeStarts: Array<() => void> = [];
+  const pendingDecodeStarts: Array<{
+    readonly start: () => void;
+    readonly reject: (error: unknown) => void;
+  }> = [];
 
   const pumpDecodeStarts = (): void => {
     while (inflightDecodes < maxParallel && pendingDecodeStarts.length > 0) {
-      const start = pendingDecodeStarts.shift();
-      if (!start) {
+      const pending = pendingDecodeStarts.shift();
+      if (!pending) {
         return;
       }
-      start();
+      pending.start();
     }
   };
 
@@ -60,7 +63,7 @@ export const createParallelChunkDecodeQueue = (options?: {
         return;
       }
 
-      pendingDecodeStarts.push(start);
+      pendingDecodeStarts.push({ start, reject });
     });
 
     enqueueOrderedWork(async () => {
@@ -74,7 +77,11 @@ export const createParallelChunkDecodeQueue = (options?: {
     enqueueDecodeThenOrdered,
     drainOrderedWork: () => orderedChain,
     clearPendingDecodes: () => {
-      pendingDecodeStarts.length = 0;
+      const cancelled = new Error("Parallel chunk decode cancelled");
+      const pending = pendingDecodeStarts.splice(0, pendingDecodeStarts.length);
+      for (const entry of pending) {
+        entry.reject(cancelled);
+      }
     },
   };
 };

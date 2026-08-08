@@ -15,7 +15,7 @@ The workspace runs **400+** unit and package tests plus **1 skipped by design** 
 - root tests (`tests/`): unit, integration, contract, and `plugSqlGuidedCommands.test.ts`
 - package tests (`packages/n8n-nodes-plug-database/tests/`): node description, execution, and snapshot files
 
-Use `npm test` to run the whole tree or `npm run test:socket` for the focused socket protocol suites.
+Use `npm test` to run the whole tree or `npm run test:socket` for the focused socket protocol suites (core transport/relay/consumer + trigger reconnect/backpressure, including post-hardening regressions).
 
 ## Unit coverage focus
 
@@ -27,9 +27,15 @@ The shared core is exercised in isolation:
 - guided SQL command builders (`tests/public/plugSqlGuidedCommands.test.ts`, `shared/n8n/plugSqlGuidedCommands.ts`)
 - output shaping (`tests/public/output.test.ts`)
 - relay cleanup, conversation validation, and stream handling (`tests/internal/relaySession.test.ts`, `tests/internal/relayErrors.test.ts`, `tests/internal/relayValidationRegressions.test.ts`)
+- relay batch accept failures / response-listener cleanup (`tests/internal/relayBatchSession.test.ts`)
+- relay manager serialization + JWT recreate (`tests/internal/relaySocketExecutionManager.test.ts`)
+- managed transport refcount / deferred dispose (`tests/internal/managedSocketIoTransport.test.ts`)
+- parallel chunk decode clear without hang (`tests/internal/parallelChunkDecode.test.ts`)
 - consumer command session, stream pull, and fail-fast on payloads without IDs (`tests/internal/consumerCommandSession.test.ts`, `tests/internal/consumerStreamPullRegression.test.ts`)
 - PayloadFrame codec including HMAC and inflation guards (`tests/internal/payloadFrameCodec.test.ts`)
 - custom socket events end-to-end including REST publish error surfaces (`tests/internal/customSocketEvents.test.ts`, `tests/internal/customSocketEventsRest.test.ts`)
+- Socket Event Trigger reconnect mutex, circuit accounting, close mid-connect, and persistent eventId dedupe (`tests/public/socketEventTrigger.test.ts`, `tests/public/triggerReconnectManager.test.ts`)
+- trigger backpressure including `maxQueueSize=0` and `fail` overflow (`tests/internal/triggerBackpressureQueue.test.ts`)
 - shared REST validators (`tests/internal/parseHelpers.test.ts`)
 - REST list page guard `MAX_COLLECT_PAGES` (`tests/internal/resourceClient.test.ts`)
 - workflow migration paths (`tests/public/workflowMigration.test.ts`)
@@ -49,6 +55,7 @@ It covers:
 
 - successful REST and Socket execution (`agents:command` on node typeVersion 2)
 - **Aggregated JSON** smoke queries and empty-result output (`rowCount: 0`)
+- Socket multi-item parallelism smoke (two input items with `maxParallelInputItems: 2`)
 - authorization and SQL validation failures (gated by `PLUG_E2E_DENIED_RESOURCE`)
 - `sql.execute` + **multi_result** (semicolon SQL) and **`sql.executeBatch`** (`sqlBatchLiveSuite`)
 - hub SQL options: `execution_mode`, pagination, `prefer_db_streaming` (`sqlHubOptionsLiveSuite`)
@@ -69,3 +76,5 @@ Some E2E tests can skip when the agent or hub is temporarily unavailable. This a
 ## Regression policy
 
 Every behavior change captured by an audit, bug fix, or contract change must be paired with a regression test. The R1 + R2 + R3 audits that produced 3.0.0 added 23 regression tests across shared validators, page guards, stream pull fail-fast, custom event REST parsing, and relay conversation validation.
+
+Performance-sensitive PayloadFrame changes must also keep `npm run bench:payload-frame:check` green against `scripts/benchmarks/payload-frame-baseline.json` (sync + async decode paths, 15% `avgMs` gate). Refresh the baseline only when an intentional, measured improvement lands.

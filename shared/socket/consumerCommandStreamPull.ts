@@ -99,12 +99,16 @@ export const requestConsumerStreamPull = async (
   windowSize = DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
   onIgnoredResponse?: (payload: ConsumerCommandStreamPullResponsePayload) => void,
   signing?: PayloadFrameSigningOptions,
+  options?: {
+    readonly attachTerminalListeners?: boolean;
+  },
 ): Promise<number> => {
   const normalizedWindowSize = normalizeConsumerStreamPullWindowSize(
     windowSize,
     DEFAULT_CONSUMER_SOCKET_PULL_WINDOW,
   );
   const settle = createSettleOnce();
+  const attachTerminalListeners = options?.attachTerminalListeners !== false;
 
   return new Promise<number>((resolve, reject) => {
     let timer: NodeJS.Timeout | undefined;
@@ -115,9 +119,11 @@ export const requestConsumerStreamPull = async (
         timer = undefined;
       }
       transport.off(consumerSocketStreamPullResponseEvent, handlePullResponse);
-      transport.off(consumerSocketAppErrorEvent, handleAppError);
-      transport.off(consumerSocketConnectErrorEvent, handleConnectError);
-      transport.off(consumerSocketDisconnectEvent, handleDisconnect);
+      if (attachTerminalListeners) {
+        transport.off(consumerSocketAppErrorEvent, handleAppError);
+        transport.off(consumerSocketConnectErrorEvent, handleConnectError);
+        transport.off(consumerSocketDisconnectEvent, handleDisconnect);
+      }
     };
 
     const handlePullResponse = (payload: unknown): void => {
@@ -170,12 +176,10 @@ export const requestConsumerStreamPull = async (
       cleanup();
       settle.settleOnce(reject, createConsumerSocketAppError(payload));
     };
-
     const handleConnectError = (payload: unknown): void => {
       cleanup();
       settle.settleOnce(reject, createConsumerConnectError(payload));
     };
-
     const handleDisconnect = (payload: unknown): void => {
       cleanup();
       settle.settleOnce(reject, createConsumerDisconnectError(payload));
@@ -195,9 +199,11 @@ export const requestConsumerStreamPull = async (
     }, timeoutMs);
 
     transport.on(consumerSocketStreamPullResponseEvent, handlePullResponse);
-    transport.on(consumerSocketAppErrorEvent, handleAppError);
-    transport.on(consumerSocketConnectErrorEvent, handleConnectError);
-    transport.on(consumerSocketDisconnectEvent, handleDisconnect);
+    if (attachTerminalListeners) {
+      transport.on(consumerSocketAppErrorEvent, handleAppError);
+      transport.on(consumerSocketConnectErrorEvent, handleConnectError);
+      transport.on(consumerSocketDisconnectEvent, handleDisconnect);
+    }
     transport.emit(consumerSocketStreamPullEvent, {
       requestId,
       streamId,
