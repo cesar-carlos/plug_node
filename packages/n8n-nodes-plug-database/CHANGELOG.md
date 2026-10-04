@@ -1,5 +1,16 @@
 # n8n-nodes-plug-database
 
+## 3.7.0
+
+### Minor Changes
+
+- 22ac2a3: Separate hub wait, transport margin and connection deadlines, with an explicit 30-second default hub wait and SQL-aware batch/bulk timeouts. Validate incoming socket frames once per connection, reserve pending memory before decoding, isolate command ownership and agent stream hints, and cancel pending pulls and response work on completion or failure. Retain correlated inactivity timeouts for active streams, existing wire formats and the prohibition on ambiguous SQL retries. Bound gzip output while inflating, select measured gzip level 3 and add repeatable concurrency and compression measurements.
+
+### Patch Changes
+
+- 22ac2a3: Align PayloadFrame compression with the hub inflation limit and reject oversized payloads before allocation. Enforce required signatures on legacy consumer JSON, reuse renewed sessions for late parallel auth failures, and isolate command activity and timing metrics on shared sockets. Reject aborted or failed streams before returning partial data. Avoid automatic SQL redispatch after REST timeouts, HTTP 5xx, ambiguous transport failures, or rejected stream pulls.
+- 22ac2a3: Update runtime dependencies and compile the package with TypeScript 7 while preserving CommonJS loading and the existing node, credential, and JSON-RPC contracts. Keep Zod 3 for n8n peers and use an isolated Zod 4 alias for Plug validation, preserving public error messages and SQL refinements. Adapt PDF.js cleanup to release loading resources on success and failure, and validate installed packages with both supported n8n-workflow profiles.
+
 ## 3.6.0
 
 ### Minor Changes
