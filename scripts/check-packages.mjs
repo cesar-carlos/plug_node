@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 
 import { plugPackageSurface } from "./package-surface.config.mjs";
+import { readNpmPackOutput } from "./npm-pack-output.mjs";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const WARN_USAGE_RATIO = 0.85;
@@ -42,12 +43,7 @@ const runPackDryRun = (workspace) => {
   }
 
   const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
-  const parsed = JSON.parse(stdout);
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new Error(`Unexpected npm pack output for ${workspace}`);
-  }
-
-  return parsed[0];
+  return readNpmPackOutput(stdout, workspace);
 };
 
 for (const pkg of plugPackageSurface) {

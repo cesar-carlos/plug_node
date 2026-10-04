@@ -54,11 +54,11 @@ jobs:
           echo "sha=${GITHUB_SHA}"
           npm view n8n-nodes-plug-database version || true
 
+      - name: Install pinned npm
+        run: npm install --global npm@12.2.0
+
       - name: Install dependencies
         run: npm ci
-
-      - name: Repair optional native bindings on Linux
-        run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
 
       - name: Detect release mode
         id: release_mode
@@ -98,9 +98,6 @@ jobs:
       - name: Validate npm tarballs
         if: github.event_name == 'workflow_dispatch'
         run: npm run pack:check
-
-      - name: Upgrade npm for trusted publishing
-        run: npm install --global npm@^11.10.0
 
       - name: Run Changesets release action
         uses: changesets/action@v1

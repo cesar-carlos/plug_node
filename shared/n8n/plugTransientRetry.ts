@@ -22,6 +22,14 @@ const metadataOperations = new Set<PlugOperation>([
   "getClientTokenPolicy",
 ]);
 
+const ambiguousTransportErrorCodes = new Set([
+  "HTTP_REQUEST_FAILED",
+  "HTTP_RESPONSE_MISSING_STATUS",
+  "SOCKET_DISCONNECTED",
+  "CONSUMER_IDLE_TIMEOUT",
+  "SOCKET_APP_ERROR",
+]);
+
 export type PlugOperationRetryKind = "sql" | "metadata";
 
 export const getPlugOperationRetryKind = (
@@ -172,7 +180,7 @@ export const shouldRetryPlugOperation = (input: {
   readonly operation: PlugOperation;
   readonly error: unknown;
   readonly attemptNumber: number;
-  /** When true, idle/command timeouts are not retried (command may already be in flight). */
+  /** Socket timeouts are not retried because the command may already be in flight. */
   readonly channel?: "rest" | "socket";
 }): boolean => {
   if (input.attemptNumber >= MAX_TRANSIENT_RETRIES) {
@@ -188,9 +196,11 @@ export const shouldRetryPlugOperation = (input: {
   }
 
   if (input.error instanceof PlugTimeoutError) {
-    // Socket timeouts often mean the hub already accepted the command; a fresh
-    // JSON-RPC id would double-execute. REST timeouts remain safe to retry.
-    return input.channel !== "socket";
+    // A timeout does not prove dispatch failed; rotating an SQL id can repeat a write.
+    return (
+      getPlugOperationRetryKind(input.operation) === "metadata" &&
+      input.channel !== "socket"
+    );
   }
 
   if (!(input.error instanceof PlugError)) {
@@ -198,6 +208,17 @@ export const shouldRetryPlugOperation = (input: {
   }
 
   if (input.error.authRelated) {
+    return false;
+  }
+
+  if (
+    getPlugOperationRetryKind(input.operation) === "sql" &&
+    (ambiguousTransportErrorCodes.has(input.error.code) ||
+      input.error.details?.commandDispatched === true ||
+      (input.channel !== "socket" &&
+        input.error.statusCode !== undefined &&
+        input.error.statusCode >= 500))
+  ) {
     return false;
   }
 

@@ -8,6 +8,90 @@ import {
 } from "../../shared/socket/streamPullPrefetch";
 
 describe("createParallelChunkDecodeQueue", () => {
+  it("should ignore a late rejection from a cancelled application and continue the next owner", async () => {
+    const abort = new AbortController();
+    const onError = vi.fn();
+    let rejectApply!: (error: Error) => void;
+    const applyGate = new Promise<void>((_, reject) => {
+      rejectApply = reject;
+    });
+    const queue = createParallelChunkDecodeQueue({ onError });
+    const applying = vi.fn(() => applyGate);
+    queue.enqueueDecodeThenOrdered(async () => 1, applying, 10, abort.signal);
+    await vi.waitFor(() => expect(applying).toHaveBeenCalled());
+    abort.abort();
+    const next = vi.fn();
+    queue.enqueueDecodeThenOrdered(async () => 2, next, 10);
+    rejectApply(new Error("old application failed"));
+    await queue.drainOrderedWork();
+    expect(onError).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledWith(2);
+    expect(queue.metrics.pendingBytes).toBe(0);
+  });
+
+  it("should release reservations immediately and prevent late application on abort", async () => {
+    const abort = new AbortController();
+    const apply = vi.fn();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const queue = createParallelChunkDecodeQueue({ signal: abort.signal });
+    queue.enqueueDecodeThenOrdered(
+      async () => {
+        await gate;
+        return 1;
+      },
+      apply,
+      128,
+    );
+    expect(queue.metrics.pendingBytes).toBe(128);
+    abort.abort();
+    expect(queue.metrics.pendingBytes).toBe(0);
+    await queue.drainOrderedWork();
+    release();
+    await Promise.resolve();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("should count results waiting for application against frame and byte limits", async () => {
+    const onError = vi.fn();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const queue = createParallelChunkDecodeQueue({
+      maxPendingFrames: 2,
+      maxPendingBytes: 100,
+      onError,
+    });
+    queue.enqueueOrderedWork(async () => gate);
+    queue.enqueueDecodeThenOrdered(
+      async () => 1,
+      () => undefined,
+      60,
+    );
+    await Promise.resolve();
+    queue.enqueueDecodeThenOrdered(
+      async () => 2,
+      () => undefined,
+      60,
+    );
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "SOCKET_BUFFER_LIMIT" }),
+    );
+    release();
+    await queue.drainOrderedWork();
+    expect(queue.metrics.pendingFrames).toBe(0);
+  });
+
+  it.each([0, -1, NaN, Infinity, 9])(
+    "should reject invalid decode parallelism %s",
+    (maxParallel) => {
+      expect(() => createParallelChunkDecodeQueue({ maxParallel })).toThrow();
+    },
+  );
+
   it("overlaps decode work while applying results in order", async () => {
     const applyOrder: number[] = [];
     const decodeStarts: number[] = [];
@@ -141,8 +225,9 @@ describe("createParallelChunkDecodeQueue", () => {
       }),
     ]);
 
-    expect(onError).toHaveBeenCalled();
-    expect(String(onError.mock.calls[0]?.[0])).toMatch(/cancelled/i);
+    expect(onError).not.toHaveBeenCalled();
+    expect(queue.metrics.pendingFrames).toBe(0);
+    expect(queue.metrics.pendingBytes).toBe(0);
   });
 });
 

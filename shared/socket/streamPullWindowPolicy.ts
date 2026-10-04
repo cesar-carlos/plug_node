@@ -53,6 +53,7 @@ export const extractRecommendedStreamPullWindowSize = (
     isRecord(payload.extensions) ? payload.extensions : null,
     isRecord(payload.limits) ? payload.limits : null,
     isRecord(payload.result) ? payload.result : null,
+    isRecord(payload.item) && isRecord(payload.item.result) ? payload.item.result : null,
     isRecord(payload.capabilities) ? payload.capabilities : null,
     isRecord(payload.agent) ? payload.agent : null,
   ];
@@ -95,11 +96,20 @@ export const extractMaxStreamPullWindowSize = (payload: unknown): number | undef
     isRecord(payload.extensions) ? payload.extensions : null,
     isRecord(payload.limits) ? payload.limits : null,
     isRecord(payload.result) ? payload.result : null,
+    isRecord(payload.item) && isRecord(payload.item.result) ? payload.item.result : null,
     isRecord(payload.capabilities) ? payload.capabilities : null,
   ];
 
   for (const source of nestedSources) {
-    const maxWindow = pickPositiveInteger(source, [...maxStreamPullHintKeys]);
+    const maxWindow =
+      pickPositiveInteger(source, [...maxStreamPullHintKeys]) ??
+      pickPositiveInteger(source && isRecord(source.limits) ? source.limits : null, [
+        ...maxStreamPullHintKeys,
+      ]) ??
+      pickPositiveInteger(
+        source && isRecord(source.extensions) ? source.extensions : null,
+        [...maxStreamPullHintKeys],
+      );
     if (maxWindow !== undefined) {
       return clampStreamPullWindowSize(maxWindow);
     }

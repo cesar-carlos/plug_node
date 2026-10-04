@@ -160,6 +160,69 @@ const session: PlugSession = {
 };
 
 describe("ConsumerSocketExecutionManager", () => {
+  it("should close an active probe and prevent subsequent command dispatch", async () => {
+    const { ConsumerSocketExecutionManager } =
+      await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/socketCommandExecutor");
+    const manager = new ConsumerSocketExecutionManager();
+    suppressProbeResponse = true;
+    const input = {
+      session,
+      agentId: "agent-1",
+      command: { jsonrpc: "2.0", method: "sql.execute", id: "blocked", params: {} },
+      responseMode: "aggregatedJson" as const,
+    };
+    const result = manager.execute(input);
+    const rejected = expect(result).rejects.toBeDefined();
+    await vi.waitFor(() =>
+      expect(createdSockets[0]?.handlers.get("agents:command_response")?.size).toBe(1),
+    );
+    manager.close();
+    manager.close();
+    await rejected;
+    await expect(manager.execute(input)).rejects.toThrow(/closed/);
+    expect(createdSockets).toHaveLength(1);
+    expect(
+      [...createdSockets[0].handlers.values()].every((handlers) => handlers.size === 0),
+    ).toBe(true);
+  });
+
+  it("should share one concurrent hub probe across agents and expire its result after 60 seconds", async () => {
+    const { ConsumerSocketExecutionManager } =
+      await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/socketCommandExecutor");
+    const manager = new ConsumerSocketExecutionManager();
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    try {
+      const input = (index: number) => ({
+        session,
+        agentId: `agent-${index}`,
+        command: {
+          jsonrpc: "2.0",
+          method: "client_token.getPolicy",
+          id: `concurrent-${index}`,
+          params: {},
+        },
+        responseMode: "aggregatedJson" as const,
+      });
+      const responses = await Promise.all(
+        [1, 2, 3, 4].map((index) => manager.execute(input(index))),
+      );
+      expect(probeEmitCount).toBe(1);
+      expect(responses.map((response) => response.agentId)).toEqual([
+        "agent-1",
+        "agent-2",
+        "agent-3",
+        "agent-4",
+      ]);
+      expect(createdSockets).toHaveLength(1);
+      now.mockReturnValue(61_000);
+      await manager.execute(input(5));
+      expect(probeEmitCount).toBe(2);
+    } finally {
+      now.mockRestore();
+      manager.close();
+    }
+  });
+
   beforeEach(() => {
     createdSockets.length = 0;
     suppressProbeResponse = false;
@@ -251,7 +314,7 @@ describe("ConsumerSocketExecutionManager", () => {
     manager.close();
   }, 15_000);
 
-  it("reuses capability probe cache across access token rotation within TTL", async () => {
+  it("invalidates capability probe cache across access token rotation", async () => {
     const { ConsumerSocketExecutionManager } =
       await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/socketCommandExecutor");
     const manager = new ConsumerSocketExecutionManager();
@@ -296,8 +359,8 @@ describe("ConsumerSocketExecutionManager", () => {
       payloadFrameCompression: "default",
     });
 
-    expect(probeEmitCount).toBe(1);
-    // JWT rotation recreates the Socket.IO handshake; capability TTL stays URL-scoped.
+    expect(probeEmitCount).toBe(2);
+    // JWT rotation creates a new connection and invalidates its capability cache.
     expect(createdSockets).toHaveLength(2);
     manager.close();
   }, 15_000);

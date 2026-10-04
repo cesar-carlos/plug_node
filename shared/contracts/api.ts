@@ -10,10 +10,7 @@ export const SOCKET_PROTOCOL_VERSION = "2026-05-14";
 export type PlugChannel = "rest" | "socket";
 export type PlugSocketImplementation = "agentsCommand" | "relay";
 export type PlugResponseMode =
-  | "aggregatedJson"
-  | "aggregatedSingleItem"
-  | "chunkItems"
-  | "rawJsonRpc";
+  "aggregatedJson" | "aggregatedSingleItem" | "chunkItems" | "rawJsonRpc";
 
 export const isSocketAggregatedResponseMode = (responseMode: PlugResponseMode): boolean =>
   responseMode === "aggregatedJson" || responseMode === "aggregatedSingleItem";
@@ -335,9 +332,7 @@ export interface NormalizedRpcRawResponse {
 }
 
 export type NormalizedAgentRpcResponse =
-  | NormalizedRpcSingleResponse
-  | NormalizedRpcBatchResponse
-  | NormalizedRpcRawResponse;
+  NormalizedRpcSingleResponse | NormalizedRpcBatchResponse | NormalizedRpcRawResponse;
 
 export interface RestBridgeCommandResponse {
   readonly mode: "bridge";
@@ -402,8 +397,7 @@ export interface RelayRpcAcceptedFailurePayload {
 }
 
 export type RelayRpcAcceptedPayload =
-  | RelayRpcAcceptedSuccessPayload
-  | RelayRpcAcceptedFailurePayload;
+  RelayRpcAcceptedSuccessPayload | RelayRpcAcceptedFailurePayload;
 
 export interface RelayRpcBatchAcceptedItemSuccess {
   readonly clientRequestId: string;
@@ -424,8 +418,7 @@ export interface RelayRpcBatchAcceptedItemFailure {
 }
 
 export type RelayRpcBatchAcceptedItem =
-  | RelayRpcBatchAcceptedItemSuccess
-  | RelayRpcBatchAcceptedItemFailure;
+  RelayRpcBatchAcceptedItemSuccess | RelayRpcBatchAcceptedItemFailure;
 
 export interface RelayRpcBatchAcceptedSuccessPayload {
   readonly success: true;
@@ -445,8 +438,7 @@ export interface RelayRpcBatchAcceptedFailurePayload {
 }
 
 export type RelayRpcBatchAcceptedPayload =
-  | RelayRpcBatchAcceptedSuccessPayload
-  | RelayRpcBatchAcceptedFailurePayload;
+  RelayRpcBatchAcceptedSuccessPayload | RelayRpcBatchAcceptedFailurePayload;
 
 export interface RelayStreamPullResponsePayload {
   readonly success: boolean;
@@ -498,8 +490,7 @@ export interface ConsumerCommandSocketFailurePayload {
 }
 
 export type ConsumerCommandSocketResponsePayload =
-  | ConsumerCommandSocketSuccessPayload
-  | ConsumerCommandSocketFailurePayload;
+  ConsumerCommandSocketSuccessPayload | ConsumerCommandSocketFailurePayload;
 
 export interface ConsumerCommandNotificationResponse {
   readonly type: "notification";
@@ -583,6 +574,9 @@ export interface SocketTransportNotificationResult {
 }
 
 export interface SocketCommandRuntimeMetrics extends JsonObject {
+  readonly decodes?: number;
+  readonly peakPendingFrames?: number;
+  readonly peakPendingBytes?: number;
   readonly ignoredCommandResponses: number;
   readonly ignoredStreamChunks: number;
   readonly ignoredStreamCompletes: number;

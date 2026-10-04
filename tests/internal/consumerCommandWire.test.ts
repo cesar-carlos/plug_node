@@ -15,6 +15,16 @@ import {
 } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/consumerCommandWire";
 
 describe("consumerCommandWire helpers", () => {
+  it("should reject legacy JSON when signatures are required", async () => {
+    const signing = { key: "shared-secret", requireSignature: true };
+    await expect(
+      decodeConsumerCommandWirePayload({ success: true }, signing),
+    ).rejects.toThrow("PayloadFrame signature is required");
+    const frame = encodePayloadFrame({ success: true }, { signing });
+    await expect(decodeConsumerCommandWirePayload(frame, signing)).resolves.toEqual({
+      success: true,
+    });
+  });
   it("decodeConsumerCommandWirePayload returns plain objects and PayloadFrame data", async () => {
     await expect(decodeConsumerCommandWirePayload({ ok: true })).resolves.toEqual({
       ok: true,

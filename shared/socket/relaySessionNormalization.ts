@@ -268,7 +268,11 @@ const normalizePhasesMs = (value: unknown): Record<string, number> | undefined =
 
   const phasesMs: Record<string, number> = {};
   for (const [key, phaseValue] of Object.entries(value)) {
-    if (typeof phaseValue === "number" && Number.isFinite(phaseValue)) {
+    if (
+      typeof phaseValue === "number" &&
+      Number.isFinite(phaseValue) &&
+      phaseValue >= 0
+    ) {
       phasesMs[key] = phaseValue;
     }
   }
@@ -286,6 +290,8 @@ const normalizePhaseTimingsEnvelope = (value: unknown): PlugPhaseTimings | undef
     return undefined;
   }
 
+  const version = value.schemaVersion ?? value.schema_version;
+  if (version !== undefined && version !== 1) return undefined;
   const schemaVersion =
     typeof value.schemaVersion === "number" && Number.isFinite(value.schemaVersion)
       ? value.schemaVersion

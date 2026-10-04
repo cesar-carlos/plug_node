@@ -13,6 +13,7 @@ import type {
 import type { PayloadFrameSigningOptions } from "../contracts/payload-frame";
 import { PlugValidationError } from "../contracts/errors";
 import { decodePayloadFrameAsync } from "./payloadFrameCodec";
+import { getValidatedSocketPayload } from "./validatedSocketPayload";
 import { isRecord } from "../utils/json";
 
 const isPayloadFrameEnvelope = (payload: unknown): boolean =>
@@ -22,7 +23,12 @@ export const decodeConsumerCommandWirePayload = async <T>(
   payload: unknown,
   signing?: PayloadFrameSigningOptions,
 ): Promise<T> => {
+  const validated = getValidatedSocketPayload<T>(payload, signing);
+  if (validated) return validated.data;
   if (!isPayloadFrameEnvelope(payload)) {
+    if (signing?.requireSignature === true) {
+      throw new PlugValidationError("PayloadFrame signature is required");
+    }
     return payload as T;
   }
 

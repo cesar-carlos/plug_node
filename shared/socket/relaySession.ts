@@ -1,3 +1,5 @@
+import { registerSocketCommand } from "./socketEventDispatcher";
+import { resolveCommandTimeoutPolicy } from "./commandTimeoutPolicy";
 import { randomUUID } from "node:crypto";
 
 import type {
@@ -27,13 +29,8 @@ import {
 import { waitForRelaySingleEvent } from "./relaySessionWait";
 import { waitForRelayStreamAggregation } from "./relayStreamAggregation";
 import type { ExecuteRelayCommandInput } from "./relaySessionTypes";
-import {
-  extractMaxStreamPullWindowSize,
-  extractRecommendedStreamPullWindowSize,
-  resolveAdaptiveStreamPullWindowSize,
-} from "./streamPullWindowPolicy";
+import { resolveAdaptiveStreamPullWindowSize } from "./streamPullWindowPolicy";
 import { resolveSocketBufferLimits } from "./streamCommandSessionCommon";
-import { resolveSocketCommandTimeouts } from "./socketSessionLifecycle";
 
 export type { ExecuteRelayCommandInput, RelaySocketTransport } from "./relaySessionTypes";
 
@@ -78,10 +75,31 @@ const waitForRelayAcceptedFailure = (
 export const executeRelayCommand = async (
   input: ExecuteRelayCommandInput,
 ): Promise<PlugCommandTransportResult> => {
-  const timeouts = resolveSocketCommandTimeouts({ timeoutMs: input.timeoutMs });
+  const timeouts = resolveCommandTimeoutPolicy({
+    timeoutMs: input.timeoutMs,
+    command: input.command,
+  });
   const limits = resolveSocketBufferLimits(input.bufferLimits);
   const command = ensureRelayCompatibleCommand(input.command);
   const clientRequestId = String(command.id);
+  const wireSession = registerSocketCommand({
+    transport: input.transport,
+    ids: [clientRequestId],
+    agentId: input.agentId,
+    conversationId: input.reusedConversationId,
+    signing: input.payloadFrameSigning,
+    bufferLimits: input.bufferLimits,
+  });
+  const lifetimeAbort = new AbortController();
+  const signal = input.signal
+    ? AbortSignal.any([input.signal, lifetimeAbort.signal])
+    : lifetimeAbort.signal;
+  input = {
+    ...input,
+    transport: wireSession.transport,
+    payloadFrameSigning: wireSession.signing,
+    signal,
+  };
   let conversationId: string | undefined = input.reusedConversationId;
   const managedTransport = input.managedTransport === true;
   const fastPath = input.fastPath === true;
@@ -89,27 +107,24 @@ export const executeRelayCommand = async (
   let commandSucceeded = false;
   let connectionReady: import("../contracts/api").RelayConnectionReadyPayload | undefined;
 
-  if (!managedTransport || !input.transport.connected) {
-    input.transport.connect();
-  }
-
   try {
-    connectionReady = input.transport.connected
+    const readyPromise = input.transport.connected
       ? undefined
-      : await waitForRelaySingleEvent(
+      : waitForRelaySingleEvent(
           input.transport,
           relayConnectionReadyEvent,
           timeouts.connectTimeoutMs,
           (payload) => normalizeRelayConnectionReady(payload, input.payloadFrameSigning),
+          signal,
         );
+    // A synchronous connect failure must still observe the cancelled waiter.
+    void readyPromise?.catch(() => undefined);
+    if (!managedTransport || !input.transport.connected) input.transport.connect();
+    connectionReady = await readyPromise;
     const streamPullWindowSize = resolveAdaptiveStreamPullWindowSize({
       configured: input.streamPullWindowSize,
-      agentRecommended:
-        input.agentRecommendedStreamPullWindowSize ??
-        extractRecommendedStreamPullWindowSize(connectionReady),
-      agentMax:
-        input.agentMaxStreamPullWindowSize ??
-        extractMaxStreamPullWindowSize(connectionReady),
+      agentRecommended: input.agentRecommendedStreamPullWindowSize,
+      agentMax: input.agentMaxStreamPullWindowSize,
     });
     plugLogger.debug("transport.socket.connected", {
       agentId: input.agentId,
@@ -122,6 +137,7 @@ export const executeRelayCommand = async (
         relayConversationStartedEvent,
         timeouts.commandTimeoutMs,
         normalizeRelayConversationStarted,
+        signal,
       );
       input.transport.emit(relayConversationStartEvent, {
         requestId: randomUUID(),
@@ -163,10 +179,14 @@ export const executeRelayCommand = async (
           relayRpcAcceptedEvent,
           timeouts.commandTimeoutMs,
           normalizeRelayAcceptedPayload,
+          signal,
         ).then((payload) => assertRelayAcceptedPayload(payload));
 
     const streamAggregationPromise = waitForRelayStreamAggregation({
       transport: input.transport,
+      canReceive: wireSession.canReceive,
+      drainDelivery: wireSession.drain,
+      signal,
       conversationId,
       clientRequestId,
       acceptedStatePromise,
@@ -190,7 +210,7 @@ export const executeRelayCommand = async (
         : {}),
       ...(input.requestServerTimings === true ? { requestServerTimings: true } : {}),
       ...(fastPath ? { fastPath: true } : {}),
-      timeoutMs: timeouts.commandTimeoutMs,
+      timeoutMs: timeouts.hubWaitTimeoutMs,
     });
 
     try {
@@ -252,6 +272,7 @@ export const executeRelayCommand = async (
       const serverTimings = extractServerTimings(finalResponse.responsePayload);
 
       const buildMetrics = (): SocketCommandRuntimeMetrics => ({
+        ...wireSession.metrics(),
         ignoredCommandResponses: streamMetrics.ignoredResponses,
         ignoredStreamChunks: streamMetrics.ignoredChunks,
         ignoredStreamCompletes: streamMetrics.ignoredCompletes,
@@ -318,5 +339,7 @@ export const executeRelayCommand = async (
     if (!managedTransport) {
       input.transport.disconnect();
     }
+    lifetimeAbort.abort();
+    wireSession.dispose();
   }
 };

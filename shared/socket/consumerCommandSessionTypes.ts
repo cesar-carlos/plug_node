@@ -21,6 +21,7 @@ export interface ExecuteConsumerCommandInput {
   readonly agentId: string;
   readonly command: BridgeCommand;
   readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
   readonly payloadFrameCompression?: PayloadFrameCompression;
   readonly responseMode: PlugResponseMode;
   readonly payloadFrameSigning?: PayloadFrameSigningOptions;

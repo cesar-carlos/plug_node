@@ -9,6 +9,42 @@ import { buildNodeOutputItems } from "../../packages/n8n-nodes-plug-database/gen
 import type { PlugCommandTransportResult } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
 
 describe("buildNodeOutputItems", () => {
+  it.each([
+    "aggregatedJson",
+    "aggregatedSingleItem",
+    "chunkItems",
+    "rawJsonRpc",
+  ] as const)(
+    "should reject incomplete socket streams in %s mode even after stream_id was removed",
+    (responseMode) => {
+      for (const terminalStatus of ["error", "aborted"]) {
+        const result: PlugCommandTransportResult = {
+          channel: "socket",
+          socketMode: "agentsCommand",
+          agentId: "agent-1",
+          requestId: "request-1",
+          notification: false,
+          response: {
+            type: "single",
+            success: true,
+            item: { id: "rpc-1", success: true, result: { rows: [{ id: 1 }] } },
+          },
+          rawResponsePayload: {},
+          chunkPayloads: [{ rows: [{ id: 2 }] }],
+          rawChunkFrames: [],
+          completePayload: {
+            terminal_status: terminalStatus,
+            error_code: "RELAY_STREAM_TIMEOUT",
+          },
+        };
+        expect(() => buildNodeOutputItems(result, responseMode)).toThrow(
+          terminalStatus === "error"
+            ? "The socket SQL stream ended with an error."
+            : "The socket SQL stream was aborted before completion.",
+        );
+      }
+    },
+  );
   it("returns one item per SQL row for aggregated JSON output", () => {
     const result: PlugCommandTransportResult = {
       channel: "rest",

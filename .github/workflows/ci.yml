@@ -25,6 +25,9 @@ jobs:
           node-version: 24.18.0
           cache: npm
 
+      - name: Install pinned npm
+        run: npm install --global npm@12.2.0
+
       - name: Install dependencies
         run: npm ci
 
@@ -50,11 +53,11 @@ jobs:
           node-version: 24.18.0
           cache: npm
 
+      - name: Install pinned npm
+        run: npm install --global npm@12.2.0
+
       - name: Install dependencies
         run: npm ci
-
-      - name: Repair optional native bindings on Linux
-        run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
 
       - name: Run focused socket protocol tests
         run: npm run ${{ matrix.script }}
@@ -74,11 +77,11 @@ jobs:
           node-version: 24.18.0
           cache: npm
 
+      - name: Install pinned npm
+        run: npm install --global npm@12.2.0
+
       - name: Install dependencies
         run: npm ci
-
-      - name: Repair optional native bindings on Linux
-        run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
 
       - name: Run PayloadFrame benchmark
         run: PLUG_BENCH_ITERATIONS=25 npm run bench:payload-frame
@@ -109,11 +112,11 @@ jobs:
           node-version: 24.18.0
           cache: npm
 
+      - name: Install pinned npm
+        run: npm install --global npm@12.2.0
+
       - name: Install dependencies
         run: npm ci
-
-      - name: Repair optional native bindings on Linux
-        run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
 
       - name: Verify workspace
         run: npm run verify
@@ -141,11 +144,11 @@ jobs:
           node-version: 24.18.0
           cache: npm
 
+      - name: Install pinned npm
+        run: npm install --global npm@12.2.0
+
       - name: Install dependencies
         run: npm ci
-
-      - name: Repair optional native bindings on Linux
-        run: npm install --no-save @rolldown/binding-linux-x64-gnu @unrs/resolver-binding-linux-x64-gnu
 
       - name: Run staging E2E hub (REST + Socket)
         env:

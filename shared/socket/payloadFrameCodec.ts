@@ -1,3 +1,4 @@
+import { getValidatedSocketPayload } from "./validatedSocketPayload";
 import { createHmac, timingSafeEqual, randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import {
@@ -26,6 +27,8 @@ const asyncGzipThresholdBytes = 4 * 1024;
 const asyncGunzipThresholdBytes = 1;
 const signatureAlgorithm = "hmac-sha256";
 const gzipAsync = promisify(gzipCallback);
+// Nine isolated comparisons passed performance, memory and wire-size gates.
+const gzipOptions = { level: 3 };
 const allowedRootKeys = new Set([
   "schemaVersion",
   "enc",
@@ -42,6 +45,7 @@ const allowedSignatureKeys = new Set(["alg", "value", "key_id"]);
 
 const payloadToBuffer = (payload: PayloadFrameEnvelope["payload"]): Buffer => {
   if (typeof payload === "string") {
+    assertPayloadSizeLimits(Buffer.byteLength(payload, "base64"), 0);
     return Buffer.from(payload, "base64");
   }
 
@@ -55,6 +59,7 @@ const payloadToBuffer = (payload: PayloadFrameEnvelope["payload"]): Buffer => {
 
   if (Array.isArray(payload)) {
     const length = payload.length;
+    assertPayloadSizeLimits(length, 0);
     const buffer = Buffer.allocUnsafe(length);
     for (let index = 0; index < length; index += 1) {
       const value = payload[index];
@@ -246,7 +251,9 @@ const shouldUseCompressedPayload = (
   compressedLength: number,
   preference: PayloadFrameCompression,
 ): boolean =>
-  preference === "always" || originalLength - compressedLength >= minAutoGzipSavingsBytes;
+  originalLength / compressedLength <= maxInflationRatio &&
+  (preference === "always" ||
+    originalLength - compressedLength >= minAutoGzipSavingsBytes);
 
 const assertPayloadSizeLimits = (payloadLength: number, originalLength: number): void => {
   if (payloadLength > maxCompressedBytes) {
@@ -277,27 +284,50 @@ const assertDecodedMetadataLimits = (
   }
 };
 
-const gunzipWithLimitSync = (compressedBytes: Buffer): Buffer => {
+const gunzipWithLimitSync = (compressedBytes: Buffer, originalSize: number): Buffer => {
   try {
-    return gunzipSync(compressedBytes, { maxOutputLength: maxDecodedBytes });
+    return gunzipSync(compressedBytes, {
+      maxOutputLength: Math.max(
+        1,
+        Math.min(
+          originalSize,
+          maxDecodedBytes,
+          compressedBytes.length * maxInflationRatio,
+        ),
+      ),
+    });
   } catch (error: unknown) {
     if (
       isRecord(error) &&
       (error.code === "ERR_BUFFER_TOO_LARGE" ||
         String(error.message ?? "").includes("maxOutputLength"))
     ) {
-      throw new PlugValidationError("PayloadFrame exceeds the 10 MiB decoded limit");
+      throw new PlugValidationError(
+        "PayloadFrame exceeds the declared or allowed decoded limit (10 MiB maximum)",
+      );
     }
 
     throw error;
   }
 };
 
-const gunzipWithLimitAsync = async (compressedBytes: Buffer): Promise<Buffer> =>
+const gunzipWithLimitAsync = async (
+  compressedBytes: Buffer,
+  originalSize: number,
+): Promise<Buffer> =>
   new Promise<Buffer>((resolve, reject) => {
     gunzipCallback(
       compressedBytes,
-      { maxOutputLength: maxDecodedBytes },
+      {
+        maxOutputLength: Math.max(
+          1,
+          Math.min(
+            originalSize,
+            maxDecodedBytes,
+            compressedBytes.length * maxInflationRatio,
+          ),
+        ),
+      },
       (error, result) => {
         if (error) {
           if (
@@ -306,7 +336,9 @@ const gunzipWithLimitAsync = async (compressedBytes: Buffer): Promise<Buffer> =>
               String(error.message ?? "").includes("maxOutputLength"))
           ) {
             reject(
-              new PlugValidationError("PayloadFrame exceeds the 10 MiB decoded limit"),
+              new PlugValidationError(
+                "PayloadFrame exceeds the declared or allowed decoded limit (10 MiB maximum)",
+              ),
             );
             return;
           }
@@ -365,7 +397,7 @@ const preparePayloadSync = (
     preference !== "none" &&
     original.length <= maxGzipInputBytes
   ) {
-    const gzip = gzipSync(original);
+    const gzip = gzipSync(original, gzipOptions);
     if (shouldUseCompressedPayload(original.length, gzip.length, preference)) {
       return { cmp: "gzip", payload: gzip };
     }
@@ -388,8 +420,8 @@ const preparePayloadAsync = async (
   ) {
     const gzip =
       original.length >= asyncGzipThresholdBytes
-        ? await gzipAsync(original)
-        : gzipSync(original);
+        ? await gzipAsync(original, gzipOptions)
+        : gzipSync(original, gzipOptions);
     if (shouldUseCompressedPayload(original.length, gzip.length, preference)) {
       return { cmp: "gzip", payload: gzip };
     }
@@ -429,7 +461,9 @@ const validateDecodedPayload = (
   }
 
   if (decodedBytes.length > maxDecodedBytes) {
-    throw new PlugValidationError("PayloadFrame exceeds the 10 MiB decoded limit");
+    throw new PlugValidationError(
+      "PayloadFrame exceeds the declared or allowed decoded limit (10 MiB maximum)",
+    );
   }
 
   if (
@@ -457,6 +491,7 @@ const parseFrameForDecode = (
   readonly compressedBytes: Buffer;
 } => {
   const frame = assertValidFrameShape(value);
+  assertPayloadSizeLimits(frame.compressedSize, frame.originalSize);
   const compressedBytes = payloadToBuffer(frame.payload);
 
   if (compressedBytes.length !== frame.compressedSize) {
@@ -580,10 +615,16 @@ export const decodePayloadFrame = <TData = unknown>(
     readonly signing?: PayloadFrameSigningOptions;
   },
 ): DecodedPayloadFrame<TData> => {
+  const cached = options?.validateSignature
+    ? undefined
+    : getValidatedSocketPayload<TData>(value, options?.signing);
+  if (cached) return cached;
   const { frame, compressedBytes } = parseFrameForDecode(value, options?.signing);
 
   const decodedBytes =
-    frame.cmp === "gzip" ? gunzipWithLimitSync(compressedBytes) : compressedBytes;
+    frame.cmp === "gzip"
+      ? gunzipWithLimitSync(compressedBytes, frame.originalSize)
+      : compressedBytes;
 
   validateDecodedPayload(
     frame,
@@ -606,13 +647,17 @@ export const decodePayloadFrameAsync = async <TData = unknown>(
     readonly signing?: PayloadFrameSigningOptions;
   },
 ): Promise<DecodedPayloadFrame<TData>> => {
+  const cached = options?.validateSignature
+    ? undefined
+    : getValidatedSocketPayload<TData>(value, options?.signing);
+  if (cached) return cached;
   const { frame, compressedBytes } = parseFrameForDecode(value, options?.signing);
 
   const decodedBytes =
     frame.cmp === "gzip"
       ? compressedBytes.length >= asyncGunzipThresholdBytes
-        ? await gunzipWithLimitAsync(compressedBytes)
-        : gunzipWithLimitSync(compressedBytes)
+        ? await gunzipWithLimitAsync(compressedBytes, frame.originalSize)
+        : gunzipWithLimitSync(compressedBytes, frame.originalSize)
       : compressedBytes;
 
   validateDecodedPayload(

@@ -1,6 +1,7 @@
 import { plugLogger } from "../../generated/shared/logging/plugLogger";
 import { deriveSocketNamespaceUrl } from "../../generated/shared/utils/url";
 import { createSocketIoTransport, type SocketIoTransportLike } from "./socketIoTransport";
+import { disposeSocketEventDispatcher } from "../../generated/shared/socket/socketEventDispatcher";
 
 export const socketTerminalEvents = ["app:error", "connect_error", "disconnect"] as const;
 
@@ -8,6 +9,7 @@ export interface ManagedSocketIoTransportOptions {
   readonly socketMode: string;
   readonly logEventKey: string;
   readonly onDispose?: () => void;
+  readonly onIdentityChanged?: () => void;
 }
 
 export class ManagedSocketIoTransport {
@@ -50,6 +52,7 @@ export class ManagedSocketIoTransport {
 
   private disposeNow(): void {
     if (this.transport) {
+      disposeSocketEventDispatcher(this.transport);
       for (const event of socketTerminalEvents) {
         this.transport.off(event, this.handleTerminalEvent);
       }
@@ -83,6 +86,12 @@ export class ManagedSocketIoTransport {
 
   ensureTransport(baseUrl: string, accessToken: string): SocketIoTransportLike {
     const namespaceUrl = deriveSocketNamespaceUrl(baseUrl, "/consumers");
+    if (
+      this.transport &&
+      (this.namespaceUrl !== namespaceUrl || this.accessToken !== accessToken)
+    ) {
+      this.options.onIdentityChanged?.();
+    }
     const shouldRecreate =
       this.transport === undefined || this.stale || this.namespaceUrl !== namespaceUrl;
 

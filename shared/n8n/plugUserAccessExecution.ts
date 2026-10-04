@@ -63,9 +63,7 @@ const buildExecutionResult = async (
   switch (operation) {
     case "listAgentCatalog": {
       const status = context.getNodeParameter("status", itemIndex, "all") as
-        | "all"
-        | "active"
-        | "inactive";
+        "all" | "active" | "inactive";
       const search = toOptionalString(context.getNodeParameter("search", itemIndex, ""));
       const page = toOptionalPositiveInteger(
         context.getNodeParameter("page", itemIndex, 1),

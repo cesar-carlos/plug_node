@@ -139,7 +139,7 @@ export const plugSqlCommonAdvancedOptions = [
     type: "number",
     default: 15000,
     description:
-      "Sets both the bridge wait timeout and the command timeout when the operation supports it.",
+      "SQL execution timeout. The hub waits at least this value plus 5 seconds (up to 360 seconds); the transport adds another 5 seconds. Active Socket streams use a correlated inactivity timeout.",
   },
   {
     displayName: "API Version",

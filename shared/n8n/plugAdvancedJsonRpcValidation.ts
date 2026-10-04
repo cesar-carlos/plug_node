@@ -1,11 +1,12 @@
-import type { z } from "zod";
+import type { z } from "zod4";
 
 import type { PlugCommandMethod, RpcSingleCommand } from "../contracts/api";
 import { PlugValidationError } from "../contracts/errors";
 import { advancedJsonRpcCommandSchema } from "./plugAdvancedJsonRpcMethodSchemas";
+import { legacyJsonRpcSchemaError } from "./legacyJsonRpcSchemaErrors";
 
-const formatZodIssuePath = (path: ReadonlyArray<string | number>): string =>
-  path.length === 0 ? "command" : path.join(".");
+const formatZodIssuePath = (path: ReadonlyArray<PropertyKey>): string =>
+  path.length === 0 ? "command" : path.map(String).join(".");
 
 const formatZodIssues = (issues: z.ZodIssue[]): string =>
   issues
@@ -20,7 +21,9 @@ export const parseAdvancedJsonRpcCommand = (
   value: unknown,
   label = "Raw JSON-RPC Command",
 ): RpcSingleCommand => {
-  const parsed = advancedJsonRpcCommandSchema.safeParse(value);
+  const parsed = advancedJsonRpcCommandSchema.safeParse(value, {
+    error: legacyJsonRpcSchemaError,
+  });
   if (!parsed.success) {
     throw new PlugValidationError(
       `${label} is invalid. ${formatZodIssues(parsed.error.issues)}`,

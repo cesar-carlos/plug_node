@@ -120,6 +120,10 @@ export const createExecutionSessionRunner = <
   const refreshSession = async (
     session: PlugSession<TCredentials, TLoginResponse>,
   ): Promise<PlugSession<TCredentials, TLoginResponse>> => {
+    // A parallel callback can report expiry after another callback renewed the session.
+    if (currentSession && currentSession !== session) {
+      return currentSession;
+    }
     const sourceSession = currentSession ?? session;
 
     if (!inFlightRefresh) {
@@ -154,9 +158,11 @@ export const createExecutionSessionRunner = <
   ): Promise<T> => {
     let reactiveRefreshUsed = false;
     let loginFallbackUsed = false;
+    let attemptedSession: PlugSession<TCredentials, TLoginResponse> | undefined;
 
     const runWithFreshSession = async (): Promise<T> => {
       const session = await ensureAccessTokenFresh();
+      attemptedSession = session;
       return callback(session);
     };
 
@@ -176,10 +182,10 @@ export const createExecutionSessionRunner = <
       });
 
       let sessionAfterRefresh: PlugSession<TCredentials, TLoginResponse>;
+      const refreshSourceSession =
+        attemptedSession ?? currentSession ?? (await ensureSession());
       try {
-        sessionAfterRefresh = await refreshSession(
-          currentSession ?? (await ensureSession()),
-        );
+        sessionAfterRefresh = await refreshSession(refreshSourceSession);
       } catch (refreshError: unknown) {
         if (
           !loginFallbackUsed &&
@@ -187,7 +193,9 @@ export const createExecutionSessionRunner = <
           refreshError.statusCode === 401
         ) {
           loginFallbackUsed = true;
-          currentSession = undefined;
+          if (currentSession === refreshSourceSession) {
+            currentSession = undefined;
+          }
           const reloggedSession = await ensureSession();
           return callback(reloggedSession);
         }

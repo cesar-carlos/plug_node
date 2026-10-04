@@ -10,9 +10,7 @@ import type {
 
 export interface MockExecuteContextOptions {
   readonly credentials:
-    | PlugCredentials
-    | PlugClientAuthCredentials
-    | PlugUserAuthCredentials;
+    PlugCredentials | PlugClientAuthCredentials | PlugUserAuthCredentials;
   readonly parameters: Record<string, unknown>;
   readonly responses: unknown[];
   readonly inputData?: INodeExecutionData[];

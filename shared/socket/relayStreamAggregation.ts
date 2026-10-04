@@ -1,4 +1,9 @@
 import {
+  applySocketDecodeInOrder,
+  registerSocketCommand,
+  isSocketEventDispatchTransport,
+} from "./socketEventDispatcher";
+import {
   DEFAULT_RELAY_PULL_WINDOW,
   type JsonObject,
   isSocketAggregatedResponseMode,
@@ -11,7 +16,7 @@ import type {
 } from "../contracts/payload-frame";
 import { plugLogger } from "../logging/plugLogger";
 import { decodePayloadFrameAsync, encodePayloadFrame } from "./payloadFrameCodec";
-import { createParallelChunkDecodeQueue } from "./parallelChunkDecode";
+import { createLazyParallelChunkDecodeQueue } from "./parallelChunkDecode";
 import {
   relayAppErrorEvent,
   relayConnectErrorEvent,
@@ -74,6 +79,9 @@ export interface RelayStreamAggregationInput {
   readonly limits: SocketBufferLimits;
   /** When set, skip waiting for relay:rpc.response and continue from this frame. */
   readonly seededResponse?: RelayStreamAggregationSeededResponse;
+  readonly canReceive?: () => boolean;
+  readonly drainDelivery?: () => Promise<void>;
+  readonly signal?: AbortSignal;
 }
 
 export interface RelayStreamAggregationResult {
@@ -104,6 +112,23 @@ type RelayStreamAggregationOutput = {
 export const waitForRelayStreamAggregation = (
   input: RelayStreamAggregationInput,
 ): Promise<RelayStreamAggregationOutput> => {
+  const wireSession = isSocketEventDispatchTransport(input.transport)
+    ? undefined
+    : registerSocketCommand({
+        transport: input.transport,
+        ids: [input.clientRequestId],
+        conversationId: input.conversationId,
+        signing: input.payloadFrameSigning,
+        bufferLimits: input.limits,
+      });
+  if (wireSession)
+    input = {
+      ...input,
+      transport: wireSession.transport,
+      payloadFrameSigning: wireSession.signing,
+      canReceive: wireSession.canReceive,
+      drainDelivery: wireSession.drain,
+    };
   const chunkPayloads: JsonObject[] = [];
   const rawChunkFrames: PayloadFrameEnvelope[] = [];
   let rawResponseFrame: PayloadFrameEnvelope | undefined;
@@ -139,7 +164,10 @@ export const waitForRelayStreamAggregation = (
   const aggregationPromise = new Promise<RelayStreamAggregationOutput>(
     (resolve, reject) => {
       const settle = createSettleOnce();
-      const decodeQueue = createParallelChunkDecodeQueue({
+      const decodeQueue = createLazyParallelChunkDecodeQueue({
+        maxPendingFrames: input.limits.maxBufferedChunkItems,
+        maxPendingBytes: input.limits.maxBufferedBytes,
+        accumulated: () => ({ bytes: bufferedBytes, frames: chunkCount }),
         onError: (error: unknown) => {
           cleanup();
           settle.settleOnce(reject, error);
@@ -147,6 +175,7 @@ export const waitForRelayStreamAggregation = (
       });
 
       const cleanup = (): void => {
+        input.signal?.removeEventListener("abort", handleAbort);
         idleTimer.dispose();
         pullSession.dispose();
         decodeQueue.clearPendingDecodes();
@@ -217,6 +246,7 @@ export const waitForRelayStreamAggregation = (
       };
 
       const adoptAcceptedRequestId = (acceptedRequestId: string): void => {
+        if (settle.isSettled()) return;
         // Stream pulls must use the hub UUID from the response PayloadFrame when
         // present. fastPath synthetic accepted uses clientRequestId and must not
         // overwrite that frame-bound hub id (inadvertent streams under fastPath).
@@ -244,7 +274,11 @@ export const waitForRelayStreamAggregation = (
       const requestNextStreamWindow = async (options?: {
         readonly drainQueuedHandlers?: boolean;
       }): Promise<void> => {
-        if (shouldSkipStreamPull(streamAggregation.state)) {
+        if (
+          settle.isSettled() ||
+          input.canReceive?.() === false ||
+          shouldSkipStreamPull(streamAggregation.state)
+        ) {
           return;
         }
 
@@ -257,7 +291,6 @@ export const waitForRelayStreamAggregation = (
             adoptAcceptedRequestId(accepted.requestId);
           }
 
-          idleTimer.resetIdleTimer();
           const nextWindowSize = await pullSession.requestPull({
             conversationId: input.conversationId,
             requestId: hubRequestId,
@@ -265,6 +298,10 @@ export const waitForRelayStreamAggregation = (
             timeoutMs: input.timeouts.commandTimeoutMs,
             windowSize: input.streamPullWindowSize ?? DEFAULT_RELAY_PULL_WINDOW,
           });
+          await input.drainDelivery?.();
+          await decodeQueue.drainOrderedWork();
+          if (settle.isSettled()) return;
+          idleTimer.resetIdleTimer();
           shouldRequestAdditionalWindow = finishStreamPull(
             streamAggregation.state,
             nextWindowSize,
@@ -319,7 +356,12 @@ export const waitForRelayStreamAggregation = (
           handleComplete(pending);
           return;
         }
-        await streamAggregation.requestInitialWindow(requestNextStreamWindow);
+        void streamAggregation
+          .requestInitialWindow(requestNextStreamWindow)
+          .catch((error: unknown) => {
+            cleanup();
+            settle.settleOnce(reject, error);
+          });
       };
 
       const handleResponse = async (payload: unknown): Promise<void> => {
@@ -329,15 +371,17 @@ export const waitForRelayStreamAggregation = (
 
         try {
           await ensureAcceptedHubRequestId();
-          idleTimer.resetIdleTimer();
           const decoded = await decodePayloadFrameAsync<unknown>(payload, {
             signing: input.payloadFrameSigning,
           });
+          if (settle.isSettled()) return;
           if (!matchesRequestId(decoded.frame.requestId, decoded.data)) {
             ignoredResponses += 1;
             return;
           }
 
+          if (settle.isSettled()) return;
+          idleTimer.resetIdleTimer();
           await beginStreamFromResponse(decoded.frame, decoded.data);
         } catch (error: unknown) {
           cleanup();
@@ -349,6 +393,14 @@ export const waitForRelayStreamAggregation = (
         readonly frame: PayloadFrameEnvelope;
         readonly data: JsonObject;
       }): void => {
+        if (settle.isSettled()) return;
+        if (
+          typeof decoded.data.stream_id === "string" &&
+          decoded.data.stream_id !== streamAggregation.state.activeStreamId
+        ) {
+          ignoredChunks++;
+          return;
+        }
         if (!matchesRequestId(decoded.frame.requestId, decoded.data)) {
           ignoredChunks += 1;
           return;
@@ -359,6 +411,7 @@ export const waitForRelayStreamAggregation = (
           return;
         }
 
+        idleTimer.resetIdleTimer();
         chunkCount += 1;
         bufferedBytes += decoded.frame.originalSize;
         bufferedRows += countRows(decoded.data.rows);
@@ -379,17 +432,25 @@ export const waitForRelayStreamAggregation = (
         streamAggregation.recordChunkReceived();
         streamAggregation.schedulePullIfCreditsExhausted(
           decodeQueue.enqueueOrderedWork,
-          () => requestNextStreamWindow({ drainQueuedHandlers: false }),
+          async () => {
+            void requestNextStreamWindow({ drainQueuedHandlers: false }).catch(
+              (error: unknown) => {
+                cleanup();
+                settle.settleOnce(reject, error);
+              },
+            );
+          },
         );
       };
 
-      const handleChunk = (payload: unknown): void => {
+      const handleChunk = (payload: unknown): Promise<void> | void => {
         if (settle.isSettled()) {
           return;
         }
 
-        idleTimer.resetIdleTimer();
-        decodeQueue.enqueueDecodeThenOrdered(
+        return applySocketDecodeInOrder(
+          input.transport,
+          decodeQueue,
           async () => {
             await ensureAcceptedHubRequestId();
             return decodePayloadFrameAsync<JsonObject>(payload, {
@@ -402,13 +463,12 @@ export const waitForRelayStreamAggregation = (
         );
       };
 
-      const handleComplete = (payload: unknown): void => {
-        decodeQueue.enqueueOrderedWork(async () => {
+      const handleComplete = (payload: unknown): Promise<void> => {
+        return decodeQueue.enqueueOrderedWork(async () => {
           if (settle.isSettled()) {
             return;
           }
 
-          idleTimer.resetIdleTimer();
           try {
             await ensureAcceptedHubRequestId();
           } catch (error: unknown) {
@@ -419,11 +479,21 @@ export const waitForRelayStreamAggregation = (
           const decoded = await decodePayloadFrameAsync<JsonObject>(payload, {
             signing: input.payloadFrameSigning,
           });
+          if (
+            typeof decoded.data.stream_id === "string" &&
+            streamAggregation.state.activeStreamId &&
+            decoded.data.stream_id !== streamAggregation.state.activeStreamId
+          ) {
+            ignoredCompletes++;
+            return;
+          }
           if (!matchesRequestId(decoded.frame.requestId, decoded.data)) {
             ignoredCompletes += 1;
             return;
           }
 
+          if (settle.isSettled()) return;
+          idleTimer.resetIdleTimer();
           if (rawResponsePayload === undefined) {
             // Response may still be awaiting accepted/decode; process after it lands.
             pendingCompletePayload = payload;
@@ -482,15 +552,28 @@ export const waitForRelayStreamAggregation = (
         settle.settleOnce(reject, createRelayDisconnectError(payload));
       };
 
-      const responseListener = (payload: unknown): void => {
-        void handleResponse(payload);
+      const responseListener = (payload: unknown): Promise<void> => {
+        return handleResponse(payload);
       };
-      const chunkListener = (payload: unknown): void => {
-        handleChunk(payload);
+      const chunkListener = (payload: unknown): Promise<void> | void => {
+        return handleChunk(payload);
       };
-      const completeListener = (payload: unknown): void => {
-        handleComplete(payload);
+      const completeListener = (payload: unknown): Promise<void> => {
+        return handleComplete(payload);
       };
+      const handleAbort = (): void => {
+        cleanup();
+        settle.settleOnce(
+          reject,
+          input.signal?.reason ?? new Error("Relay aggregation cancelled"),
+        );
+      };
+
+      if (input.signal?.aborted) {
+        handleAbort();
+        return;
+      }
+      input.signal?.addEventListener("abort", handleAbort, { once: true });
 
       // Apply hub requestId synchronously on accepted so the following
       // relay:rpc.response in the same turn can match immediately.
@@ -530,5 +613,5 @@ export const waitForRelayStreamAggregation = (
     });
   });
 
-  return aggregationPromise;
+  return aggregationPromise.finally(() => wireSession?.dispose());
 };

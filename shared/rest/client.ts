@@ -8,7 +8,7 @@ import type {
   RestBridgeCommandResponse,
   RestBridgeNotificationResponse,
 } from "../contracts/api";
-import { DEFAULT_REQUEST_TIMEOUT_MS } from "../contracts/api";
+import { resolveCommandTimeoutPolicy } from "../socket/commandTimeoutPolicy";
 import { PlugValidationError } from "../contracts/errors";
 import { buildAuthorizedHeaders, createHttpError } from "../auth/session";
 import { plugLogger } from "../logging/plugLogger";
@@ -68,12 +68,11 @@ export const executeRestCommand = async (
     timeoutMs: commandRequest.timeoutMs,
   });
 
+  const timeouts = resolveCommandTimeoutPolicy(commandRequest);
   const body: AgentCommandRequestBody = {
     agentId: commandRequest.agentId,
     command: commandRequest.command,
-    ...(commandRequest.timeoutMs !== undefined
-      ? { timeoutMs: commandRequest.timeoutMs }
-      : {}),
+    timeoutMs: timeouts.hubWaitTimeoutMs,
     ...(commandRequest.payloadFrameCompression !== undefined
       ? { payloadFrameCompression: commandRequest.payloadFrameCompression }
       : {}),
@@ -89,7 +88,7 @@ export const executeRestCommand = async (
       "content-type": "application/json",
     }),
     body,
-    timeoutMs: commandRequest.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    timeoutMs: timeouts.commandTimeoutMs,
   });
 
   if (response.statusCode !== 200 && response.statusCode !== 202) {

@@ -241,8 +241,7 @@ const buildRevokeAgentAccessResult = async (
   itemIndex: number,
 ): Promise<ClientAccessExecutionResult> => {
   const revokeMode = context.getNodeParameter("revokeMode", itemIndex, "single") as
-    | "single"
-    | "batch";
+    "single" | "batch";
   const agentId = toOptionalString(
     context.getNodeParameter("revokeAgentId", itemIndex, ""),
   );

@@ -1,3 +1,4 @@
+import { AgentStreamLimitCache } from "../../generated/shared/socket/agentStreamLimitCache";
 import { randomUUID } from "node:crypto";
 
 import type { PlugSocketExecutor } from "../../generated/shared/n8n/plugClientExecution";
@@ -17,10 +18,6 @@ import {
   type ConsumerSocketTransport,
 } from "../../generated/shared/socket/consumerCommandSession";
 import { deriveSocketNamespaceUrl } from "../../generated/shared/utils/url";
-import {
-  extractMaxStreamPullWindowSize,
-  extractRecommendedStreamPullWindowSize,
-} from "../../generated/shared/socket/streamPullWindowPolicy";
 import { createManagedSocketIoTransport } from "./managedSocketIoTransport";
 
 const defaultCapabilityProbeTimeoutMs = 1_500;
@@ -82,14 +79,30 @@ export class ConsumerSocketExecutionManager {
     socketMode: "agentsCommand",
     logEventKey: "manager",
     onDispose: () => {
+      this.cacheGeneration++;
+      this.probeGeneration++;
       this.capability = "unknown";
       this.capabilityProbeInFlight = undefined;
       this.capabilityCacheKey = undefined;
       this.capabilityCheckedAtMs = 0;
-      this.agentRecommendedStreamPullWindowSize = undefined;
-      this.agentMaxStreamPullWindowSize = undefined;
+      this.agentStreamLimits.clear();
+    },
+    onIdentityChanged: () => {
+      this.cacheGeneration++;
+      this.capability = "unknown";
+      this.capabilityCheckedAtMs = 0;
+      this.agentStreamLimits.clear();
     },
   });
+
+  private cacheGeneration = 0;
+  private probeGeneration = 0;
+  private closed = false;
+
+  private assertOpen(): void {
+    if (this.closed)
+      throw new PlugValidationError("Consumer execution manager is closed.");
+  }
 
   private capability: "unknown" | "supported" | "unsupported" = "unknown";
 
@@ -99,9 +112,7 @@ export class ConsumerSocketExecutionManager {
 
   private capabilityCheckedAtMs = 0;
 
-  private agentRecommendedStreamPullWindowSize?: number;
-
-  private agentMaxStreamPullWindowSize?: number;
+  private readonly agentStreamLimits = new AgentStreamLimitCache();
 
   private ensureTransport(baseUrl: string, accessToken: string): ConsumerSocketTransport {
     const transport = this.managedTransport.ensureTransport(baseUrl, accessToken);
@@ -114,8 +125,7 @@ export class ConsumerSocketExecutionManager {
       this.capability = "unknown";
       this.capabilityCacheKey = namespaceUrl;
       this.capabilityCheckedAtMs = 0;
-      this.agentRecommendedStreamPullWindowSize = undefined;
-      this.agentMaxStreamPullWindowSize = undefined;
+      this.agentStreamLimits.clear();
     }
 
     return transport as ConsumerSocketTransport;
@@ -124,6 +134,10 @@ export class ConsumerSocketExecutionManager {
   private async probeAgentsCommandCapability(
     input: Parameters<PlugSocketExecutor>[0],
   ): Promise<boolean> {
+    const currentTransport = this.ensureTransport(
+      input.session.credentials.baseUrl,
+      input.session.accessToken,
+    );
     const namespaceUrl = deriveSocketNamespaceUrl(
       input.session.credentials.baseUrl,
       "/consumers",
@@ -146,10 +160,9 @@ export class ConsumerSocketExecutionManager {
     }
 
     if (!this.capabilityProbeInFlight) {
-      const transport = this.ensureTransport(
-        input.session.credentials.baseUrl,
-        input.session.accessToken,
-      );
+      const transport = currentTransport;
+      const generation = this.cacheGeneration;
+      const probeGeneration = ++this.probeGeneration;
       const probeStartedAt = Date.now();
       const probeTimeoutMs = Math.max(
         250,
@@ -158,8 +171,11 @@ export class ConsumerSocketExecutionManager {
           defaultCapabilityProbeTimeoutMs,
         ),
       );
+      const probeAbort = new AbortController();
+      const probeTimer = setTimeout(() => probeAbort.abort(), probeTimeoutMs);
+      probeTimer.unref();
 
-      this.capabilityProbeInFlight = (async () => {
+      const probe: Promise<boolean> = (async () => {
         this.managedTransport.acquire();
         try {
           const probeResult = await executeConsumerCommand({
@@ -168,6 +184,7 @@ export class ConsumerSocketExecutionManager {
             agentId: input.agentId,
             command: buildConsumerSocketCapabilityProbeCommand(),
             timeoutMs: probeTimeoutMs,
+            signal: probeAbort.signal,
             payloadFrameCompression: "default",
             payloadFrameSigning: input.payloadFrameSigning,
             responseMode: "aggregatedJson",
@@ -179,28 +196,31 @@ export class ConsumerSocketExecutionManager {
             requestServerTimings: input.requestServerTimings,
           });
 
-          this.agentRecommendedStreamPullWindowSize =
-            extractRecommendedStreamPullWindowSize(
-              probeResult.channel === "socket" && !probeResult.notification
-                ? probeResult.rawResponsePayload
-                : undefined,
+          if (
+            generation === this.cacheGeneration &&
+            probeResult.channel === "socket" &&
+            !probeResult.notification
+          ) {
+            this.agentStreamLimits.remember(
+              input.agentId,
+              probeResult.agentId,
+              probeResult.rawResponsePayload,
             );
-          this.agentMaxStreamPullWindowSize = extractMaxStreamPullWindowSize(
-            probeResult.channel === "socket" && !probeResult.notification
-              ? probeResult.rawResponsePayload
-              : undefined,
-          );
+          }
 
-          this.capability = "supported";
+          if (generation === this.cacheGeneration) {
+            this.capability = "supported";
+            this.capabilityCacheKey = capabilityKey;
+            this.capabilityCheckedAtMs = Date.now();
+          }
           plugLogger.info("transport.socket.capability_probe.supported", {
             socketMode: "agentsCommand",
             agentId: input.agentId,
             durationMs: Date.now() - probeStartedAt,
           });
-          this.capabilityCacheKey = capabilityKey;
-          this.capabilityCheckedAtMs = Date.now();
           return true;
         } catch (error: unknown) {
+          if (generation !== this.cacheGeneration) throw error;
           if (error instanceof PlugTimeoutError) {
             if (Array.isArray(input.command)) {
               this.managedTransport.markStale();
@@ -243,10 +263,13 @@ export class ConsumerSocketExecutionManager {
 
           throw error;
         } finally {
+          clearTimeout(probeTimer);
           this.managedTransport.release();
-          this.capabilityProbeInFlight = undefined;
+          if (this.probeGeneration === probeGeneration)
+            this.capabilityProbeInFlight = undefined;
         }
       })();
+      this.capabilityProbeInFlight = probe;
     }
 
     return this.capabilityProbeInFlight;
@@ -259,6 +282,7 @@ export class ConsumerSocketExecutionManager {
       readonly preferredSocketMode?: PlugSocketImplementation;
     },
   ): Promise<Awaited<ReturnType<PlugSocketExecutor>>> {
+    this.assertOpen();
     const preferredSocketMode = options?.preferredSocketMode ?? "agentsCommand";
     if (preferredSocketMode === "relay") {
       if (!options?.fallbackExecutor) {
@@ -269,6 +293,7 @@ export class ConsumerSocketExecutionManager {
     }
 
     const capabilitySupported = await this.probeAgentsCommandCapability(input);
+    this.assertOpen();
     if (!capabilitySupported) {
       if (Array.isArray(input.command)) {
         throw new PlugValidationError(
@@ -297,6 +322,7 @@ export class ConsumerSocketExecutionManager {
       input.session.accessToken,
     );
     const executionStartedAt = Date.now();
+    const generation = this.cacheGeneration;
 
     this.managedTransport.acquire();
     try {
@@ -312,9 +338,19 @@ export class ConsumerSocketExecutionManager {
         bufferLimits: input.bufferLimits,
         streamPullWindowSize: input.streamPullWindowSize,
         requestServerTimings: input.requestServerTimings,
-        agentRecommendedStreamPullWindowSize: this.agentRecommendedStreamPullWindowSize,
-        agentMaxStreamPullWindowSize: this.agentMaxStreamPullWindowSize,
+        ...this.agentStreamLimits.get(input.agentId),
       });
+      this.assertOpen();
+      if (
+        generation === this.cacheGeneration &&
+        result.channel === "socket" &&
+        !result.notification
+      )
+        this.agentStreamLimits.remember(
+          input.agentId,
+          result.agentId,
+          result.rawResponsePayload,
+        );
       plugLogger.info("transport.socket.manager.completed", {
         socketMode: "agentsCommand",
         agentId: input.agentId,
@@ -346,6 +382,8 @@ export class ConsumerSocketExecutionManager {
   }
 
   close(): void {
+    if (this.closed) return;
+    this.closed = true;
     this.managedTransport.close();
   }
 }

@@ -32,8 +32,7 @@ export interface ToolsCapabilityExecutionConfig {
 }
 
 export type CapabilityExecutionConfig =
-  | SqlCapabilityExecutionConfig
-  | ToolsCapabilityExecutionConfig;
+  SqlCapabilityExecutionConfig | ToolsCapabilityExecutionConfig;
 
 export interface CapabilityDefinition {
   readonly name: string;
@@ -53,8 +52,7 @@ export type ValidationResult =
   | { readonly ok: false; readonly error: string };
 
 export type GovernanceResult =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly error: string };
+  { readonly ok: true } | { readonly ok: false; readonly error: string };
 
 export interface McpMeta {
   readonly capability: string;

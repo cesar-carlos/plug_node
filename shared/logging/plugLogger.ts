@@ -21,8 +21,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const redactSensitiveMetadata = (metadata: JsonObject): JsonObject => {
   const redacted: JsonObject = {};
 
-  for (const [key, value] of Object.entries(metadata)) {
-    if (value === undefined) {
+  const keys = Object.keys(metadata);
+  for (let index = 0; index < keys.length; index++) {
+    const key = keys[index];
+    const value = metadata[key];
+    if (value === undefined || key === "__proto__") {
       continue;
     }
 
@@ -55,12 +58,11 @@ const sanitizeMetadata = (metadata?: JsonObject): JsonObject | undefined => {
   }
 
   const redacted = redactSensitiveMetadata(metadata);
-  const entries = Object.entries(redacted).filter(([, value]) => value !== undefined);
-  if (entries.length === 0) {
+  if (Object.keys(redacted).length === 0) {
     return undefined;
   }
 
-  return Object.fromEntries(entries);
+  return redacted;
 };
 
 const writeLog = (

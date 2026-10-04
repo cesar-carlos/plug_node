@@ -11,11 +11,7 @@ export type ClientAccessOperation =
 
 export type ClientAgentStatus = "active" | "inactive";
 export type ClientAccessRequestStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "expired"
-  | "revoked";
+  "pending" | "approved" | "rejected" | "expired" | "revoked";
 export type ClientAgentStatusFilter = ClientAgentStatus | "all";
 export type ClientAccessRequestStatusFilter = ClientAccessRequestStatus | "all";
 export type ClientAccessResponseKind = "list" | "detail" | "summary";

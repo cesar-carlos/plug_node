@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   PlugSession,
@@ -18,6 +18,34 @@ const readCommandRequestId = (payload: unknown, fallback = "request-1"): string 
   typeof (payload as { readonly requestId?: unknown }).requestId === "string"
     ? (payload as { readonly requestId: string }).requestId
     : fallback;
+
+const createControlledTransport = () => {
+  const handlers = new Map<string, Set<(payload: unknown) => void>>();
+  const transport: ConsumerSocketTransport = {
+    connected: true,
+    connect: () => undefined,
+    disconnect: () => undefined,
+    emit: vi.fn(),
+    on: (event, handler) => {
+      const listeners = handlers.get(event) ?? new Set();
+      listeners.add(handler);
+      handlers.set(event, listeners);
+    },
+    off: (event, handler) => {
+      handlers.get(event)?.delete(handler);
+    },
+  };
+  return {
+    transport,
+    dispatch: (event: string, payload: unknown): void => {
+      for (const handler of handlers.get(event) ?? []) {
+        handler(payload);
+      }
+    },
+    listenerCount: (): number =>
+      [...handlers.values()].reduce((count, listeners) => count + listeners.size, 0),
+  };
+};
 
 const buildCommandSuccessResponse = (requestId: string) => ({
   success: true,
@@ -796,6 +824,158 @@ const session: PlugSession = {
 };
 
 describe("executeConsumerCommand", () => {
+  it("should finish an active stream before a lost pull ack without an absolute deadline", async () => {
+    vi.useFakeTimers();
+    const controlled = createControlledTransport();
+    try {
+      const result = executeConsumerCommand({
+        transport: controlled.transport,
+        session,
+        agentId: "agent-1",
+        command: { jsonrpc: "2.0", method: "sql.execute", id: "active", params: {} },
+        responseMode: "aggregatedJson",
+        timeoutMs: 1_000,
+      });
+      await vi.advanceTimersByTimeAsync(5_500);
+      controlled.dispatch("agents:command_response", {
+        success: true,
+        clientRequestId: "active",
+        requestId: "hub",
+        streamId: "stream",
+        response: {
+          type: "single",
+          success: true,
+          item: {
+            id: "active",
+            success: true,
+            result: { rows: [], stream_id: "stream" },
+          },
+        },
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(controlled.transport.emit).toHaveBeenCalledWith(
+        "agents:stream_pull",
+        expect.anything(),
+      );
+      controlled.dispatch("agents:command_stream_chunk", {
+        request_id: "hub",
+        stream_id: "stream",
+        rows: [{ index: 1 }],
+      });
+      await vi.advanceTimersByTimeAsync(700);
+      controlled.dispatch("agents:command_stream_complete", {
+        request_id: "hub",
+        stream_id: "stream",
+        terminal_status: "completed",
+      });
+      const response = await result;
+      expect(response.notification).toBe(false);
+      if (
+        response.notification ||
+        response.channel !== "socket" ||
+        response.response.type !== "single"
+      )
+        throw new Error("Expected streamed rows");
+      expect(response.response.item.result).toEqual(
+        expect.objectContaining({ rows: [{ index: 1 }] }),
+      );
+      expect(controlled.listenerCount()).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+      controlled.dispatch("agents:stream_pull_response", {
+        success: true,
+        requestId: "hub",
+        streamId: "stream",
+        windowSize: 256,
+      });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(controlled.listenerCount()).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("should time out when only unrelated commands produce socket activity", async () => {
+    vi.useFakeTimers();
+    const controlled = createControlledTransport();
+    try {
+      const result = executeConsumerCommand({
+        transport: controlled.transport,
+        session,
+        agentId: "agent-1",
+        command: {
+          jsonrpc: "2.0",
+          method: "sql.execute",
+          id: "waiting-command",
+          params: {},
+        },
+        responseMode: "aggregatedJson",
+        timeoutMs: 1_000,
+      });
+      const rejected = expect(result).rejects.toMatchObject({ code: "PLUG_TIMEOUT" });
+      await vi.advanceTimersByTimeAsync(500);
+      controlled.dispatch(
+        "agents:command_response",
+        buildCommandSuccessResponse("another-command"),
+      );
+      controlled.dispatch("agents:command_stream_chunk", {
+        request_id: "another-command",
+        stream_id: "other-stream",
+        rows: [],
+      });
+      controlled.dispatch("agents:command_stream_complete", {
+        request_id: "another-command",
+        stream_id: "other-stream",
+        terminal_status: "completed",
+      });
+      await vi.advanceTimersByTimeAsync(5_500);
+      await rejected;
+      expect(controlled.listenerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("should preserve server timings when unrelated responses arrive during a stream", async () => {
+    const controlled = createControlledTransport();
+    const result = executeConsumerCommand({
+      transport: controlled.transport,
+      session,
+      agentId: "agent-1",
+      command: { jsonrpc: "2.0", method: "sql.execute", id: "own-command", params: {} },
+      responseMode: "aggregatedJson",
+      timeoutMs: 5_000,
+    });
+    await Promise.resolve();
+    const ownTimings = { schemaVersion: 1, phasesMs: { encode_ms: 1 } };
+    controlled.dispatch("agents:command_response", {
+      ...buildCommandSuccessResponse("own-command"),
+      streamId: "own-stream",
+      serverTimings: ownTimings,
+    });
+    await Promise.resolve();
+    controlled.dispatch("agents:stream_pull_response", {
+      success: true,
+      requestId: "own-command",
+      streamId: "own-stream",
+      windowSize: 32,
+    });
+    controlled.dispatch("agents:command_response", {
+      ...buildCommandSuccessResponse("other-command"),
+      serverTimings: { schemaVersion: 1, phasesMs: { encode_ms: 999 } },
+    });
+    await Promise.resolve();
+    controlled.dispatch("agents:command_stream_complete", {
+      request_id: "own-command",
+      stream_id: "own-stream",
+      terminal_status: "completed",
+    });
+    const resolved = await result;
+    if (!resolved.notification) {
+      expect(resolved.executionMetrics?.serverTimings).toEqual(ownTimings);
+    }
+    expect(controlled.listenerCount()).toBe(0);
+  });
   it("returns normalized JSON for simple agents:command responses", async () => {
     const transport = new SimpleConsumerTransport();
     const result = await executeConsumerCommand({

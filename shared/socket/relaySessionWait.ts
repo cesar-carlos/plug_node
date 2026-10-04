@@ -16,9 +16,11 @@ export const waitForRelaySingleEvent = <TPayload>(
   eventName: string,
   timeoutMs: number,
   parser: (payload: unknown) => TPayload | Promise<TPayload>,
+  signal?: AbortSignal,
 ): Promise<TPayload> =>
   new Promise<TPayload>((resolve, reject) => {
     const cleanup = (): void => {
+      signal?.removeEventListener("abort", handleAbort);
       clearTimeout(timer);
       transport.off(eventName, handlePayload);
       transport.off(relayAppErrorEvent, handleAppError);
@@ -51,6 +53,10 @@ export const waitForRelaySingleEvent = <TPayload>(
       cleanup();
       reject(createRelayDisconnectError(payload));
     };
+    const handleAbort = (): void => {
+      cleanup();
+      reject(signal?.reason ?? new Error("Relay wait cancelled"));
+    };
 
     const timer = setTimeout(() => {
       cleanup();
@@ -61,6 +67,12 @@ export const waitForRelaySingleEvent = <TPayload>(
         }),
       );
     }, timeoutMs);
+
+    if (signal?.aborted) {
+      handleAbort();
+      return;
+    }
+    signal?.addEventListener("abort", handleAbort, { once: true });
 
     transport.on(eventName, handlePayload);
     transport.on(relayAppErrorEvent, handleAppError);

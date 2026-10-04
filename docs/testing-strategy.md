@@ -1,5 +1,17 @@
 # Testing Strategy
 
+## Native TypeScript and dependency compatibility
+
+Use Node `24.18.0` and npm `12.2.0`. `npm run verify` includes checks of the actual native compiler and compatibility API resolution, plus a native watch smoke covering initial emission, a type error, repair, file deletion and recreation. It preserves existing lint, typecheck, architectural and package-surface checks.
+
+Vitest and coverage use matching `5.0.3` versions. Fork isolation and serial file execution remain enabled. Schema error fixtures were captured from the pre-migration build and assert the complete public error, including SQL refinements. Zod 4 is imported only through `zod4`; n8n retains its Zod 3 peer. Remove that alias split only after the host supports Zod 4. Keep the local error serializer until an intentional public error-contract change.
+
+Runtime regression cases exercise number-to-words results in English and Brazilian Portuguese, fractions and negatives, CSV Unicode/quotes, asynchronous JSONata, Markdown, JSON Schema formats, and PDF loading cleanup on success and failure. Run the real browser smoke with `PLUG_TEST_REAL_PDF=1`; a default skip does not establish Chromium validation.
+
+`npm run pack:check` checks npm's legacy and npm 12 JSON formats without relaxing tarball size gates, installs two host profiles, and exercises installed native tools in a third profile. This local package validation does not contact Plug services.
+
+Windows validation passed with the native watch smoke. Linux validation in Docker with Node `24.18.0` passed clean installation, compiler/API resolution, typecheck, build, architecture, lint and all three tarball profiles, including native PDF/image operations. Watch did not detect the first edit after initial compilation, on both the Windows bind mount and an ext4 Docker volume. The watch gate remains active; full Linux validation is not approved. This matches the behavior reported in [TypeScript issue 63646](https://github.com/microsoft/TypeScript/issues/63646); the [upstream watcher fix](https://github.com/microsoft/typescript-go/pull/4661) does not justify changing the frozen `7.0.2` inventory automatically. Revalidate the same smoke when adopting an approved compiler release or another supported Linux environment.
+
 ## Local quality gates
 
 - `npm run verify` — full gate: prettier, surface checks, doc links, workflow examples, lint, typecheck, all tests, build
@@ -10,7 +22,7 @@
 
 ## Test suite size
 
-The workspace runs **400+** unit and package tests plus **1 skipped by design** (the live PDF smoke test gated by `PLUG_TEST_REAL_PDF=1`). Run `npm test` for the full tree.
+The migration validation runs **749 root tests and 377 package tests** with `PLUG_TEST_REAL_PDF=1`, for **1,126 passing tests**. Without that flag, the real PDF smoke is skipped; that skip does not establish browser compatibility. Run `npm test` for the full tree.
 
 - root tests (`tests/`): unit, integration, contract, and `plugSqlGuidedCommands.test.ts`
 - package tests (`packages/n8n-nodes-plug-database/tests/`): node description, execution, and snapshot files

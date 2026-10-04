@@ -21,6 +21,7 @@ export interface ExecuteRelayCommandInput {
   readonly agentId: string;
   readonly command: RpcSingleCommand;
   readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
   readonly payloadFrameCompression?: PayloadFrameCompression;
   readonly payloadFrameSigning?: PayloadFrameSigningOptions;
   readonly responseMode: PlugResponseMode;

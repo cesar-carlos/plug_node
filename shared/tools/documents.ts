@@ -115,23 +115,20 @@ export const extractPdfText = async (
     useWorkerFetch: false,
     isEvalSupported: false,
   } as Parameters<typeof pdfjs.getDocument>[0]);
-  const document = await loadingTask.promise;
-  const pages: Array<{ pageNumber: number; text: string }> = [];
-
-  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-    const page = await document.getPage(pageNumber);
-    const content = await page.getTextContent();
-    const text = content.items
-      .map((item) => ("str" in item && typeof item.str === "string" ? item.str : ""))
-      .join(" ")
-      .trim();
-    pages.push({ pageNumber, text });
+  try {
+    const document = await loadingTask.promise;
+    const pages: Array<{ pageNumber: number; text: string }> = [];
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const text = content.items
+        .map((item) => ("str" in item && typeof item.str === "string" ? item.str : ""))
+        .join(" ")
+        .trim();
+      pages.push({ pageNumber, text });
+    }
+    return { pages, text: pages.map((page) => page.text).join("\n\n") };
+  } finally {
+    await loadingTask.destroy();
   }
-
-  await document.destroy();
-
-  return {
-    pages,
-    text: pages.map((page) => page.text).join("\n\n"),
-  };
 };

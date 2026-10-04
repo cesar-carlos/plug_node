@@ -69,6 +69,102 @@ const relaySuccess = {
 };
 
 describe("RelaySocketExecutionManager", () => {
+  it("should prevent queued commands and late results after execution close", async () => {
+    const { createRelaySocketCommandExecutor } =
+      await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/relaySocketExecutionManager");
+    const executor = createRelaySocketCommandExecutor();
+    let finish!: (value: typeof relaySuccess) => void;
+    executeRelayCommandMock.mockReturnValue(
+      new Promise<typeof relaySuccess>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const input = {
+      session: {
+        credentials: {
+          user: "fixture",
+          password: "fixture",
+          baseUrl: "https://fixture.invalid/api/v1",
+        },
+        accessToken: "fixture",
+      },
+      agentId: "agent-1",
+      command: { jsonrpc: "2.0", method: "sql.execute", id: "one", params: {} },
+      responseMode: "aggregatedJson" as const,
+    };
+    const active = executor.execute(input);
+    const queued = executor.execute({
+      ...input,
+      command: { ...input.command, id: "two" },
+    });
+    const rejected = [
+      expect(active).rejects.toThrow(/closed/),
+      expect(queued).rejects.toThrow(/closed/),
+    ];
+    await vi.waitFor(() => expect(executeRelayCommandMock).toHaveBeenCalledTimes(1));
+    executor.close();
+    executor.close();
+    finish(relaySuccess);
+    await Promise.all(rejected);
+    await expect(executor.execute(input)).rejects.toThrow(/closed/);
+    expect(executeRelayCommandMock).toHaveBeenCalledTimes(1);
+    expect(createSocketIoTransportMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("should isolate learned stream ceilings by agent and expire them without extra discovery", async () => {
+    const { createRelaySocketCommandExecutor } =
+      await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/relaySocketExecutionManager");
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const executor = createRelaySocketCommandExecutor();
+    executeRelayCommandMock.mockImplementation(async (input: { agentId: string }) => ({
+      ...relaySuccess,
+      agentId: input.agentId,
+      rawResponsePayload: {
+        result: { maxStreamPullWindowSize: input.agentId === "a" ? 16 : 128 },
+      },
+    }));
+    const input = (agentId: string) => ({
+      session: {
+        credentials: {
+          user: "fixture",
+          password: "fixture",
+          baseUrl: "https://fixture.invalid/api/v1",
+        },
+        accessToken: "fixture",
+      },
+      agentId,
+      command: { jsonrpc: "2.0", method: "rpc.discover", id: agentId, params: {} },
+      responseMode: "aggregatedJson" as const,
+    });
+    try {
+      await executor.execute(input("a"));
+      await executor.execute(input("b"));
+      await executor.execute(input("a"));
+      await executor.execute(input("b"));
+      expect(
+        executeRelayCommandMock.mock.calls[0][0].agentMaxStreamPullWindowSize,
+      ).toBeUndefined();
+      expect(
+        executeRelayCommandMock.mock.calls[1][0].agentMaxStreamPullWindowSize,
+      ).toBeUndefined();
+      expect(executeRelayCommandMock.mock.calls[2][0].agentMaxStreamPullWindowSize).toBe(
+        16,
+      );
+      expect(executeRelayCommandMock.mock.calls[3][0].agentMaxStreamPullWindowSize).toBe(
+        128,
+      );
+      now.mockReturnValue(61_000);
+      await executor.execute(input("a"));
+      expect(
+        executeRelayCommandMock.mock.calls[4][0].agentMaxStreamPullWindowSize,
+      ).toBeUndefined();
+      expect(executeRelayCommandMock).toHaveBeenCalledTimes(5);
+    } finally {
+      now.mockRestore();
+      executor.close();
+    }
+  });
+
   beforeEach(() => {
     createSocketIoTransportMock.mockReset();
     executeRelayCommandMock.mockReset();

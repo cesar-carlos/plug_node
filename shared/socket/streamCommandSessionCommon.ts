@@ -18,13 +18,29 @@ export interface SocketBufferState {
   readonly chunkCount: number;
 }
 
+const bufferLimitKeys = [
+  "maxBufferedChunkItems",
+  "maxBufferedRows",
+  "maxBufferedBytes",
+] as const;
+
 export const resolveSocketBufferLimits = (
   input?: Partial<SocketBufferLimits>,
-): SocketBufferLimits => ({
-  maxBufferedChunkItems: input?.maxBufferedChunkItems ?? defaultMaxBufferedChunkItems,
-  maxBufferedRows: input?.maxBufferedRows ?? defaultMaxBufferedRows,
-  maxBufferedBytes: input?.maxBufferedBytes ?? defaultMaxBufferedBytes,
-});
+): SocketBufferLimits => {
+  const limits = {
+    maxBufferedChunkItems: input?.maxBufferedChunkItems ?? defaultMaxBufferedChunkItems,
+    maxBufferedRows: input?.maxBufferedRows ?? defaultMaxBufferedRows,
+    maxBufferedBytes: input?.maxBufferedBytes ?? defaultMaxBufferedBytes,
+  };
+  for (let index = 0; index < bufferLimitKeys.length; index++) {
+    const limit = limits[bufferLimitKeys[index]];
+    if (!Number.isFinite(limit) || limit <= 0)
+      throw new PlugError("Socket buffer limits must be positive finite numbers.", {
+        code: "SOCKET_BUFFER_LIMIT",
+      });
+  }
+  return limits;
+};
 
 export const countRows = (value: unknown): number =>
   Array.isArray(value) ? value.length : 0;

@@ -1,3 +1,5 @@
+import { registerSocketCommand } from "./socketEventDispatcher";
+import { resolveCommandTimeoutPolicy } from "./commandTimeoutPolicy";
 import { randomUUID } from "node:crypto";
 
 import type {
@@ -22,7 +24,12 @@ import {
   relayRpcRequestBatchEvent,
   relayRpcResponseEvent,
 } from "./relaySessionConstants";
-import { createRelayControlError } from "./relaySessionErrors";
+import {
+  createRelayControlError,
+  createRelaySocketAppError,
+  createRelayDisconnectError,
+  createRelayConnectError,
+} from "./relaySessionErrors";
 import {
   assertRelayBatchAcceptedPayload,
   ensureRelayCompatibleCommand,
@@ -41,10 +48,7 @@ import {
 } from "./relayStreamAggregation";
 import { resolveAdaptiveStreamPullWindowSize } from "./streamPullWindowPolicy";
 import { resolveSocketBufferLimits } from "./streamCommandSessionCommon";
-import {
-  buildSocketCommandTimeoutError,
-  resolveSocketCommandTimeouts,
-} from "./socketSessionLifecycle";
+import { buildSocketCommandTimeoutError } from "./socketSessionLifecycle";
 
 export const MAX_RELAY_BATCH_COMMANDS = 32;
 
@@ -224,7 +228,10 @@ export const executeRelayBatchCommand = async (
   input: ExecuteRelayBatchCommandInput,
 ): Promise<readonly RelayBatchCommandItemResult[]> => {
   const commands = ensureRelayBatchCommands(input.commands);
-  const timeouts = resolveSocketCommandTimeouts({ timeoutMs: input.timeoutMs });
+  const timeouts = resolveCommandTimeoutPolicy({
+    timeoutMs: input.timeoutMs,
+    command: input.commands,
+  });
   const limits = resolveSocketBufferLimits(input.bufferLimits);
   const streamPullWindowSize = resolveAdaptiveStreamPullWindowSize({
     configured: input.streamPullWindowSize,
@@ -236,20 +243,38 @@ export const executeRelayBatchCommand = async (
   const fastPath = input.fastPath === true;
   let commandSucceeded = false;
   const clientRequestIds = new Set(commands.map((command) => String(command.id)));
-
-  if (!managedTransport || !input.transport.connected) {
-    input.transport.connect();
-  }
+  const wireSession = registerSocketCommand({
+    transport: input.transport,
+    ids: [...clientRequestIds],
+    agentId: input.agentId,
+    conversationId: input.reusedConversationId,
+    signing: input.payloadFrameSigning,
+    bufferLimits: input.bufferLimits,
+  });
+  const lifetimeAbort = new AbortController();
+  const signal = input.signal
+    ? AbortSignal.any([input.signal, lifetimeAbort.signal])
+    : lifetimeAbort.signal;
+  input = {
+    ...input,
+    transport: wireSession.transport,
+    payloadFrameSigning: wireSession.signing,
+    signal,
+  };
 
   try {
-    if (!input.transport.connected) {
-      await waitForRelaySingleEvent(
-        input.transport,
-        relayConnectionReadyEvent,
-        timeouts.connectTimeoutMs,
-        (payload) => normalizeRelayConnectionReady(payload, input.payloadFrameSigning),
-      );
-    }
+    const readyPromise = input.transport.connected
+      ? undefined
+      : waitForRelaySingleEvent(
+          input.transport,
+          relayConnectionReadyEvent,
+          timeouts.connectTimeoutMs,
+          (payload) => normalizeRelayConnectionReady(payload, input.payloadFrameSigning),
+          signal,
+        );
+    void readyPromise?.catch(() => undefined);
+    if (!managedTransport || !input.transport.connected) input.transport.connect();
+    await readyPromise;
 
     if (!conversationId) {
       const conversationPromise = waitForRelaySingleEvent(
@@ -257,6 +282,7 @@ export const executeRelayBatchCommand = async (
         relayConversationStartedEvent,
         timeouts.commandTimeoutMs,
         normalizeRelayConversationStarted,
+        signal,
       );
       input.transport.emit(relayConversationStartEvent, {
         requestId: randomUUID(),
@@ -303,8 +329,8 @@ export const executeRelayBatchCommand = async (
     >();
     const bufferedFastPathResponses = new Map<string, DecodedBatchItemResponse>();
 
-    const responseListener = (payload: unknown): void => {
-      void (async () => {
+    const responseListener = (payload: unknown): Promise<void> => {
+      return (async () => {
         try {
           const decoded = await decodePayloadFrameAsync<unknown>(payload, {
             signing: input.payloadFrameSigning,
@@ -312,7 +338,12 @@ export const executeRelayBatchCommand = async (
 
           if (fastPath) {
             const clientRequestId = extractRpcBodyId(decoded.data);
-            if (clientRequestId === undefined || !clientRequestIds.has(clientRequestId)) {
+            if (clientRequestId === undefined) {
+              throw new PlugValidationError(
+                "Relay fast-path response requires a JSON-RPC id.",
+              );
+            }
+            if (!clientRequestIds.has(clientRequestId)) {
               return;
             }
 
@@ -366,13 +397,40 @@ export const executeRelayBatchCommand = async (
               data: decoded.data,
             });
           }
-        } catch {
-          // Ignore unrelated frames until timeout handles failures.
+        } catch (error) {
+          rejectFailure(error);
         }
       })();
     };
 
     const responseWaitTimers = new Set<NodeJS.Timeout>();
+    let rejectFailure!: (error: unknown) => void;
+    const failurePromise = new Promise<never>((_, reject) => {
+      rejectFailure = reject;
+    });
+    void failurePromise.catch(() => undefined);
+    const onAppError = (payload: unknown): void =>
+      rejectFailure(createRelaySocketAppError(payload));
+    const onDisconnect = (payload: unknown): void =>
+      rejectFailure(createRelayDisconnectError(payload));
+    const onConnectError = (payload: unknown): void =>
+      rejectFailure(createRelayConnectError(payload));
+    const onAbort = (): void =>
+      rejectFailure(signal.reason ?? new Error("Relay batch cancelled"));
+    input.transport.on("app:error", onAppError);
+    input.transport.on("disconnect", onDisconnect);
+    input.transport.on("connect_error", onConnectError);
+    signal.addEventListener("abort", onAbort, { once: true });
+    const batchAcceptedPromise = fastPath
+      ? undefined
+      : waitForRelaySingleEvent(
+          input.transport,
+          relayRpcBatchAcceptedEvent,
+          timeouts.commandTimeoutMs,
+          normalizeRelayBatchAcceptedPayload,
+          signal,
+        );
+    void batchAcceptedPromise?.catch(() => undefined);
 
     input.transport.on(relayRpcResponseEvent, responseListener);
 
@@ -384,7 +442,7 @@ export const executeRelayBatchCommand = async (
         : {}),
       ...(input.requestServerTimings === true ? { requestServerTimings: true } : {}),
       ...(fastPath ? { fastPath: true } : {}),
-      timeoutMs: timeouts.commandTimeoutMs,
+      timeoutMs: timeouts.hubWaitTimeoutMs,
     });
 
     let responses: DecodedBatchItemResponse[];
@@ -433,20 +491,15 @@ export const executeRelayBatchCommand = async (
         try {
           responses = await Promise.race(
             batchFailureWaiter
-              ? [waitAllResponses, batchFailureWaiter.promise]
-              : [waitAllResponses],
+              ? [waitAllResponses, batchFailureWaiter.promise, failurePromise]
+              : [waitAllResponses, failurePromise],
           );
         } finally {
           batchFailureWaiter?.cancel();
         }
       } else {
         const batchAccepted = assertRelayBatchAcceptedPayload(
-          await waitForRelaySingleEvent(
-            input.transport,
-            relayRpcBatchAcceptedEvent,
-            timeouts.commandTimeoutMs,
-            normalizeRelayBatchAcceptedPayload,
-          ),
+          await Promise.race([batchAcceptedPromise!, failurePromise]),
         );
 
         const acceptedByClientRequestId = new Map(
@@ -529,15 +582,23 @@ export const executeRelayBatchCommand = async (
           );
         }
 
-        responses = await Promise.all(successWaiters);
+        responses = await Promise.race([Promise.all(successWaiters), failurePromise]);
       }
     } finally {
+      signal.removeEventListener("abort", onAbort);
+      input.transport.off("app:error", onAppError);
+      input.transport.off("disconnect", onDisconnect);
+      input.transport.off("connect_error", onConnectError);
       // Always detach the shared response listener and clear timers, even on timeout.
       input.transport.off(relayRpcResponseEvent, responseListener);
       for (const timer of responseWaitTimers) {
         clearTimeout(timer);
       }
       responseWaitTimers.clear();
+      for (const pending of pendingFastPathResponses.values())
+        pending.reject(new Error("Relay batch response wait closed"));
+      for (const pending of pendingClassicResponses.values())
+        pending.reject(new Error("Relay batch response wait closed"));
       pendingFastPathResponses.clear();
       pendingClassicResponses.clear();
       bufferedClassicResponses.clear();
@@ -575,6 +636,9 @@ export const executeRelayBatchCommand = async (
 
         const streamOutcome = await waitForRelayStreamAggregation({
           transport: input.transport,
+          canReceive: wireSession.canReceive,
+          drainDelivery: wireSession.drain,
+          signal,
           conversationId: conversationId as string,
           clientRequestId: decoded.clientRequestId,
           acceptedStatePromise,
@@ -711,6 +775,8 @@ export const executeRelayBatchCommand = async (
     if (!managedTransport) {
       input.transport.disconnect();
     }
+    lifetimeAbort.abort();
+    wireSession.dispose();
   }
 };
 

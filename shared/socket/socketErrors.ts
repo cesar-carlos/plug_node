@@ -150,6 +150,7 @@ export const createSocketApplicationError = (
   payload: unknown,
   options: SocketApplicationErrorOptions,
 ): PlugError => {
+  if (payload instanceof PlugError) return payload;
   const appError = readSocketErrorData(payload);
   const code = appError.code !== undefined ? appError.code : "SOCKET_APP_ERROR";
 

@@ -1,5 +1,5 @@
 import type { PayloadFrameSigningOptions } from "../contracts/payload-frame";
-import { PlugTimeoutError } from "../contracts/errors";
+import { PlugTimeoutError, PlugValidationError } from "../contracts/errors";
 import { encodePayloadFrame } from "./payloadFrameCodec";
 import {
   relayAppErrorEvent,
@@ -29,10 +29,13 @@ type PendingPull = {
   readonly resolve: (windowSize: number) => void;
   readonly reject: (error: unknown) => void;
   readonly timer: NodeJS.Timeout;
+  readonly removeAbort: () => void;
 };
 
 const pullKey = (conversationId: string, requestId: string, streamId: string): string =>
   `${conversationId}\0${requestId}\0${streamId}`;
+
+const activePullKeys = new WeakMap<RelaySocketTransport, Set<string>>();
 
 export interface RelayStreamPullSessionOptions {
   readonly signing?: PayloadFrameSigningOptions;
@@ -41,6 +44,7 @@ export interface RelayStreamPullSessionOptions {
    * Use when the parent aggregation session already owns those terminal events.
    */
   readonly attachTerminalListeners?: boolean;
+  readonly signal?: AbortSignal;
 }
 
 export interface RelayStreamPullSession {
@@ -50,6 +54,7 @@ export interface RelayStreamPullSession {
     readonly streamId: string;
     readonly timeoutMs: number;
     readonly windowSize?: number;
+    readonly signal?: AbortSignal;
   }) => Promise<number>;
   readonly dispose: () => void;
 }
@@ -60,18 +65,24 @@ export const createRelayStreamPullSession = (
 ): RelayStreamPullSession => {
   const options: RelayStreamPullSessionOptions =
     signingOrOptions !== undefined &&
-    ("signing" in signingOrOptions || "attachTerminalListeners" in signingOrOptions)
+    ("signing" in signingOrOptions ||
+      "attachTerminalListeners" in signingOrOptions ||
+      "signal" in signingOrOptions)
       ? signingOrOptions
       : { signing: signingOrOptions as PayloadFrameSigningOptions | undefined };
   const signing = options.signing;
   const attachTerminalListeners = options.attachTerminalListeners !== false;
 
   const pending = new Map<string, PendingPull>();
+  const activeKeys = activePullKeys.get(transport) ?? new Set<string>();
+  activePullKeys.set(transport, activeKeys);
   let disposed = false;
 
   const rejectPending = (error: unknown): void => {
     for (const entry of pending.values()) {
       clearTimeout(entry.timer);
+      entry.removeAbort();
+      activeKeys.delete(pullKey(entry.conversationId, entry.requestId, entry.streamId));
       entry.reject(error);
     }
     pending.clear();
@@ -81,28 +92,34 @@ export const createRelayStreamPullSession = (
     try {
       const response = normalizeRelayStreamPullResponse(payload);
       if (!response.success) {
-        // Match against any pending with same ids when present; otherwise ignore.
+        // An unidentified failure affects every pending pull in this session.
         for (const [key, entry] of pending) {
           if (
             (response.requestId !== undefined &&
               response.requestId !== entry.requestId) ||
+            (response.conversationId !== undefined &&
+              response.conversationId !== entry.conversationId) ||
             (response.streamId !== undefined && response.streamId !== entry.streamId)
           ) {
             continue;
           }
 
           clearTimeout(entry.timer);
+          entry.removeAbort();
           pending.delete(key);
+          activeKeys.delete(key);
           entry.reject(
             createRelayControlError({
               code: response.error?.code ?? "RELAY_STREAM_PULL_FAILED",
               message: response.error?.message ?? "relay:rpc.stream.pull failed",
               statusCode: response.error?.statusCode,
               retryAfterMs: response.error?.retryAfterMs,
-              details: response.rateLimit ? { rateLimit: response.rateLimit } : undefined,
+              details: {
+                commandDispatched: true,
+                ...(response.rateLimit ? { rateLimit: response.rateLimit } : {}),
+              },
             }),
           );
-          return;
         }
         return;
       }
@@ -122,7 +139,9 @@ export const createRelayStreamPullSession = (
       }
 
       clearTimeout(entry.timer);
+      entry.removeAbort();
       pending.delete(key);
+      activeKeys.delete(key);
       const windowSize =
         typeof response.windowSize === "number" && response.windowSize > 0
           ? normalizeRelayStreamPullWindowSize(
@@ -187,9 +206,29 @@ export const createRelayStreamPullSession = (
       );
 
       const key = pullKey(input.conversationId, input.requestId, input.streamId);
+      if (activeKeys.has(key)) {
+        throw new PlugValidationError(
+          "A pull for this conversation, request and stream is already pending.",
+        );
+      }
+      const signal = input.signal ?? options.signal;
+      signal?.throwIfAborted();
+      activeKeys.add(key);
       return new Promise<number>((resolve, reject) => {
-        const timer = setTimeout(() => {
+        const handleAbort = (): void => {
+          const entry = pending.get(key);
+          if (!entry) return;
+          clearTimeout(entry.timer);
+          entry.removeAbort();
           pending.delete(key);
+          activeKeys.delete(key);
+          reject(signal?.reason ?? new Error("Stream pull cancelled"));
+        };
+        const removeAbort = (): void => signal?.removeEventListener("abort", handleAbort);
+        const timer = setTimeout(() => {
+          removeAbort();
+          pending.delete(key);
+          activeKeys.delete(key);
           reject(
             new PlugTimeoutError(
               "Timed out while waiting for relay:rpc.stream.pull_response",
@@ -211,12 +250,22 @@ export const createRelayStreamPullSession = (
           resolve,
           reject,
           timer,
+          removeAbort,
         });
+        signal?.addEventListener("abort", handleAbort, { once: true });
 
-        transport.emit(relayRpcStreamPullEvent, {
-          conversationId: input.conversationId,
-          frame,
-        });
+        try {
+          transport.emit(relayRpcStreamPullEvent, {
+            conversationId: input.conversationId,
+            frame,
+          });
+        } catch (error) {
+          clearTimeout(timer);
+          removeAbort();
+          pending.delete(key);
+          activeKeys.delete(key);
+          reject(error);
+        }
       }).then((windowSize) =>
         normalizeRelayStreamPullWindowSize(
           windowSize,
@@ -238,6 +287,8 @@ export const createRelayStreamPullSession = (
       }
       for (const entry of pending.values()) {
         clearTimeout(entry.timer);
+        entry.removeAbort();
+        activeKeys.delete(pullKey(entry.conversationId, entry.requestId, entry.streamId));
         entry.reject(
           createRelayControlError({
             code: "RELAY_STREAM_PULL_FAILED",

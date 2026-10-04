@@ -140,6 +140,26 @@ const buildCommand = (id: string): RpcSingleCommand => ({
 });
 
 describe("executeRelayBatchCommand", () => {
+  it("should clean up a waiter when connect throws synchronously", async () => {
+    const transport = new MockRelayBatchTransport();
+    const on = vi.spyOn(transport, "on");
+    const off = vi.spyOn(transport, "off");
+    vi.spyOn(transport, "connect").mockImplementation(() => {
+      throw new Error("connect failed");
+    });
+    await expect(
+      executeRelayBatchCommand({
+        transport,
+        session,
+        agentId: "agent-1",
+        commands: [buildCommand("one")],
+        responseMode: "aggregatedJson",
+      }),
+    ).rejects.toThrow("connect failed");
+    expect(on.mock.calls.length).toBeGreaterThan(0);
+    expect(off.mock.calls.length).toBe(on.mock.calls.length);
+  });
+
   it("accepts batch envelopes and resolves per-item responses", async () => {
     const transport = new MockRelayBatchTransport();
     transport.connect();
@@ -510,7 +530,7 @@ describe("executeRelayBatchCommand", () => {
     ).rejects.toThrow(/Timed out/i);
 
     expect(offSpy).toHaveBeenCalledWith("relay:rpc.response", expect.any(Function));
-  });
+  }, 10_000);
 
   it("aggregates stream chunks when a batch item response includes stream_id", async () => {
     class StreamingRelayBatchTransport extends MockRelayBatchTransport {

@@ -123,6 +123,35 @@ describe("matchesConsumerStreamPullResponse", () => {
 });
 
 describe("consumer stream pull helpers", () => {
+  it("should cancel lost acknowledgements and reject duplicate pulls without listeners left behind", async () => {
+    const transport = new MockConsumerPullTransport();
+    const abort = new AbortController();
+    const pull = requestConsumerStreamPull(
+      transport,
+      "req",
+      "stream",
+      10_000,
+      16,
+      undefined,
+      undefined,
+      { signal: abort.signal },
+    );
+    const rejected = expect(pull).rejects.toThrow(/cancel/);
+    await expect(
+      requestConsumerStreamPull(transport, "req", "stream", 10_000),
+    ).rejects.toThrow(/already pending/);
+    expect(transport.emittedEvents).toHaveLength(1);
+    abort.abort(new Error("cancel operation"));
+    await rejected;
+    for (const event of [
+      "agents:stream_pull_response",
+      "app:error",
+      "disconnect",
+      "connect_error",
+    ])
+      expect(transport.listenerCount(event)).toBe(0);
+  });
+
   it("normalizes and clamps pull window sizes", () => {
     expect(normalizeConsumerStreamPullWindowSize(undefined, 16)).toBe(16);
     expect(normalizeConsumerStreamPullWindowSize(0, 16)).toBe(16);

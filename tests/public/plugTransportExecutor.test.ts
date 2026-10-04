@@ -5,7 +5,10 @@ import type {
   PlugCredentialDefaults,
   PlugSession,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/api";
-import { PlugError } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
+import {
+  PlugError,
+  PlugTimeoutError,
+} from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/errors";
 import { executeBuiltCommandWithRetry } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugTransportExecutor";
 
 const executeRestCommand = vi.hoisted(() => vi.fn());
@@ -167,6 +170,50 @@ describe("executeBuiltCommandWithRetry", () => {
     const firstCommand = executeRestCommand.mock.calls[0]?.[2]?.command;
     const secondCommand = executeRestCommand.mock.calls[1]?.[2]?.command;
     expect(firstCommand).not.toEqual(secondCommand);
+  });
+
+  it.each([
+    new PlugTimeoutError("lost HTTP response"),
+    new PlugError("lost HTTP response", { code: "HTTP_REQUEST_FAILED", retryable: true }),
+  ])(
+    "should dispatch SQL only once after an ambiguous REST failure ($code)",
+    async (error) => {
+      executeRestCommand.mockRejectedValue(error);
+      await expect(
+        executeBuiltCommandWithRetry({
+          builtRequest: baseRestRequest(),
+          requester: vi.fn(),
+          sessionRunner,
+          config: { supportsSocket: false },
+          includeMetadata: false,
+        }),
+      ).rejects.toBe(error);
+      expect(executeRestCommand).toHaveBeenCalledTimes(1);
+      expect(sleepMs).not.toHaveBeenCalled();
+    },
+  );
+
+  it("should dispatch SQL only once after a socket disconnect", async () => {
+    const error = new PlugError("disconnected", {
+      code: "SOCKET_DISCONNECTED",
+      retryable: true,
+    });
+    const socketExecutor = vi.fn().mockRejectedValue(error);
+    await expect(
+      executeBuiltCommandWithRetry({
+        builtRequest: {
+          ...baseRestRequest(),
+          channel: "socket",
+          socketImplementation: "agentsCommand",
+        },
+        requester: vi.fn(),
+        sessionRunner,
+        config: { supportsSocket: true, socketExecutor },
+        includeMetadata: false,
+      }),
+    ).rejects.toBe(error);
+    expect(socketExecutor).toHaveBeenCalledTimes(1);
+    expect(sleepMs).not.toHaveBeenCalled();
   });
 
   it("does not retry replay_detected errors", async () => {

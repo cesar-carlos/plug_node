@@ -1,4 +1,6 @@
-﻿import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
+
+import { gzipSync } from "node:zlib";
 
 import {
   decodePayloadFrame,
@@ -45,6 +47,72 @@ const createRandomJsonPayload = (random: () => number, depth = 0): unknown => {
 };
 
 describe("payloadFrameCodec", () => {
+  it("should stop sync and async gunzip at the declared size", async () => {
+    const original = Buffer.from(
+      JSON.stringify({
+        rows: ["declared size must not replace the actual size check".repeat(100)],
+      }),
+    );
+    const compressed = gzipSync(original);
+    const frame: PayloadFrameEnvelope = {
+      schemaVersion: "1.0",
+      enc: "json",
+      cmp: "gzip",
+      contentType: "application/json",
+      originalSize: 32,
+      compressedSize: compressed.length,
+      payload: compressed,
+    };
+    expect(() => decodePayloadFrame(frame)).toThrow(/declared or allowed decoded limit/);
+    await expect(decodePayloadFrameAsync(frame)).rejects.toThrow(
+      /declared or allowed decoded limit/,
+    );
+  });
+
+  it.each(["default", "always"] as const)(
+    "should fall back to none when %s compression exceeds the inflation limit",
+    async (compression) => {
+      const data = { text: "compress-me|".repeat(12_000) };
+      const syncFrame = encodePayloadFrame(data, { compression });
+      const asyncFrame = await encodePayloadFrameAsync(data, { compression });
+
+      for (const frame of [syncFrame, asyncFrame]) {
+        expect(frame.cmp).toBe("none");
+        expect(decodePayloadFrame(frame).data).toEqual(data);
+        await expect(decodePayloadFrameAsync(frame)).resolves.toMatchObject({ data });
+      }
+    },
+  );
+
+  it("should reject oversized array payloads before allocating a buffer", async () => {
+    const frame = encodePayloadFrame({ ok: true }, { compression: "none" });
+    const oversized = { ...frame, payload: new Array(10 * 1024 * 1024 + 1) };
+    const allocate = vi.spyOn(Buffer, "allocUnsafe");
+    try {
+      expect(() => decodePayloadFrame(oversized)).toThrow("10 MiB compressed limit");
+      await expect(decodePayloadFrameAsync(oversized)).rejects.toThrow(
+        "10 MiB compressed limit",
+      );
+      expect(allocate).not.toHaveBeenCalled();
+    } finally {
+      allocate.mockRestore();
+    }
+  });
+
+  it("should reject oversized declared sizes before converting payload bytes", async () => {
+    const frame = encodePayloadFrame({ ok: true }, { compression: "none" });
+    const oversized = { ...frame, compressedSize: 10 * 1024 * 1024 + 1, payload: "e30=" };
+    const convert = vi.spyOn(Buffer, "from");
+    try {
+      expect(() => decodePayloadFrame(oversized)).toThrow("10 MiB compressed limit");
+      await expect(decodePayloadFrameAsync(oversized)).rejects.toThrow(
+        "10 MiB compressed limit",
+      );
+      expect(convert).not.toHaveBeenCalled();
+    } finally {
+      convert.mockRestore();
+    }
+  });
   it("encodes and decodes JSON payloads", () => {
     const frame = encodePayloadFrame(
       {
@@ -282,7 +350,11 @@ describe("payloadFrameCodec", () => {
         jsonrpc: "2.0",
         id: "req-async-signed",
         result: {
-          text: "compress-me|".repeat(12_000),
+          text: Array.from(
+            { length: 2_000 },
+            (_, index) =>
+              `signed-row-${index}-${((index * 2_654_435_761) >>> 0).toString(36)}`,
+          ).join("|"),
         },
       },
       {

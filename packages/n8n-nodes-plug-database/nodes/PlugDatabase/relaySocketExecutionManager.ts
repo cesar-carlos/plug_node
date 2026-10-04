@@ -1,3 +1,4 @@
+import { AgentStreamLimitCache } from "../../generated/shared/socket/agentStreamLimitCache";
 import type {
   NormalizedAgentRpcResponse,
   NormalizedRpcItem,
@@ -16,22 +17,15 @@ import {
   type RelaySocketTransport,
 } from "../../generated/shared/socket/relaySession";
 import { relayConversationEndEvent } from "../../generated/shared/socket/relaySessionConstants";
-import {
-  extractMaxStreamPullWindowSize,
-  extractRecommendedStreamPullWindowSize,
-} from "../../generated/shared/socket/streamPullWindowPolicy";
 import { createManagedSocketIoTransport } from "./managedSocketIoTransport";
 
 interface AgentRelaySessionState {
   conversationId?: string;
-  agentRecommendedStreamPullWindowSize?: number;
-  agentMaxStreamPullWindowSize?: number;
 }
 
 const buildMergedBatchMetrics = (
   serverTimings:
-    | import("../../generated/shared/contracts/api").PlugServerTimings
-    | undefined,
+    import("../../generated/shared/contracts/api").PlugServerTimings | undefined,
 ): SocketCommandRuntimeMetrics | undefined =>
   serverTimings
     ? {
@@ -115,7 +109,27 @@ export class RelaySocketExecutionManager {
   private readonly managedTransport = createManagedSocketIoTransport({
     socketMode: "relay",
     logEventKey: "relay_manager",
+    onDispose: () => {
+      this.cacheGeneration++;
+      this.agentSessions.clear();
+      this.agentStreamLimits.clear();
+      this.activeTransport = undefined;
+    },
+    onIdentityChanged: () => {
+      this.cacheGeneration++;
+      this.agentSessions.clear();
+      this.agentStreamLimits.clear();
+    },
   });
+
+  private cacheGeneration = 0;
+  private closed = false;
+
+  private assertOpen(): void {
+    if (this.closed) throw new PlugValidationError("Relay execution manager is closed.");
+  }
+
+  private readonly agentStreamLimits = new AgentStreamLimitCache();
 
   private readonly agentSessions = new Map<string, AgentRelaySessionState>();
 
@@ -136,20 +150,7 @@ export class RelaySocketExecutionManager {
   }
 
   private rememberStreamPullHints(agentId: string, payload: unknown): void {
-    const recommended = extractRecommendedStreamPullWindowSize(payload);
-    const max = extractMaxStreamPullWindowSize(payload);
-    if (recommended === undefined && max === undefined) {
-      return;
-    }
-
-    const session = this.getAgentSession(agentId);
-    this.agentSessions.set(agentId, {
-      ...session,
-      ...(recommended !== undefined
-        ? { agentRecommendedStreamPullWindowSize: recommended }
-        : {}),
-      ...(max !== undefined ? { agentMaxStreamPullWindowSize: max } : {}),
-    });
+    this.agentStreamLimits.remember(agentId, agentId, payload);
   }
 
   private rememberConversation(
@@ -183,18 +184,24 @@ export class RelaySocketExecutionManager {
   async execute(
     input: Parameters<PlugSocketExecutor>[0],
   ): Promise<Awaited<ReturnType<PlugSocketExecutor>>> {
+    this.assertOpen();
     return this.enqueueAgentExecute(input.agentId, () => this.executeUnlocked(input));
   }
 
   private async executeUnlocked(
     input: Parameters<PlugSocketExecutor>[0],
   ): Promise<Awaited<ReturnType<PlugSocketExecutor>>> {
+    this.assertOpen();
     const transport = this.managedTransport.ensureTransport(
       input.session.credentials.baseUrl,
       input.session.accessToken,
     ) as RelaySocketTransport;
     this.activeTransport = transport;
-    const agentSession = this.getAgentSession(input.agentId);
+    const generation = this.cacheGeneration;
+    const agentSession = {
+      ...this.getAgentSession(input.agentId),
+      ...this.agentStreamLimits.get(input.agentId),
+    };
 
     this.managedTransport.acquire();
     try {
@@ -220,9 +227,12 @@ export class RelaySocketExecutionManager {
           skipConversationEnd: true,
         });
 
+        this.assertOpen();
         const merged = mergeRelayBatchTransportResult(batchResults, input.agentId);
-        this.rememberConversation(input.agentId, merged.conversationId);
-        this.rememberStreamPullHints(input.agentId, merged.rawResponsePayload);
+        if (generation === this.cacheGeneration) {
+          this.rememberConversation(input.agentId, merged.conversationId);
+          this.rememberStreamPullHints(input.agentId, merged.rawResponsePayload);
+        }
         return merged;
       }
 
@@ -249,8 +259,11 @@ export class RelaySocketExecutionManager {
         }),
       );
 
-      this.rememberConversation(input.agentId, result.conversationId);
-      this.rememberStreamPullHints(input.agentId, result.rawResponsePayload);
+      this.assertOpen();
+      if (generation === this.cacheGeneration) {
+        this.rememberConversation(input.agentId, result.conversationId);
+        this.rememberStreamPullHints(input.agentId, result.rawResponsePayload);
+      }
 
       return result;
     } catch (error: unknown) {
@@ -266,6 +279,8 @@ export class RelaySocketExecutionManager {
   }
 
   close(): void {
+    if (this.closed) return;
+    this.closed = true;
     if (this.activeTransport) {
       for (const session of this.agentSessions.values()) {
         if (session.conversationId) {
@@ -277,6 +292,7 @@ export class RelaySocketExecutionManager {
     }
 
     this.agentSessions.clear();
+    this.agentStreamLimits.clear();
     this.agentExecuteQueues.clear();
     this.activeTransport = undefined;
     this.managedTransport.close();

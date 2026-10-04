@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "license": "MIT",
-  "packageManager": "npm@11.3.0",
+  "packageManager": "npm@12.2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cesar-carlos/plug_node.git"
@@ -33,6 +33,8 @@
     "bench:payload-frame": "npm run sync-shared && npm run build --workspace n8n-nodes-plug-database && node ./scripts/benchmark-payload-frame.mjs",
     "bench:payload-frame:check": "npm run sync-shared && npm run build --workspace n8n-nodes-plug-database && node ./scripts/check-payload-frame-benchmark.mjs",
     "bench:payload-frame:calibrate": "npm run sync-shared && npm run build --workspace n8n-nodes-plug-database && node ./scripts/calibrate-payload-frame-baseline.mjs",
+    "bench:socket-concurrency": "npm run build && node ./scripts/benchmark-socket-concurrency.mjs",
+    "bench:gzip-levels": "npm run build && node ./scripts/benchmark-gzip-levels.mjs",
     "ci": "npm run verify",
     "dev": "npm run dev --workspaces --if-present",
     "format": "prettier --write .",
@@ -45,7 +47,7 @@
     "test:packages": "npm run test --workspaces --if-present",
     "test:root": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config vitest.config.mts",
     "test:socket": "npm run test:socket:core && npm run test:socket:trigger",
-    "test:socket:core": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config vitest.config.mts tests/internal/consumerCommandSession.test.ts tests/internal/socketCommandExecutor.test.ts tests/internal/payloadFrameCodec.test.ts tests/internal/customSocketEvents.test.ts tests/internal/socketProtocolContracts.test.ts tests/internal/relaySession.test.ts tests/internal/relayBatchSession.test.ts tests/internal/relaySocketExecutionManager.test.ts tests/internal/parallelChunkDecode.test.ts tests/internal/consumerCommandStreamPull.test.ts tests/internal/consumerCommandWire.test.ts tests/internal/streamPullSession.test.ts tests/internal/socketSessionLifecycle.test.ts tests/internal/managedSocketIoTransport.test.ts",
+    "test:socket:core": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config vitest.config.mts tests/internal/consumerCommandSession.test.ts tests/internal/socketCommandExecutor.test.ts tests/internal/payloadFrameCodec.test.ts tests/internal/customSocketEvents.test.ts tests/internal/socketProtocolContracts.test.ts tests/internal/relaySession.test.ts tests/internal/relayBatchSession.test.ts tests/internal/relaySocketExecutionManager.test.ts tests/internal/parallelChunkDecode.test.ts tests/internal/consumerCommandStreamPull.test.ts tests/internal/consumerCommandWire.test.ts tests/internal/streamPullSession.test.ts tests/internal/socketSessionLifecycle.test.ts tests/internal/managedSocketIoTransport.test.ts tests/internal/commandTimeoutPolicy.test.ts tests/internal/socketEventDispatcher.test.ts tests/internal/agentStreamLimitCache.test.ts",
     "test:socket:trigger": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config vitest.config.mts tests/public/socketEventTrigger.test.ts tests/public/triggerReconnectManager.test.ts tests/internal/triggerBackpressureQueue.test.ts tests/internal/customSocketEventSessionWait.test.ts",
     "test:coverage": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config vitest.config.mts --coverage",
     "test:e2e": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts",
@@ -57,14 +59,29 @@
     "test:e2e:ci": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/auth.e2e.test.ts tests/e2e/custom-socket-events.e2e.test.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
-    "verify": "npm run format:check && npm run verify:surface && npm run verify:doc-links && npm run migrate:workflows:check-examples && npm run verify:deps && npm run lint && npm run typecheck && npm test && npm run build"
+    "verify": "npm run format:check && npm run verify:toolchain && npm run verify:compiler-watch && npm run verify:surface && npm run verify:doc-links && npm run migrate:workflows:check-examples && npm run verify:deps && npm run lint && npm run typecheck && npm test && npm run build",
+    "verify:toolchain": "node ./scripts/verify-toolchain.mjs",
+    "verify:compiler-watch": "node ./scripts/verify-compiler-watch.mjs",
+    "bench:typescript": "node ./scripts/benchmark-typescript.mjs",
+    "bench:dependencies": "node ./scripts/benchmark-dependency-runtime.mjs"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.31.0",
-    "@types/papaparse": "^5.5.2",
-    "@vitest/coverage-v8": "4.1.5",
-    "dependency-cruiser": "^16.10.4",
-    "dotenv": "^17.4.2",
-    "vitest": "4.1.5"
+    "@changesets/cli": "3.0.3",
+    "@types/papaparse": "5.5.2",
+    "@vitest/coverage-v8": "5.0.3",
+    "dependency-cruiser": "18.5.0",
+    "dotenv": "18.0.5",
+    "vitest": "5.0.3",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "ignore": "5.3.2"
+  },
+  "overrides": {
+    "@typescript/old": "npm:typescript@6.0.2"
+  },
+  "allowScripts": {
+    "@playwright/browser-chromium@1.63.0": true,
+    "unrs-resolver": true,
+    "eslint-plugin-n8n-nodes-base": false
   }
 }

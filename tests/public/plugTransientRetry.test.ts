@@ -106,14 +106,14 @@ describe("plugTransientRetry", () => {
     ).toBe(false);
   });
 
-  it("retries PlugTimeoutError for SQL operations on REST", () => {
+  it("should not retry PlugTimeoutError for SQL operations on REST", () => {
     expect(
       shouldRetryPlugOperation({
         operation: "executeSql",
         error: new PlugTimeoutError("timed out"),
         attemptNumber: 0,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldRetryPlugOperation({
         operation: "executeSql",
@@ -121,7 +121,7 @@ describe("plugTransientRetry", () => {
         attemptNumber: 0,
         channel: "rest",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldRetryPlugOperation({
         operation: "executeSql",
@@ -138,6 +138,83 @@ describe("plugTransientRetry", () => {
         error: new PlugTimeoutError("timed out"),
         attemptNumber: 0,
         channel: "socket",
+      }),
+    ).toBe(false);
+  });
+
+  it("should retry a REST metadata timeout", () => {
+    expect(
+      shouldRetryPlugOperation({
+        operation: "getAgentProfile",
+        error: new PlugTimeoutError("timed out"),
+        attemptNumber: 0,
+        channel: "rest",
+      }),
+    ).toBe(true);
+  });
+
+  it.each(["executeSql", "executeBatch", "bulkInsertSql", "cancelSql"] as const)(
+    "should not retry %s after an ambiguous transport failure",
+    (operation) => {
+      for (const code of [
+        "HTTP_REQUEST_FAILED",
+        "HTTP_RESPONSE_MISSING_STATUS",
+        "SOCKET_DISCONNECTED",
+        "CONSUMER_IDLE_TIMEOUT",
+        "SOCKET_APP_ERROR",
+      ]) {
+        expect(
+          shouldRetryPlugOperation({
+            operation,
+            error: new PlugError("lost response", { code, retryable: true }),
+            attemptNumber: 0,
+          }),
+        ).toBe(false);
+      }
+    },
+  );
+
+  it.each([500, 502, 503, 504])("should not retry SQL after HTTP %i", (statusCode) => {
+    expect(
+      shouldRetryPlugOperation({
+        operation: "executeSql",
+        channel: "rest",
+        attemptNumber: 0,
+        error: new PlugError("bridge failure", {
+          code: "SERVICE_UNAVAILABLE",
+          statusCode,
+          retryable: true,
+        }),
+      }),
+    ).toBe(false);
+  });
+
+  it("should retry a command rejected by socket overload before dispatch", () => {
+    expect(
+      shouldRetryPlugOperation({
+        operation: "executeSql",
+        channel: "socket",
+        attemptNumber: 0,
+        error: new PlugError("overloaded", {
+          code: "SERVICE_UNAVAILABLE",
+          statusCode: 503,
+          retryable: true,
+        }),
+      }),
+    ).toBe(true);
+  });
+
+  it("should not redispatch SQL when stream pull is rate limited", () => {
+    expect(
+      shouldRetryPlugOperation({
+        operation: "executeSql",
+        channel: "socket",
+        attemptNumber: 0,
+        error: new PlugError("pull limited", {
+          code: "RATE_LIMITED",
+          retryable: true,
+          details: { commandDispatched: true },
+        }),
       }),
     ).toBe(false);
   });

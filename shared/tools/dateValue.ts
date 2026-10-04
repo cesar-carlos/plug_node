@@ -134,17 +134,13 @@ type ToWordsConstructor = new (options: { readonly localeCode: string }) => {
   convert(value: number): string;
 };
 
-const importPackage = new Function("specifier", "return import(specifier)") as (
-  specifier: string,
-) => Promise<unknown>;
-
 export const numberToWordsValue = async (
   value: unknown,
   localeValue: unknown,
 ): Promise<string> => {
   const localeCode =
     typeof localeValue === "string" && localeValue.trim() ? localeValue : "en-US";
-  const imported = (await importPackage("to-words")) as {
+  const imported = (await import("to-words")) as {
     readonly ToWords: ToWordsConstructor;
   };
   const toWords = new imported.ToWords({ localeCode });

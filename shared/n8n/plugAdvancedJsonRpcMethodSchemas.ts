@@ -1,6 +1,10 @@
-import { z } from "zod";
+import { z } from "zod4";
 
 const nonEmptyString = z.string().trim().min(1);
+// Keep integer failures continuable so SQL option refinements still run.
+const integerNumber = z.number().refine(Number.isInteger, {
+  message: "Expected integer, received float",
+});
 const jsonObjectSchema = z.record(z.string(), z.unknown());
 const rpcMetaSchema = jsonObjectSchema;
 
@@ -23,8 +27,8 @@ const sqlExecuteOptionsSchema = z
   .object({
     timeout_ms: z.number().positive().optional(),
     max_rows: z.number().positive().optional(),
-    page: z.number().int().positive().optional(),
-    page_size: z.number().int().positive().optional(),
+    page: integerNumber.positive().optional(),
+    page_size: integerNumber.positive().optional(),
     cursor: nonEmptyString.optional(),
     execution_mode: z.enum(["managed", "preserve"]).optional(),
     preserve_sql: z.boolean().optional(),
@@ -99,7 +103,7 @@ const sqlExecuteBatchCommandItemSchema = z
   .object({
     sql: nonEmptyString,
     params: jsonObjectSchema.optional(),
-    execution_order: z.number().int().optional(),
+    execution_order: integerNumber.optional(),
   })
   .strict();
 

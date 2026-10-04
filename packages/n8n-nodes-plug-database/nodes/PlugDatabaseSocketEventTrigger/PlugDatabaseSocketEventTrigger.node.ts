@@ -69,8 +69,7 @@ export class PlugDatabaseSocketEventTrigger implements INodeType {
     const requester = buildN8nHttpRequester(this);
     const sessionRunner = createExecutionSessionRunner(requester, credentials);
     const eventSource = this.getNodeParameter("eventSource", "customEvents") as
-      | "customEvents"
-      | "agentProfileUpdated";
+      "customEvents" | "agentProfileUpdated";
     const eventNames =
       eventSource === "customEvents"
         ? readTriggerEventNames(this)

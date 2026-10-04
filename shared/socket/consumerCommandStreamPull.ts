@@ -3,7 +3,7 @@ import type {
   JsonObject,
 } from "../contracts/api";
 import type { PayloadFrameSigningOptions } from "../contracts/payload-frame";
-import { PlugTimeoutError } from "../contracts/errors";
+import { PlugTimeoutError, PlugValidationError } from "../contracts/errors";
 import {
   createConsumerConnectError,
   createConsumerControlError,
@@ -25,6 +25,8 @@ import {
 } from "./consumerCommandWire";
 import { DEFAULT_CONSUMER_SOCKET_PULL_WINDOW } from "../contracts/api";
 import { createSettleOnce } from "./socketSessionLifecycle";
+
+const activePulls = new WeakMap<ConsumerSocketTransport, Set<string>>();
 
 export const normalizeConsumerStreamPullWindowSize = (
   value: unknown,
@@ -101,6 +103,7 @@ export const requestConsumerStreamPull = async (
   signing?: PayloadFrameSigningOptions,
   options?: {
     readonly attachTerminalListeners?: boolean;
+    readonly signal?: AbortSignal;
   },
 ): Promise<number> => {
   const normalizedWindowSize = normalizeConsumerStreamPullWindowSize(
@@ -110,10 +113,21 @@ export const requestConsumerStreamPull = async (
   const settle = createSettleOnce();
   const attachTerminalListeners = options?.attachTerminalListeners !== false;
 
+  const key = JSON.stringify([requestId, streamId]);
+  const keys = activePulls.get(transport) ?? new Set<string>();
+  if (keys.has(key)) {
+    throw new PlugValidationError(
+      "A pull for this request and stream is already pending.",
+    );
+  }
+  activePulls.set(transport, keys);
+  keys.add(key);
   return new Promise<number>((resolve, reject) => {
     let timer: NodeJS.Timeout | undefined;
 
     const cleanup = (): void => {
+      keys.delete(key);
+      options?.signal?.removeEventListener("abort", handleAbort);
       if (timer) {
         clearTimeout(timer);
         timer = undefined;
@@ -126,8 +140,8 @@ export const requestConsumerStreamPull = async (
       }
     };
 
-    const handlePullResponse = (payload: unknown): void => {
-      void (async () => {
+    const handlePullResponse = (payload: unknown): Promise<void> => {
+      return (async () => {
         if (settle.isSettled()) {
           return;
         }
@@ -149,9 +163,10 @@ export const requestConsumerStreamPull = async (
                 message: response.error.message,
                 statusCode: response.error.statusCode,
                 retryAfterMs: response.error.retryAfterMs,
-                details: response.rateLimit
-                  ? { rateLimit: response.rateLimit }
-                  : undefined,
+                details: {
+                  commandDispatched: true,
+                  ...(response.rateLimit ? { rateLimit: response.rateLimit } : {}),
+                },
               }),
             );
             return;
@@ -184,6 +199,19 @@ export const requestConsumerStreamPull = async (
       cleanup();
       settle.settleOnce(reject, createConsumerDisconnectError(payload));
     };
+    const handleAbort = (): void => {
+      cleanup();
+      settle.settleOnce(
+        reject,
+        options?.signal?.reason ?? new Error("Stream pull cancelled"),
+      );
+    };
+
+    if (options?.signal?.aborted) {
+      handleAbort();
+      return;
+    }
+    options?.signal?.addEventListener("abort", handleAbort, { once: true });
 
     timer = setTimeout(() => {
       cleanup();
@@ -204,10 +232,15 @@ export const requestConsumerStreamPull = async (
       transport.on(consumerSocketConnectErrorEvent, handleConnectError);
       transport.on(consumerSocketDisconnectEvent, handleDisconnect);
     }
-    transport.emit(consumerSocketStreamPullEvent, {
-      requestId,
-      streamId,
-      windowSize: normalizedWindowSize,
-    });
+    try {
+      transport.emit(consumerSocketStreamPullEvent, {
+        requestId,
+        streamId,
+        windowSize: normalizedWindowSize,
+      });
+    } catch (error) {
+      cleanup();
+      settle.settleOnce(reject, error);
+    }
   });
 };

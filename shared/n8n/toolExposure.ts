@@ -4,8 +4,7 @@ export const plugToolExposureConsolidated = "consolidatedTool" as const;
 export const plugToolExposureWorkflowOnly = "workflowOnly" as const;
 
 export type PlugToolExposure =
-  | typeof plugToolExposureConsolidated
-  | typeof plugToolExposureWorkflowOnly;
+  typeof plugToolExposureConsolidated | typeof plugToolExposureWorkflowOnly;
 
 export const applyToolExposure = (
   description: INodeTypeDescription,

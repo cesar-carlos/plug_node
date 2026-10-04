@@ -137,7 +137,7 @@ describe("extractServerTimings", () => {
     });
   });
 
-  it("parses wrapped response.meta serverTimings", () => {
+  it("ignores unsupported wrapped response.meta serverTimings", () => {
     expect(
       extractServerTimings({
         response: {
@@ -151,12 +151,7 @@ describe("extractServerTimings", () => {
           },
         },
       }),
-    ).toEqual({
-      schemaVersion: 2,
-      phasesMs: {
-        pending_resolve_ms: 0.18,
-      },
-    });
+    ).toBeUndefined();
   });
 
   it("returns undefined for non-timing payloads", () => {

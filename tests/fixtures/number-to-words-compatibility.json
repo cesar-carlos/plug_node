@@ -1,0 +1,37 @@
+[
+  {
+    "value": 0,
+    "locale": "en-US",
+    "expected": "Zero"
+  },
+  {
+    "value": 42,
+    "locale": "en-US",
+    "expected": "Forty Two"
+  },
+  {
+    "value": 1.25,
+    "locale": "en-US",
+    "expected": "One Point Twenty Five"
+  },
+  {
+    "value": -42,
+    "locale": "en-US",
+    "expected": "Minus Forty Two"
+  },
+  {
+    "value": 123,
+    "locale": "pt-BR",
+    "expected": "Cento E Vinte E Três"
+  },
+  {
+    "value": 1001,
+    "locale": "pt-BR",
+    "expected": "Mil Um"
+  },
+  {
+    "value": 1.25,
+    "locale": "pt-BR",
+    "expected": "Um Vírgula Vinte E Cinco"
+  }
+]

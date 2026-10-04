@@ -35,6 +35,97 @@ const loadFixture = <T>(name: string): T =>
   ) as T;
 
 describe("auth session runner", () => {
+  it("should reuse the renewed session when a parallel callback reports expiry late", async () => {
+    const requester: PlugHttpRequester = vi
+      .fn()
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: {},
+        body: loadFixture("login.success.json"),
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: {},
+        body: loadFixture("refresh.success.json"),
+      });
+    const runner = createExecutionSessionRunner(requester, credentials);
+    let releaseLateError!: () => void;
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      releaseLateError = resolve;
+    });
+    const authError = new PlugError("Expired token", {
+      code: "TOKEN_EXPIRED",
+      statusCode: 401,
+      authRelated: true,
+    });
+
+    const lateResult = runner(async (session) => {
+      if (session.accessToken === "access-1") {
+        markStarted();
+        await gate;
+        throw authError;
+      }
+      return session.accessToken;
+    });
+    await started;
+    const firstResult = await runner(async (session) => {
+      if (session.accessToken === "access-1") {
+        throw authError;
+      }
+      return session.accessToken;
+    });
+    releaseLateError();
+
+    expect(firstResult).toBe("access-2");
+    await expect(lateResult).resolves.toBe("access-2");
+    expect(requester).toHaveBeenCalledTimes(2);
+  });
+
+  it("should share relogin when parallel callbacks receive a rejected refresh", async () => {
+    const requester: PlugHttpRequester = vi
+      .fn()
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: {},
+        body: loadFixture("login.success.json"),
+      })
+      .mockResolvedValueOnce({
+        statusCode: 401,
+        headers: {},
+        body: { code: "REFRESH_EXPIRED" },
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        headers: {},
+        body: {
+          ...loadFixture<Record<string, unknown>>("login.success.json"),
+          accessToken: "access-2",
+        },
+      });
+    const runner = createExecutionSessionRunner(requester, credentials);
+    const execute = async (session: {
+      readonly accessToken: string;
+    }): Promise<string> => {
+      if (session.accessToken === "access-1") {
+        throw new PlugError("Expired token", {
+          code: "TOKEN_EXPIRED",
+          statusCode: 401,
+          authRelated: true,
+        });
+      }
+      return session.accessToken;
+    };
+
+    await expect(Promise.all([runner(execute), runner(execute)])).resolves.toEqual([
+      "access-2",
+      "access-2",
+    ]);
+    expect(requester).toHaveBeenCalledTimes(3);
+  });
   it("refreshes the session once when an auth-related error happens", async () => {
     const loginSuccess = loadFixture("login.success.json");
     const refreshSuccess = loadFixture("refresh.success.json");

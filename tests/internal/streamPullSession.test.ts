@@ -44,6 +44,56 @@ class MockPullTransport implements RelaySocketTransport {
 }
 
 describe("createRelayStreamPullSession", () => {
+  it("should reject every affected pull when a failure has no request identity", async () => {
+    const transport = new MockPullTransport();
+    const session = createRelayStreamPullSession(transport);
+    const pulls = ["one", "two"].map((requestId) =>
+      session.requestPull({
+        conversationId: "conv",
+        requestId,
+        streamId: requestId,
+        timeoutMs: 10_000,
+      }),
+    );
+    const rejected = pulls.map((pull) =>
+      expect(pull).rejects.toMatchObject({ code: "STREAM_LOST" }),
+    );
+    transport.dispatch("relay:rpc.stream.pull_response", {
+      success: false,
+      error: { code: "STREAM_LOST", message: "Stream was lost" },
+    });
+    await Promise.all(rejected);
+    session.dispose();
+    expect(transport.listenerCount("relay:rpc.stream.pull_response")).toBe(0);
+  });
+
+  it("should cancel lost acknowledgements and reject duplicates across sessions", async () => {
+    const transport = new MockPullTransport();
+    const first = createRelayStreamPullSession(transport);
+    const second = createRelayStreamPullSession(transport);
+    const abort = new AbortController();
+    const input = {
+      conversationId: "conv",
+      requestId: "req",
+      streamId: "stream",
+      timeoutMs: 10_000,
+    };
+    const pull = first.requestPull({ ...input, signal: abort.signal });
+    const rejected = expect(pull).rejects.toThrow(/cancel/);
+    await expect(second.requestPull(input)).rejects.toThrow(/already pending/);
+    abort.abort(new Error("cancel operation"));
+    await rejected;
+    first.dispose();
+    second.dispose();
+    for (const event of [
+      "relay:rpc.stream.pull_response",
+      "app:error",
+      "disconnect",
+      "connect_error",
+    ])
+      expect(transport.listenerCount(event)).toBe(0);
+  });
+
   it("resolves matching pull_response window sizes", async () => {
     const transport = new MockPullTransport();
     const session = createRelayStreamPullSession(transport, {

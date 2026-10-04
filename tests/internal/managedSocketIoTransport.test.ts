@@ -24,6 +24,29 @@ const buildMockTransport = () => ({
 });
 
 describe("ManagedSocketIoTransport refcount", () => {
+  it("should invalidate identity state immediately while physical disposal is deferred", async () => {
+    const { createManagedSocketIoTransport } =
+      await import("../../packages/n8n-nodes-plug-database/nodes/PlugDatabase/managedSocketIoTransport");
+    const onIdentityChanged = vi.fn();
+    const onDispose = vi.fn();
+    const managed = createManagedSocketIoTransport({
+      socketMode: "agentsCommand",
+      logEventKey: "identity",
+      onIdentityChanged,
+      onDispose,
+    });
+    const transport = managed.ensureTransport("https://fixture.invalid/api/v1", "one");
+    managed.acquire();
+    const disposalsBefore = onDispose.mock.calls.length;
+    expect(managed.ensureTransport("https://fixture.invalid/api/v1", "two")).toBe(
+      transport,
+    );
+    expect(onIdentityChanged).toHaveBeenCalledTimes(1);
+    expect(onDispose).toHaveBeenCalledTimes(disposalsBefore);
+    managed.release();
+    expect(onDispose).toHaveBeenCalledTimes(disposalsBefore + 1);
+  });
+
   beforeEach(() => {
     createSocketIoTransportMock.mockReset();
     createSocketIoTransportMock.mockImplementation(() => buildMockTransport());

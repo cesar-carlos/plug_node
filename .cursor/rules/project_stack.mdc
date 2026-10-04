@@ -7,6 +7,10 @@ alwaysApply: true
 
 - This is a stack-specific rule file for the chosen libraries and ecosystem conventions.
 - Workspace tooling uses `npm workspaces`, `@n8n/node-cli`, `TypeScript`, `ESLint`, `Prettier`, `Vitest`, and `release-it`.
+- Pin npm `12.2.0` in local execution and CI. Install-script approvals belong in the root manifest; do not repair native bindings with untracked `--no-save` installs.
+- Use the TypeScript `7.0.2` native alias for compilation and watch, and the TypeScript `6.0.2` API compatibility alias for analysis tools. Verify their actual resolution with `npm run verify:toolchain`.
+- Keep the CLI `0.28.0` compatibility profile until its replacement supports this package's existing runtime dependencies. The root `ignore@5.3.2` dev dependency satisfies the legacy SDK's optional peer; dependency-cruiser keeps its own version 7. Remove this bridge with the legacy CLI profile.
+- Use `zod4` only for the existing Plug JSON-RPC schemas; retain `zod@3.25.76` for n8n peers. Remove the alias split when the host accepts Zod 4. Preserve the public validation error contract through the local tested serializer.
 - Use `npm run verify` as the default local quality gate before handing work off.
 - Target the workspace development environment at Node `24.18.0`, matching `.nvmrc`, `.node-version`, and CI.
 - Runtime integration targets `n8n` and `n8n-workflow`; keep package metadata aligned with official n8n package conventions.

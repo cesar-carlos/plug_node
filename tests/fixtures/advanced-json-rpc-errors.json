@@ -1,0 +1,183 @@
+[
+  {
+    "command": {},
+    "error": "Raw JSON-RPC Command is invalid. method: Invalid discriminator value. Expected 'sql.execute' | 'sql.executeBatch' | 'sql.bulkInsert' | 'sql.cancel' | 'rpc.discover' | 'agent.getProfile' | 'client_token.getPolicy'"
+  },
+  {
+    "command": {
+      "method": "unsupported",
+      "params": {}
+    },
+    "error": "Raw JSON-RPC Command is invalid. method: Invalid discriminator value. Expected 'sql.execute' | 'sql.executeBatch' | 'sql.bulkInsert' | 'sql.cancel' | 'rpc.discover' | 'agent.getProfile' | 'client_token.getPolicy'"
+  },
+  {
+    "command": {
+      "method": "sql.execute",
+      "params": {}
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.sql: Required"
+  },
+  {
+    "command": {
+      "method": "sql.execute",
+      "params": {
+        "sql": 3
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.sql: Expected string, received number"
+  },
+  {
+    "command": {
+      "method": "sql.execute",
+      "params": {
+        "sql": ""
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.sql: String must contain at least 1 character(s)"
+  },
+  {
+    "command": {
+      "method": "sql.execute",
+      "params": {
+        "sql": "SELECT 1",
+        "extra": 1
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params: Unrecognized key(s) in object: 'extra'"
+  },
+  {
+    "command": {
+      "method": "sql.execute",
+      "params": {
+        "sql": "SELECT 1",
+        "options": {
+          "timeout_ms": 0,
+          "page": 1.5
+        }
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.options.timeout_ms: Number must be greater than 0; params.options.page: Expected integer, received float; params.options.page_size: page and page_size must be used together"
+  },
+  {
+    "command": {
+      "method": "sql.execute",
+      "params": {
+        "sql": "SELECT 1",
+        "options": {
+          "execution_mode": "invalid"
+        }
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.options.execution_mode: Invalid enum value. Expected 'managed' | 'preserve', received 'invalid'"
+  },
+  {
+    "command": {
+      "method": "sql.executeBatch",
+      "params": {
+        "commands": []
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.commands: Array must contain at least 1 element(s)"
+  },
+  {
+    "command": {
+      "method": "sql.executeBatch",
+      "params": {
+        "commands": [
+          {
+            "sql": 1,
+            "params": []
+          }
+        ]
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.commands.0.sql: Expected string, received number; params.commands.0.params: Expected object, received array"
+  },
+  {
+    "command": {
+      "method": "sql.bulkInsert",
+      "params": {
+        "table": "x",
+        "columns": [],
+        "rows": []
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.columns: Array must contain at least 1 element(s); params.rows: Array must contain at least 1 element(s)"
+  },
+  {
+    "command": {
+      "method": "sql.bulkInsert",
+      "params": {
+        "table": "x",
+        "columns": [
+          {
+            "name": "id",
+            "type": "int"
+          }
+        ],
+        "rows": [[1, 2]]
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.rows.0: row at index 0 must have 1 value(s) to match columns"
+  },
+  {
+    "command": {
+      "method": "sql.cancel",
+      "params": {}
+    },
+    "error": "Raw JSON-RPC Command is invalid. params: params must include execution_id and/or request_id"
+  },
+  {
+    "command": {
+      "method": "sql.execute",
+      "id": false,
+      "params": {
+        "sql": "SELECT 1"
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. id: Invalid input"
+  },
+  {
+    "command": {
+      "method": "rpc.discover",
+      "params": []
+    },
+    "error": "Raw JSON-RPC Command is invalid. params: Expected object, received array"
+  },
+  {
+    "command": {
+      "method": "sql.execute",
+      "params": {
+        "sql": "SELECT 1",
+        "options": {
+          "page": 1
+        }
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.options.page_size: page and page_size must be used together"
+  },
+  {
+    "command": {
+      "method": "sql.execute",
+      "params": {
+        "sql": "SELECT 1",
+        "options": {
+          "multi_result": true
+        },
+        "params": {
+          "id": 1
+        }
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.options.multi_result: multi_result cannot be combined with params"
+  },
+  {
+    "command": {
+      "method": "agent.getProfile",
+      "params": {
+        "auth": 42
+      }
+    },
+    "error": "Raw JSON-RPC Command is invalid. params.auth: Expected string, received number"
+  }
+]

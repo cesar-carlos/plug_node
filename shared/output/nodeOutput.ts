@@ -75,7 +75,6 @@ const toMetadata = (result: PlugCommandTransportResult): JsonObject => {
 const aggregateSocketSqlStream = (
   response: NormalizedAgentRpcResponse,
   chunkPayloads: JsonObject[],
-  completePayload?: JsonObject,
 ): NormalizedAgentRpcResponse => {
   if (
     response.type !== "single" ||
@@ -98,28 +97,6 @@ const aggregateSocketSqlStream = (
     Array.isArray(chunk.rows) ? chunk.rows : [],
   );
 
-  if (completePayload) {
-    const status =
-      typeof completePayload.terminal_status === "string"
-        ? completePayload.terminal_status
-        : undefined;
-    if (status === "aborted" || status === "error") {
-      throw new PlugError(
-        status === "aborted"
-          ? "The socket SQL stream was aborted before completion."
-          : "The socket SQL stream ended with an error.",
-        {
-          code: status === "aborted" ? "SOCKET_STREAM_ABORTED" : "SOCKET_STREAM_ERROR",
-          description:
-            "Try again or reduce the query size. Large socket streams may need pagination or lower Max Rows.",
-          details: {
-            completePayload,
-          },
-        },
-      );
-    }
-  }
-
   return {
     ...response,
     item: {
@@ -130,6 +107,25 @@ const aggregateSocketSqlStream = (
       },
     },
   };
+};
+
+const assertSocketStreamCompletedSuccessfully = (completePayload?: JsonObject): void => {
+  const status = completePayload?.terminal_status;
+  if (status !== "aborted" && status !== "error") {
+    return;
+  }
+
+  throw new PlugError(
+    status === "aborted"
+      ? "The socket SQL stream was aborted before completion."
+      : "The socket SQL stream ended with an error.",
+    {
+      code: status === "aborted" ? "SOCKET_STREAM_ABORTED" : "SOCKET_STREAM_ERROR",
+      description:
+        "Try again or reduce the query size. Large socket streams may need pagination or lower Max Rows.",
+      details: { completePayload },
+    },
+  );
 };
 
 export const LARGE_AGGREGATED_JSON_ROW_THRESHOLD = 1000;
@@ -240,13 +236,13 @@ export const buildNodeOutputItems = (
     ];
   }
 
+  if (result.channel === "socket") {
+    assertSocketStreamCompletedSuccessfully(result.completePayload);
+  }
+
   const response =
     result.channel === "socket" && responseMode !== "chunkItems"
-      ? aggregateSocketSqlStream(
-          result.response,
-          result.chunkPayloads,
-          result.completePayload,
-        )
+      ? aggregateSocketSqlStream(result.response, result.chunkPayloads)
       : result.channel === "socket"
         ? result.response
         : result.response;

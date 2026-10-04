@@ -168,13 +168,11 @@ const createToolContext = (
           mimeType,
         }),
       ),
-      assertBinaryData: vi.fn(
-        (): IBinaryData => ({
-          data: "",
-          fileName: "attachment.txt",
-          mimeType: "text/plain",
-        }),
-      ),
+      assertBinaryData: vi.fn((): IBinaryData => ({
+        data: "",
+        fileName: "attachment.txt",
+        mimeType: "text/plain",
+      })),
       getBinaryDataBuffer: vi.fn(async () => Buffer.from("hello")),
     },
     continueOnFail: () => false,

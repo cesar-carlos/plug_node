@@ -765,6 +765,36 @@ const session: PlugSession = {
 };
 
 describe("executeRelayCommand", () => {
+  it("should remove connection waiters when connect throws synchronously", async () => {
+    const handlers = new Map<string, Set<(payload: unknown) => void>>();
+    const transport: RelaySocketTransport = {
+      connected: false,
+      connect: () => {
+        throw new Error("connect failed");
+      },
+      disconnect: () => undefined,
+      emit: () => undefined,
+      on: (event, handler) => {
+        const set = handlers.get(event) ?? new Set();
+        set.add(handler);
+        handlers.set(event, set);
+      },
+      off: (event, handler) => {
+        handlers.get(event)?.delete(handler);
+      },
+    };
+    await expect(
+      executeRelayCommand({
+        transport,
+        session,
+        agentId: "agent-1",
+        command: { jsonrpc: "2.0", method: "sql.execute", id: "one", params: {} },
+        responseMode: "aggregatedJson",
+      }),
+    ).rejects.toThrow("connect failed");
+    expect([...handlers.values()].every((set) => set.size === 0)).toBe(true);
+  });
+
   it("collects relay SQL stream chunks and exposes them for node output shaping", async () => {
     const command: RpcSingleCommand = {
       jsonrpc: "2.0",
@@ -888,7 +918,7 @@ describe("executeRelayCommand", () => {
     expect(
       transport.emittedEvents.some(({ event }) => event === "relay:conversation.end"),
     ).toBe(true);
-  });
+  }, 10_000);
 
   it("ends the conversation on failure even when skipConversationEnd is true", async () => {
     const command: RpcSingleCommand = {
@@ -918,7 +948,7 @@ describe("executeRelayCommand", () => {
       transport.emittedEvents.some(({ event }) => event === "relay:conversation.end"),
     ).toBe(true);
     expect(transport.connected).toBe(true);
-  });
+  }, 10_000);
 
   it("allows sql.executeBatch as a single relay command", async () => {
     const command: RpcSingleCommand = {
@@ -1297,10 +1327,16 @@ describe("executeRelayCommand", () => {
       connect(): void {
         this.connected = true;
         queueMicrotask(() => {
-          this.dispatch("relay:connection.ready", {
-            id: "socket-1",
-            connectedAt: new Date().toISOString(),
-          } satisfies RelayConnectionReadyPayload);
+          this.dispatch(
+            "connection:ready",
+            encodePayloadFrame(
+              {
+                id: "socket-1",
+                connectedAt: new Date().toISOString(),
+              } satisfies RelayConnectionReadyPayload,
+              { requestId: "handshake", compression: "none" },
+            ),
+          );
         });
       }
 

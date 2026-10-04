@@ -340,9 +340,7 @@ export class PlugMcpServer implements INodeType {
 
     try {
       const operation = this.getNodeParameter("operation", 0, "list") as
-        | "list"
-        | "call"
-        | "validate";
+        "list" | "call" | "validate";
 
       if (operation === "validate") {
         for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
