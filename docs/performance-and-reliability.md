@@ -237,12 +237,12 @@ The first eight blocks are paced, with an extra delay for process startup. The e
 
 Three complete rounds per variant compared the agent's 100 ms polling loop with local input and output journal commit notifications. The third polling run was a later control using restored original files. The comparison excludes the smaller pilot, a run whose subsequent fixture checks hit the REST quota, and an overlapping signal-patch pilot. Results below are medians of the three per-round statistics. The JSON includes individual rounds, exclusions, hashes and ranges.
 
-| Channel | Variant | Paced echo p95 (ms) | Read RPC p95 (ms) | Send RPC p95 (ms) | Output (MiB/s) |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Socket | Polling | 253 | 160 | 124 | 0.552 |
-| Socket | Notifications | 137 | 192 | 134 | 0.537 |
-| REST | Polling | 335 | 257 | 167 | 0.441 |
-| REST | Notifications | 253 | 240 | 170 | 0.449 |
+| Channel | Variant       | Paced echo p95 (ms) | Read RPC p95 (ms) | Send RPC p95 (ms) | Output (MiB/s) |
+| ------- | ------------- | ------------------: | ----------------: | ----------------: | -------------: |
+| Socket  | Polling       |                 253 |               160 |               124 |          0.552 |
+| Socket  | Notifications |                 137 |               192 |               134 |          0.537 |
+| REST    | Polling       |                 335 |               257 |               167 |          0.441 |
+| REST    | Notifications |                 253 |               240 |               170 |          0.449 |
 
 The notifications reduced paced echo latency across both channels. Socket Read RPC latency increased in this sample, and output rates varied between runs. Median sampled peak working sets (client / Hub / Flutter agent / child, MiB) were 115 / 193 / 298 / 74 before and 114 / 194 / 297 / 74 after for Socket. For REST they were 124 / 211 / 303 / 74 before and 143 / 212 / 300 / 74 after. This short test does not establish a sustained memory trend.
 
