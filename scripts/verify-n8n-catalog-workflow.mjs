@@ -5,7 +5,8 @@ import { spawnSync } from "node:child_process";
 
 const [agentArg, hubArg, dartArg, container] = process.argv.slice(2);
 const tcpReset = container === "--load-rest-reset";
-const load = container === "--load" || tcpReset;
+const socketReset = container === "--load-socket-reset";
+const load = container === "--load" || tcpReset || socketReset;
 if (
   !agentArg ||
   !hubArg ||
@@ -147,11 +148,13 @@ controller = replace(
   "n8n CLI workflow -> authenticated Hub -> native agent; pagination, empty allowlist and denied scope.",
 );
 const entry = join(scratch, "action_io_hub_smoke.mjs");
-if (tcpReset)
+if (tcpReset || socketReset)
   controller = replace(
     controller,
     "PLUG_WORKFLOW_PROXY:",
-    "PLUG_LOAD_TCP_RESET:'1', PLUG_WORKFLOW_PROXY:",
+    socketReset
+      ? "PLUG_LOAD_TCP_RESET:'socket', PLUG_WORKFLOW_PROXY:"
+      : "PLUG_LOAD_TCP_RESET:'1', PLUG_WORKFLOW_PROXY:",
   );
 if (load)
   controller = replace(
@@ -159,7 +162,9 @@ if (load)
     "n8n CLI workflow -> authenticated Hub -> native agent; pagination, empty allowlist and denied scope.",
     tcpReset
       ? "REST reader TCP reset under load, one native start."
-      : "separate Node load client -> authenticated Hub -> native agent, REST and Socket.",
+      : socketReset
+        ? "Socket and relay reader TCP resets under load, two native starts."
+        : "separate Node load client -> authenticated Hub -> native agent, REST and Socket.",
   );
 if (load) controller = replace(controller, "'--timeout', '2m'", "'--timeout', '4m'");
 if (process.argv[6] === "--actions" || recovery) {

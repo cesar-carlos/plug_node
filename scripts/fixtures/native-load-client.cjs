@@ -90,7 +90,7 @@ async function exercise(channel, options) {
       });
     } else {
       transport = await openActionIoConnection(
-        io(options.hubUrl + "/consumers", {
+        io((resetProxy?.url ?? options.hubUrl) + "/consumers", {
           transports: ["websocket"],
           autoConnect: false,
           reconnection: false,
@@ -98,7 +98,7 @@ async function exercise(channel, options) {
           auth: { token: options.accessToken },
         }),
         options.agentId,
-        false,
+        channel === "relay",
       );
     }
   }
@@ -143,6 +143,11 @@ async function exercise(channel, options) {
     const writerAbort = abort;
     if (process.env.PLUG_LOAD_TCP_RESET === "1")
       resetProxy = await require("./rest-load-reset.cjs").openResetProxy(options.hubUrl);
+    if (process.env.PLUG_LOAD_TCP_RESET === "socket")
+      resetProxy = await require("./socket-load-reset.cjs").openResetProxy(
+        options.hubUrl,
+        channel,
+      );
     await connect();
     try {
       await Promise.all([
@@ -211,7 +216,8 @@ async function exercise(channel, options) {
               assert.ok(childPidAtReset > 0);
               resetProxy.arm();
               await assert.rejects(call("readIo", readParams), {
-                code: "TRANSPORT_UNCONFIRMED",
+                code:
+                  channel === "rest" ? "TRANSPORT_UNCONFIRMED" : "SOCKET_DISCONNECTED",
                 details: {
                   outcome_unknown: false,
                   effects_possible: false,
@@ -321,10 +327,22 @@ if (require.main === module)
       assert.equal(new URL(options.hubUrl).hostname, "127.0.0.1");
       const rows = [];
       const tcpReset = process.env.PLUG_LOAD_TCP_RESET === "1";
-      for (const channel of tcpReset ? ["rest"] : ["socket", "rest"])
+      const socketReset = process.env.PLUG_LOAD_TCP_RESET === "socket";
+      for (const channel of socketReset
+        ? ["socket", "relay"]
+        : tcpReset
+          ? ["rest"]
+          : ["socket", "rest"])
         rows.push(await exercise(channel, options));
       writeFileSync(
-        join(scratch, tcpReset ? "rest-tcp-reset.json" : `load-${Date.now()}.json`),
+        join(
+          scratch,
+          socketReset
+            ? "socket-tcp-reset.json"
+            : tcpReset
+              ? "rest-tcp-reset.json"
+              : `load-${Date.now()}.json`,
+        ),
         JSON.stringify(rows, null, 2),
       );
     } catch (e) {
