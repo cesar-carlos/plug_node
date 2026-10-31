@@ -1,5 +1,29 @@
 # n8n-nodes-plug-database
 
+## 3.8.0
+
+### Minor Changes
+
+- f87e8da: Add List Available Actions to Agent Action I/O. Workflows can discover authorized saved actions one page at a time over REST, Socket or relay and continue using the returned cursor.
+
+  When the agent denies catalog access, show the operator which local credential permissions to check and preserve the structured authorization error in Continue On Fail output.
+
+- f87e8da: Add guided faithful Agent Action I/O, a separate agent credential, byte-preserving binary input/output and caller-owned recovery checkpoints over single-dispatch REST, Socket and relay. Add bounded source inspection, agent health and durable SQL operation execution/get/cancel with method-specific validation and no replay or transport fallback. Preserve structured uncertainty and SQL cancellation credentials. Existing SQL workflows and installed node identities remain compatible.
+
+### Patch Changes
+
+- f87e8da: Reject mismatched relay agents and ignore Socket responses received before dispatch. Preserve uncertain command outcomes across transports and disconnect even if relay cleanup fails. Reject inherited method names before dispatch and count validated base64 output bytes without decoding them again.
+- f87e8da: Present safe Portuguese diagnostics for unavailable, disabled, incompatible and unimplemented agent features across I/O, SQL extensions and legacy transports. Preserve structured error codes and recovery metadata without leaking native error prose or retrying availability failures. Explicit JSON-RPC method-not-found responses indicate non-execution; missing capabilities and timeouts do not imply an outdated agent or absence of effects.
+
+  Handle a correlated `relay:rpc.accepted` refusal immediately so it reaches the caller with its Hub diagnostics instead of timing out while waiting for a result.
+
+- f87e8da: Update stable runtime and development dependencies, including Playwright, jose, marked, to-words, the Zod 4 alias, n8n tooling, ESLint, and Vitest. Preserve the Zod 3 host peer and Node 24 type compatibility. Normalize uncaught execution errors at node boundaries, validate pinned self-hosted runtime dependencies, and update the native compatibility installation profiles. Refresh transitive resolutions and constrain qs to its corrected version.
+
+  Adopt corrected Portuguese number wording from to-words 7.4.1: for example, 1001 now returns "Mil E Um" instead of "Mil Um". Node operations and parameters remain unchanged.
+
+- f87e8da: Reduce npm package size by excluding development JavaScript source maps from the published tarball while retaining them in local builds. Preserve runtime JavaScript, declarations, JSON assets, icons, dependencies, and registered nodes/credentials. Validate that every built artifact except these maps is included in the tarball.
+- f87e8da: Enforce MCP call budgets across input items, reject invalid budget configuration, and fail when an explicitly configured AI Hub cannot be resolved. Move MCP orchestration into shared helpers and strengthen architecture, coverage, and release validation.
+
 ## 3.7.0
 
 ### Minor Changes
