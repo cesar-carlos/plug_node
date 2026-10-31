@@ -123,18 +123,8 @@ Packaged installation checks cover `n8n-workflow` 2.16.0 and 2.45.4, including a
 
 ## Documentation
 
-- [Project summary](https://github.com/cesar-carlos/plug_node/blob/main/docs/project-summary.md)
-- [Architecture](https://github.com/cesar-carlos/plug_node/blob/main/docs/architecture.md)
-- [Communication patterns](https://github.com/cesar-carlos/plug_node/blob/main/docs/communication-patterns.md)
-- [Performance and reliability](https://github.com/cesar-carlos/plug_node/blob/main/docs/performance-and-reliability.md)
-- [Hub contract alignment](https://github.com/cesar-carlos/plug_node/blob/main/docs/hub-contract-alignment.md)
-- [Socket guide](https://github.com/cesar-carlos/plug_node/blob/main/docs/socket/README.md)
-- [Error and authorization contracts](https://github.com/cesar-carlos/plug_node/blob/main/docs/error-and-authorization-contracts.md)
-- [UX decisions](https://github.com/cesar-carlos/plug_node/blob/main/docs/ux-decisions.md)
-- [Testing strategy](https://github.com/cesar-carlos/plug_node/blob/main/docs/testing-strategy.md)
-- [Workflow examples](https://github.com/cesar-carlos/plug_node/blob/main/docs/workflow-examples.md)
-- [Release process](https://github.com/cesar-carlos/plug_node/blob/main/docs/release-process.md)
-- [Versioning strategy](https://github.com/cesar-carlos/plug_node/blob/main/docs/versioning-strategy.md)
+- [Documentation index](./docs/README.md)
+- [Guia da equipe — Plug Database 3.8.0 no n8n](./docs/guia-acoes-remotas-n8n.md)
 
 ## Verification Path
 

@@ -11,6 +11,7 @@
 
 `n8n-nodes-plug-database` is the single published Plug package. It includes:
 
+- Agent Action I/O and durable SQL operations with caller-owned recovery identities over REST, Socket and relay. See [communication patterns](./communication-patterns.md).
 - REST command execution
 - consumer Socket command execution through `/consumers`
 - Socket Event publish and one-shot wait operations

@@ -105,7 +105,7 @@ Refresh the baseline only when an intentional, measured improvement lands or whe
 
 `npm run verify` validates rule metadata and runs coverage with enforced floors in addition to lint, type checking, tests, and build. Coverage floors are defined in `vitest.config.mts`; increase them as untested branches gain coverage.
 
-Before publication, `npm run test:e2e:release` must pass authentication/refresh and read-only `SELECT 1` probes over REST and Socket. This suite never skips unavailable infrastructure. Configure staging credentials in the GitHub `staging` environment; missing secrets block publication. Exploratory E2E suites retain their skip behavior.
+Before publication, `npm run test:e2e:release` must pass authentication/refresh and read-only probes against the authorized staging table (`SELECT COUNT(*) AS plug_release_smoke FROM Cliente WHERE 1=0`, expected value 0, one row, database streaming disabled) over REST and Socket. This suite never skips unavailable infrastructure. Configure staging credentials in the GitHub `staging` environment; missing secrets block publication. Exploratory E2E suites retain their skip behavior.
 
 `npm run pack:check` already installs the tarball against `n8n-workflow` 2.16.0 and 2.45.4 and tests native dependencies on 2.45.4. These are package-runtime checks, not full n8n UI/workflow-engine certification. The peer wildcard is not an unbounded support claim.
 

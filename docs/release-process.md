@@ -54,7 +54,7 @@ Repository policy keeps `main` as the only permanent branch:
 - CLI `0.54.6` and ESLint `10.14.0` are validated with a narrow self-hosted profile: runtime dependencies must be reviewed and exactly pinned, while protocol errors are normalized at node entry points. All other upstream lint checks remain enabled. See the documented exceptions in the package ESLint config.
 - Dependency updates must retain the TypeScript compiler/API aliases and the Zod 3 host peer until their consumers support newer APIs. Use the audit report to distinguish host/tooling findings from the package runtime; do not apply forced major-version replacements to silence advisories.
 - The legacy root `ignore@5.3.2` peer bridge was removed with CLI 0.54.6. Dependency-cruiser resolves its own version 7.
-- `npm run pack:check` loads all five nodes and six credentials from installed tarballs with `n8n-workflow` `2.16.0` and `2.45.4`. A third installation enables approved scripts and exercises sharp, Chromium PDF generation and PDF.js extraction. Package size gates remain unchanged.
+- Build before running the tarball installation checks. The [testing strategy](./testing-strategy.md) describes the host and native runtime profiles.
 - npm 12 install-script approvals are explicit in the root manifest. Chromium and the resolver are approved; the CLI plugin's pnpm-only preinstall is denied because it does not build any required runtime artifact. Unreviewed optional SDK native scripts are not executed by this migration.
 
 - `n8n-nodes-plug-database` is the n8n verification candidate
@@ -64,8 +64,6 @@ Repository policy keeps `main` as the only permanent branch:
 - the scanner target is `n8n-nodes-plug-database`
 - package publication is delegated to `changeset publish`, not raw `npm publish`, so repeated pushes do not try to overwrite an existing npm version
 - `Scan Public Package` is triggered by a `package-published` repository dispatch after npm version verification; `n8n-nodes-plug-database@*` tags remain a fallback
-- `npm run pack:check` now includes a real tarball installation smoke test, so run it only after a successful build/verify path
-- after the unified major release, deprecate `n8n-nodes-plug-database-advanced` on npm and direct users to `n8n-nodes-plug-database`
 - Dependabot opens weekly pull requests for GitHub Actions updates
 
 ## Required staging smoke
