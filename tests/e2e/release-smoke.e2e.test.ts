@@ -36,7 +36,7 @@ describe("release staging smoke", () => {
           resource: "sql",
           operation: "executeSql",
           channel,
-          sql: "SELECT 1 AS plug_release_smoke",
+          sql: "SELECT COUNT(*) AS plug_release_smoke FROM Cliente WHERE 1=0",
           inputMode: "guided",
           responseMode: "aggregatedJson",
           includePlugMetadata: false,
@@ -45,7 +45,7 @@ describe("release staging smoke", () => {
       });
       const output = await new PlugDatabase().execute.call(context);
       expect(output[0]).toHaveLength(1);
-      expect(output[0][0].json).toMatchObject({ plug_release_smoke: 1 });
+      expect(output[0][0].json).toMatchObject({ plug_release_smoke: 0 });
     },
   );
 });
