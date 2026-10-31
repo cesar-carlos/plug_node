@@ -6,7 +6,13 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 The package changelog (`packages/n8n-nodes-plug-database/CHANGELOG.md`) is canonical for published releases (via Changesets). This root file is a workspace summary.
 
-## [Unreleased]
+## [3.8.0] - 2026-10-31
+
+- Discover authorized actions and run them on the remote agent over REST, Socket or relay. Workflows can send sequenced input, read output from a saved checkpoint and cancel the execution.
+- Verified recovery across n8n restarts and TCP resets under concurrent input and output. The load tests check stream hashes and native process starts.
+- Reduced package size and repeated work in SQL and Action I/O transports while retaining existing byte limits and wire formats.
+
+## Earlier workspace changes
 
 ### Added
 
