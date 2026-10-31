@@ -40,7 +40,7 @@ describe("release staging smoke", () => {
           inputMode: "guided",
           responseMode: "aggregatedJson",
           includePlugMetadata: false,
-          sqlOptions: { timeoutMs: config.timeoutMs },
+          sqlOptions: { timeoutMs: config.timeoutMs, maxRows: 1, preferDbStreaming: false },
         },
       });
       const output = await new PlugDatabase().execute.call(context);
