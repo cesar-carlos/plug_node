@@ -41,6 +41,7 @@ describe("published Plug package surface", () => {
     expect(manifest.n8n.credentials).toEqual([
       "dist/credentials/PlugDatabaseAccountApi.credentials.js",
       ...legacyCredentialPaths,
+      "dist/credentials/PlugAgentApi.credentials.js",
       "dist/credentials/PluraAiAutomationsApi.credentials.js",
     ]);
     expect(manifest.n8n.nodes).toEqual([

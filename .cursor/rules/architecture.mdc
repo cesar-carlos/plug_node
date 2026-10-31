@@ -1,3 +1,4 @@
+---
 description: "Project-specific architecture rules for the Plug Database n8n workspace"
 globs: ["packages/**/*.ts", "shared/**/*.ts", "scripts/**/*.mjs"]
 alwaysApply: true
@@ -8,7 +9,7 @@ alwaysApply: true
 - This is a project-specific rule file. It defines runtime flow and dependency direction for the `plug_node` workspace.
 - The product is an `n8n` integration, not a standalone API server. Do not introduce `Express`, `Fastify`, HTTP controllers, route files, or server bootstraps unless the user explicitly asks for local tooling around the node.
 - The workspace has one install target:
-  - `packages/n8n-nodes-plug-database`: canonical package with REST, Socket, Tools, and Plura.ai trigger support
+  - `packages/n8n-nodes-plug-database`: canonical package with REST, Socket, Tools, MCP Server, AI Hub, and Plura.ai trigger support
 - Shared business and transport behavior belongs in `shared`, not duplicated in package-local node files.
 - Keep the shared core organized by responsibility:
   - `auth`: login, refresh, auth-expiry retry
@@ -16,9 +17,13 @@ alwaysApply: true
   - `rest`: REST execution and normalization
   - `socket`: relay session and `PayloadFrame` handling
   - `output`: n8n item shaping and error shaping
+  - `n8n`: descriptions, parameter parsing, and execution orchestration
+  - `mcp`: capability contracts, registry, governance, audit sanitization, and prompt generation
+  - `tools`: reusable local document, image, data, and security operations
 - n8n node files must stay thin. They gather credential and parameter values, call the shared core, and translate the result into n8n items.
 - Package-local Socket.IO adapters may add transport wiring, but socket protocol decisions still belong in shared modules instead of being embedded in the node file.
-- Credential values are the single source of truth for `user`, `password`, `agentId`, and `clientToken` in v1.
+- Credentials own `user` and `password`, plus default `agentId` and `clientToken`. Explicit node parameters may override agent/client defaults through `resolvePlugExecutionContext`; keep that precedence centralized.
+- MCP Server implements an n8n capability contract, not an HTTP/stdio daemon. AI Hub only emits configuration; enforce capability restrictions in execution code.
 - Prefer guided operations first and keep advanced JSON-RPC support behind explicit parameters instead of making raw payloads the default UX.
 - Socket support on `/consumers` has two command paths:
   - **typeVersion 2 (default):** `agents:command` (+ stream chunk/complete/pull), with PayloadFrame decode on outbound events
@@ -26,3 +31,5 @@ alwaysApply: true
 - Do not fall back to relay after `agents:command` has already been emitted (double-execution risk).
 - Omit relay `fastPath` for all `sql.execute` / `sql.executeBatch` commands (agents may open streams; stream.pull needs the hub requestId from accepted).
 - Normalize transport differences inside the shared core. n8n-facing outputs should be JSON-oriented and consistent across REST and SOCKET where possible.
+- Faithful action I/O and durable SQL use dedicated single-dispatch transports, never SQL retry/session callbacks or ACK replay. Hub login and locally provisioned agent credentials have separate roles. Stable operation keys and checkpoints belong to the workflow. The Hub's current authenticated negotiation is authoritative; static discovery does not activate extensions.
+- The bounded REST bridge uses native fetch to cap streaming response bytes before JSON parsing and reject redirects; this is a local exception to the n8n HTTP helper preference, removable when that helper exposes equivalent pre-buffer limits.

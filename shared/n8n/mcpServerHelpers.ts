@@ -15,19 +15,19 @@ import type {
   GovernanceConfig,
   ParamSchema,
   ParamType,
-} from "../../generated/shared/mcp/contracts";
+} from "../mcp/contracts";
 import {
   filterForbiddenCapabilityNames,
   isCapabilityForbiddenForAgent,
-} from "../../generated/shared/mcp/forbiddenCapabilities";
-import { buildRegistry } from "../../generated/shared/mcp/registry";
-import { listNamedSqlParameters } from "../../generated/shared/n8n/plugSqlGuidedCommands";
+} from "../mcp/forbiddenCapabilities";
+import { buildRegistry } from "../mcp/registry";
+import { listNamedSqlParameters } from "../n8n/plugSqlGuidedCommands";
 import {
   isRecord,
   normalizeJsonParameter,
   parseOptionalJsonArray,
   parseOptionalJsonObject,
-} from "../../generated/shared/utils/json";
+} from "../utils/json";
 
 const readRequiredString = (value: unknown, fieldPath: string): string => {
   if (typeof value !== "string" || value.trim() === "") {
@@ -523,6 +523,12 @@ export type AiHubWiringFields = {
 
 const normalizeAiHubWiring = (value: Record<string, unknown>): AiHubWiringFields => {
   const maxRaw = Number(value.maxToolCallsPerTurn);
+  if (
+    value.maxToolCallsPerTurn !== undefined &&
+    (!Number.isSafeInteger(maxRaw) || maxRaw < 0)
+  ) {
+    throw new Error("AI Hub tool call budget must be a non-negative safe integer.");
+  }
   const forbiddenRaw = value.forbiddenCapabilityNamesJson;
   return {
     ...(Number.isFinite(maxRaw) && maxRaw > 0
@@ -554,14 +560,28 @@ const readSiblingAiHubJson = (context: IExecuteFunctions, itemIndex: number): un
   }
 
   if (typeof context.evaluateExpression !== "function") {
-    return undefined;
+    throw new Error("Configured AI Hub cannot be resolved in this execution context.");
   }
 
   const escaped = nodeName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   try {
-    return context.evaluateExpression(`$('${escaped}').first().json`, itemIndex);
+    const resolved: unknown = context.evaluateExpression(
+      `$('${escaped}').first().json`,
+      itemIndex,
+    );
+    if (
+      !isRecord(resolved) ||
+      (!isRecord(resolved.wiring) &&
+        !Array.isArray(resolved.forbiddenCapabilityNames) &&
+        typeof resolved.maxToolCallsPerTurn !== "number")
+    ) {
+      throw new Error("Invalid AI Hub output");
+    }
+    return resolved;
   } catch {
-    return undefined;
+    throw new Error(
+      "Configured AI Hub could not be resolved. Check its name and execution order.",
+    );
   }
 };
 
@@ -636,6 +656,14 @@ export const readToolCallBudget = (
 ): { readonly maxToolCallsPerTurn: number; readonly toolCallCount: number } => {
   const maxRaw = Number(context.getNodeParameter("maxToolCallsPerTurn", itemIndex, 0));
   const countRaw = Number(context.getNodeParameter("toolCallCount", itemIndex, 0));
+  if (
+    !Number.isSafeInteger(maxRaw) ||
+    maxRaw < 0 ||
+    !Number.isSafeInteger(countRaw) ||
+    countRaw < 0
+  ) {
+    throw new Error("Tool call budget and count must be non-negative safe integers.");
+  }
   let maxToolCallsPerTurn =
     Number.isFinite(maxRaw) && maxRaw > 0 ? Math.trunc(maxRaw) : 0;
   if (maxToolCallsPerTurn === 0) {
@@ -646,8 +674,8 @@ export const readToolCallBudget = (
   }
   const parsedCount =
     Number.isFinite(countRaw) && countRaw > 0 ? Math.trunc(countRaw) : 0;
-  // When a hard max is configured but the workflow omits the counter, treat this
-  // execution as call #1 so the budget is still enforced on subsequent wired calls.
+  // The execution runner increments this ordinal across items. Separate executions
+  // require a trusted workflow-maintained counter; no cross-run state is stored here.
   const toolCallCount = maxToolCallsPerTurn > 0 && parsedCount === 0 ? 1 : parsedCount;
   return { maxToolCallsPerTurn, toolCallCount };
 };

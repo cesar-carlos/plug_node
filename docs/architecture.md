@@ -16,6 +16,7 @@
 - Socket Event publish and one-shot wait operations
 - Socket Event trigger
 - Plura.ai Automations trigger
+- MCP Server capability orchestration and AI Hub prompt/configuration
 - PDF, barcode, document, image, data, security, date/value, identity, and Plug-specific tools
 
 ## Shared Core
@@ -29,7 +30,9 @@ Main shared areas:
 - `rest`: bridge execution and REST Socket Event publish
 - `socket`: relay, consumer command, custom event sessions, and frame codec
 - `output`: n8n item shaping
-- `n8n`: node description builders and execution helpers
+- `n8n`: node description builders, MCP authoring/parameter parsing, and execution helpers
+- `mcp`: framework-independent capability registry, governance, envelopes, and audit sanitization
+- `tools`: reusable document, image, data, and security operations
 
 ## Package-Local Wiring
 

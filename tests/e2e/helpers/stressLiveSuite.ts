@@ -94,7 +94,7 @@ const assertStressSummary = (
 };
 
 export const registerPlugStressLiveE2E = (e2eConfig: PlugE2EConfig): void => {
-  describe.sequential("Plug Database stress E2E", () => {
+  describe("Plug Database stress E2E", () => {
     if (!e2eConfig.stress) {
       it("requires PLUG_E2E_STRESS_ENABLED=1", ({ skip }) => {
         skip(stressDisabledSkipReason);

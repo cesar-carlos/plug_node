@@ -1,3 +1,4 @@
+---
 description: "TypeScript-specific coding standards"
 globs: ["packages/**/*.ts", "shared/**/*.ts", "**/*.test.ts", "**/*.spec.ts"]
 alwaysApply: true

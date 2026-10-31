@@ -172,6 +172,12 @@ export interface SqlExecuteOptions extends JsonObject {
 }
 
 export interface SqlExecuteParams extends JsonObject {
+  readonly expectedSource?: import("zod4").infer<
+    typeof import("./sqlOperation/source").expectedSourceSchema
+  >;
+  readonly expectedStructure?: import("zod4").infer<
+    typeof import("./sqlOperation/schema").expectedStructureSchema
+  >;
   readonly sql: string;
   readonly params?: JsonObject;
   readonly client_token?: string;
@@ -243,7 +249,7 @@ export interface SqlBulkInsertCommand extends RpcCommandBase {
 
 export interface SqlCancelCommand extends RpcCommandBase {
   readonly method: "sql.cancel";
-  readonly params: {
+  readonly params: ClientTokenCarrierParams & {
     readonly execution_id?: string;
     readonly request_id?: string;
   };
@@ -486,6 +492,7 @@ export interface ConsumerCommandSocketFailurePayload {
     readonly message: string;
     readonly statusCode?: number;
     readonly retryAfterMs?: number;
+    readonly details?: JsonObject;
   };
 }
 

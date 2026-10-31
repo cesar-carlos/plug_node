@@ -1,3 +1,4 @@
+---
 description: "Project-specific folder structure conventions for the Plug Database n8n workspace"
 globs: ["packages/**/*.ts", "shared/**/*.ts", "scripts/**/*.mjs"]
 alwaysApply: true
@@ -21,6 +22,7 @@ alwaysApply: true
 - Keep package-local helpers near the node only when they are truly package-specific. Shared transport, auth, and normalization logic belongs in `shared`.
 - Organize `shared` by responsibility rather than by framework layers.
 - Keep generated copies of shared code clearly marked as generated and avoid editing them manually when a sync script owns them.
+- Keep `.js.map` files in local builds but out of the npm tarball. Preserve all other built artifacts through the package `files` allowlist; update it when adding new asset formats and verify with `npm run pack:check`.
 - Keep documentation under `docs/`, especially project summary, architecture, communication patterns, UX decisions, and testing strategy.
 - Keep automation or sync helpers in `scripts/`.
 - Do not drop scratch files, e2e capture logs, or ad-hoc dumps in the repository root. Put them under `tmp/` (for e2e captures, prefer `tmp/e2e-logs/`). Contents of `tmp/` are gitignored except `tmp/README.md`.

@@ -61,7 +61,7 @@ export const registerPlugSqlDdlDmlTransactionLiveE2E = (
   const ddlConfig = e2eConfig.ddl;
   let tableName: string | undefined;
 
-  describe.sequential(`Plug Database ${label} DDL/DML transaction lifecycle E2E`, () => {
+  describe(`Plug Database ${label} DDL/DML transaction lifecycle E2E`, () => {
     afterAll(async () => {
       await dropTableBestEffort(channel, e2eConfig, tableName);
     });

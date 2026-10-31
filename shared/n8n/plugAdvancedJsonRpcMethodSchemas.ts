@@ -1,4 +1,6 @@
 import { z } from "zod4";
+import { expectedSourceSchema } from "../contracts/sqlOperation/source";
+import { expectedStructureSchema } from "../contracts/sqlOperation/schema";
 
 const nonEmptyString = z.string().trim().min(1);
 // Keep integer failures continuable so SQL option refinements still run.
@@ -65,7 +67,7 @@ const validateSqlExecuteOptions = (
   }
 
   if (
-    options.execution_mode === "preserve" &&
+    (options.execution_mode === "preserve" || options.preserve_sql === true) &&
     (hasPage || hasPageSize || options.cursor)
   ) {
     ctx.addIssue({
@@ -75,10 +77,18 @@ const validateSqlExecuteOptions = (
       path: [...pathPrefix, "execution_mode"],
     });
   }
+  if (options.execution_mode === "managed" && options.preserve_sql === true)
+    ctx.addIssue({
+      code: "custom",
+      message: "managed execution cannot preserve SQL",
+      path: [...pathPrefix, "execution_mode"],
+    });
 };
 
 export const sqlExecuteParamsSchema = z
   .object({
+    expectedSource: expectedSourceSchema.optional(),
+    expectedStructure: expectedStructureSchema.optional(),
     sql: nonEmptyString,
     params: jsonObjectSchema.optional(),
     ...clientTokenCarrierFields,
@@ -88,6 +98,12 @@ export const sqlExecuteParamsSchema = z
   })
   .strict()
   .superRefine((params, ctx) => {
+    if (params.expectedStructure && !params.expectedSource)
+      ctx.addIssue({
+        code: "custom",
+        message: "Structure verification requires expectedSource",
+        path: ["expectedStructure"],
+      });
     if (params.options?.multi_result === true && params.params !== undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -112,7 +128,7 @@ const sqlExecuteBatchOptionsSchema = z
     timeout_ms: z.number().positive().optional(),
     max_rows: z.number().positive().optional(),
     transaction: z.boolean().optional(),
-    max_parallel_read_only_batch_items: z.number().positive().optional(),
+    max_parallel_read_only_batch_items: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -167,6 +183,7 @@ export const sqlBulkInsertParamsSchema = z
 
 export const sqlCancelParamsSchema = z
   .object({
+    ...clientTokenCarrierFields,
     execution_id: nonEmptyString.optional(),
     request_id: nonEmptyString.optional(),
   })
@@ -214,7 +231,9 @@ export const advancedJsonRpcCommandSchema = z.discriminatedUnion("method", [
   rpcCommandEnvelopeSchema
     .extend({
       method: z.literal("agent.getProfile"),
-      params: clientTokenCarrierParamsSchema.optional(),
+      params: clientTokenCarrierParamsSchema
+        .extend({ include_diagnostics: z.boolean().optional() })
+        .optional(),
     })
     .strict(),
   rpcCommandEnvelopeSchema

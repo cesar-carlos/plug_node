@@ -55,8 +55,8 @@ try {
 
     for (const profile of [
       { workflow: "2.16.0", scripts: false },
-      { workflow: "2.41.2", scripts: false },
-      { workflow: "2.41.2", scripts: true },
+      { workflow: "2.45.4", scripts: false },
+      { workflow: "2.45.4", scripts: true },
     ]) {
       const packageInstallDir = path.join(
         installDir,

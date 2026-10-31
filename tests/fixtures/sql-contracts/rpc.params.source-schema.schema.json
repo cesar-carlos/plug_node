@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "resources": {
+      "minItems": 1,
+      "maxItems": 16,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "schema": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["table", "view"]
+          }
+        },
+        "required": ["schema", "name", "type"],
+        "additionalProperties": false
+      },
+      "uniqueItems": true
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 15,
+      "description": "Required explicit metadata pagination value; no implicit default."
+    },
+    "pageSize": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4,
+      "description": "Required explicit metadata pagination value; no implicit default."
+    },
+    "contractVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "database": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^[^;{}\\r\\n\\u0000]+$"
+    },
+    "client_token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192
+    },
+    "expectedSource": {
+      "type": "object",
+      "properties": {
+        "dialect": {
+          "type": "string",
+          "enum": ["postgres", "mssql", "sybase"]
+        },
+        "identityHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "version": {
+          "type": "number",
+          "const": 1
+        }
+      },
+      "required": ["dialect", "identityHash", "version"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "resources",
+    "offset",
+    "pageSize",
+    "contractVersion",
+    "database",
+    "expectedSource"
+  ],
+  "additionalProperties": false,
+  "description": "Bounded source inspection for PostgreSQL, SQL Server and SQL Anywhere. The reader also requires offset < resources.length and verifies live authorization and physical identity."
+}

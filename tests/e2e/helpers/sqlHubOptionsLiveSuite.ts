@@ -32,7 +32,7 @@ export const registerPlugSqlHubOptionsLiveE2E = (
   const hubSmokeQuery = e2eConfig.sqlQueries[0] ?? "SELECT TOP 10 * FROM Cliente";
   const paginationQuery = resolvePaginationQuery(e2eConfig.hubOptionsSqlQuery);
 
-  describe.sequential(`Plug Database ${label} hub SQL options E2E`, () => {
+  describe(`Plug Database ${label} hub SQL options E2E`, () => {
     if (channel === "rest") {
       it(`executes sql.execute with execution_mode preserve over ${label}`, async ({
         skip,

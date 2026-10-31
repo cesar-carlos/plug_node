@@ -1,0 +1,962 @@
+{
+  "date": "2026-10-31",
+  "node": "v24.18.0",
+  "platform": "win32",
+  "workingSetUnit": "bytes",
+  "latencyUnit": "ms",
+  "rounds": [
+    {
+      "variant": "polling",
+      "source": "load-1793451695522.json",
+      "channels": [
+        {
+          "channel": "socket",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 15197.6237,
+          "outputMiBps": 0.5263980841952285,
+          "sendMs": {
+            "n": 64,
+            "p50": 61.70809999999983,
+            "p95": 142.10000000000036,
+            "max": 145.02059999999983
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 26.40769999999975,
+            "p95": 203.32629999999972,
+            "max": 400.58230000000003
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 177.75659999999993,
+            "p95": 392.7809000000002,
+            "max": 392.7809000000002
+          },
+          "firstWorkingSetBytes": {
+            "hub": 169926656,
+            "agent": 296067072,
+            "client": 85024768,
+            "child": 77619200
+          },
+          "peakWorkingSetBytes": {
+            "hub": 202166272,
+            "agent": 311128064,
+            "client": 119099392,
+            "child": 78032896
+          },
+          "samples": {
+            "hub": 79,
+            "agent": 79,
+            "client": 79,
+            "child": 49
+          }
+        },
+        {
+          "channel": "rest",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 18021.843800000002,
+          "outputMiBps": 0.443905745093629,
+          "sendMs": {
+            "n": 64,
+            "p50": 86.22220000000016,
+            "p95": 167.35139999999956,
+            "max": 179.7576999999983
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 40.63390000000072,
+            "p95": 257.102600000002,
+            "max": 373.86689999999726
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 227.91539999999804,
+            "p95": 334.7308000000012,
+            "max": 334.7308000000012
+          },
+          "firstWorkingSetBytes": {
+            "hub": 196894720,
+            "agent": 291274752,
+            "client": 111599616,
+            "child": 77447168
+          },
+          "peakWorkingSetBytes": {
+            "hub": 219828224,
+            "agent": 318103552,
+            "client": 148680704,
+            "child": 77930496
+          },
+          "samples": {
+            "hub": 97,
+            "agent": 97,
+            "client": 97,
+            "child": 61
+          }
+        }
+      ]
+    },
+    {
+      "variant": "polling",
+      "source": "load-1793451743761.json",
+      "channels": [
+        {
+          "channel": "socket",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 14366.683200000001,
+          "outputMiBps": 0.5568439067411189,
+          "sendMs": {
+            "n": 64,
+            "p50": 51.64839999999981,
+            "p95": 114.96810000000005,
+            "max": 124.97479999999996
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 26.323499999998603,
+            "p95": 158.5657000000001,
+            "max": 366.83849999999995
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 172.0326,
+            "p95": 253.20119999999997,
+            "max": 253.20119999999997
+          },
+          "firstWorkingSetBytes": {
+            "hub": 168038400,
+            "agent": 295714816,
+            "client": 86130688,
+            "child": 78090240
+          },
+          "peakWorkingSetBytes": {
+            "hub": 203591680,
+            "agent": 317648896,
+            "client": 120868864,
+            "child": 78512128
+          },
+          "samples": {
+            "hub": 76,
+            "agent": 76,
+            "client": 76,
+            "child": 46
+          }
+        },
+        {
+          "channel": "rest",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 18750.982399999997,
+          "outputMiBps": 0.4266443127801134,
+          "sendMs": {
+            "n": 64,
+            "p50": 89.36479999999938,
+            "p95": 183.01510000000053,
+            "max": 192.88720000000103
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 41.402900000000955,
+            "p95": 271.8709000000017,
+            "max": 389.5722999999998
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 257.79669999999896,
+            "p95": 433.41229999999996,
+            "max": 433.41229999999996
+          },
+          "firstWorkingSetBytes": {
+            "hub": 198291456,
+            "agent": 300974080,
+            "client": 112156672,
+            "child": 77529088
+          },
+          "peakWorkingSetBytes": {
+            "hub": 220975104,
+            "agent": 329506816,
+            "client": 128745472,
+            "child": 77979648
+          },
+          "samples": {
+            "hub": 99,
+            "agent": 99,
+            "client": 99,
+            "child": 63
+          }
+        }
+      ]
+    },
+    {
+      "variant": "journal-notifications",
+      "source": "load-1793451892888.json",
+      "channels": [
+        {
+          "channel": "socket",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 14908.0754,
+          "outputMiBps": 0.5366219170047932,
+          "sendMs": {
+            "n": 64,
+            "p50": 93.05140000000029,
+            "p95": 133.67360000000008,
+            "max": 141.56820000000153
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 25.208700000001045,
+            "p95": 191.62519999999859,
+            "max": 389.8433
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 114.86200000000008,
+            "p95": 146.84130000000005,
+            "max": 146.84130000000005
+          },
+          "firstWorkingSetBytes": {
+            "hub": 168742912,
+            "agent": 295362560,
+            "client": 84410368,
+            "child": 72462336
+          },
+          "peakWorkingSetBytes": {
+            "hub": 202485760,
+            "agent": 318836736,
+            "client": 118923264,
+            "child": 78217216
+          },
+          "samples": {
+            "hub": 78,
+            "agent": 78,
+            "client": 78,
+            "child": 46
+          }
+        },
+        {
+          "channel": "rest",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 20467.6072,
+          "outputMiBps": 0.39086151702188227,
+          "sendMs": {
+            "n": 64,
+            "p50": 158.91510000000198,
+            "p95": 254.09149999999863,
+            "max": 268.82670000000144
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 51.37460000000283,
+            "p95": 292.8634999999995,
+            "max": 429.96329999999944
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 180,
+            "p95": 255.1906999999992,
+            "max": 255.1906999999992
+          },
+          "firstWorkingSetBytes": {
+            "hub": 197664768,
+            "agent": 301531136,
+            "client": 111681536,
+            "child": 77656064
+          },
+          "peakWorkingSetBytes": {
+            "hub": 220737536,
+            "agent": 331296768,
+            "client": 150163456,
+            "child": 78110720
+          },
+          "samples": {
+            "hub": 104,
+            "agent": 104,
+            "client": 104,
+            "child": 69
+          }
+        }
+      ]
+    },
+    {
+      "variant": "journal-notifications",
+      "source": "load-1793451942490.json",
+      "channels": [
+        {
+          "channel": "socket",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 15999.3918,
+          "outputMiBps": 0.5000190069725026,
+          "sendMs": {
+            "n": 64,
+            "p50": 99.22109999999975,
+            "p95": 198.34659999999894,
+            "max": 216.1944999999996
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 28.326000000000022,
+            "p95": 205.83319999999912,
+            "max": 311.6861
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 121.86709999999994,
+            "p95": 137.01210000000015,
+            "max": 137.01210000000015
+          },
+          "firstWorkingSetBytes": {
+            "hub": 169504768,
+            "agent": 295088128,
+            "client": 84615168,
+            "child": 77443072
+          },
+          "peakWorkingSetBytes": {
+            "hub": 203644928,
+            "agent": 311439360,
+            "client": 119377920,
+            "child": 77877248
+          },
+          "samples": {
+            "hub": 83,
+            "agent": 83,
+            "client": 83,
+            "child": 51
+          }
+        },
+        {
+          "channel": "rest",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 17762.177000000003,
+          "outputMiBps": 0.4503952415292336,
+          "sendMs": {
+            "n": 64,
+            "p50": 128.62520000000222,
+            "p95": 168.04309999999896,
+            "max": 176.3689000000013
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 40.8070000000007,
+            "p95": 239.5164999999979,
+            "max": 308.7742999999973
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 149.90390000000116,
+            "p95": 253.1900999999998,
+            "max": 253.1900999999998
+          },
+          "firstWorkingSetBytes": {
+            "hub": 197058560,
+            "agent": 292114432,
+            "client": 111763456,
+            "child": 77459456
+          },
+          "peakWorkingSetBytes": {
+            "hub": 222670848,
+            "agent": 314601472,
+            "client": 148832256,
+            "child": 77910016
+          },
+          "samples": {
+            "hub": 95,
+            "agent": 95,
+            "client": 95,
+            "child": 59
+          }
+        }
+      ]
+    },
+    {
+      "variant": "polling",
+      "source": "load-1793451998795.json",
+      "channels": [
+        {
+          "channel": "socket",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 14482.3511,
+          "outputMiBps": 0.5523964958976861,
+          "sendMs": {
+            "n": 64,
+            "p50": 55.901199999999335,
+            "p95": 124.49169999999958,
+            "max": 155.82079999999996
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 24.894600000001446,
+            "p95": 159.67510000000016,
+            "max": 440.08719999999994
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 175.56690000000003,
+            "p95": 253.09530000000018,
+            "max": 253.09530000000018
+          },
+          "firstWorkingSetBytes": {
+            "hub": 168308736,
+            "agent": 293437440,
+            "client": 86306816,
+            "child": 77189120
+          },
+          "peakWorkingSetBytes": {
+            "hub": 202711040,
+            "agent": 312287232,
+            "client": 123805696,
+            "child": 77627392
+          },
+          "samples": {
+            "hub": 77,
+            "agent": 77,
+            "client": 77,
+            "child": 47
+          }
+        },
+        {
+          "channel": "rest",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 18134.317800000004,
+          "outputMiBps": 0.44115252022328616,
+          "sendMs": {
+            "n": 64,
+            "p50": 84.08899999999994,
+            "p95": 164.10160000000178,
+            "max": 173.11290000000008
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 40.97519999999895,
+            "p95": 254.72919999999795,
+            "max": 388.21689999999944
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 227.30649999999878,
+            "p95": 259.09180000000197,
+            "max": 259.09180000000197
+          },
+          "firstWorkingSetBytes": {
+            "hub": 198402048,
+            "agent": 292368384,
+            "client": 115920896,
+            "child": 77606912
+          },
+          "peakWorkingSetBytes": {
+            "hub": 221327360,
+            "agent": 310890496,
+            "client": 130142208,
+            "child": 78094336
+          },
+          "samples": {
+            "hub": 97,
+            "agent": 97,
+            "client": 97,
+            "child": 61
+          }
+        }
+      ]
+    },
+    {
+      "variant": "journal-notifications",
+      "source": "load-1793452054073.json",
+      "channels": [
+        {
+          "channel": "socket",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 14363.9303,
+          "outputMiBps": 0.556950627921106,
+          "sendMs": {
+            "n": 64,
+            "p50": 78.55150000000003,
+            "p95": 129.071899999999,
+            "max": 178.71640000000002
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 24.981699999998455,
+            "p95": 184.15760000000046,
+            "max": 335.6097
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 97.88740000000007,
+            "p95": 119.33500000000004,
+            "max": 119.33500000000004
+          },
+          "firstWorkingSetBytes": {
+            "hub": 169259008,
+            "agent": 295489536,
+            "client": 86511616,
+            "child": 77500416
+          },
+          "peakWorkingSetBytes": {
+            "hub": 203788288,
+            "agent": 309997568,
+            "client": 121819136,
+            "child": 77934592
+          },
+          "samples": {
+            "hub": 77,
+            "agent": 77,
+            "client": 77,
+            "child": 44
+          }
+        },
+        {
+          "channel": "rest",
+          "blocks": 64,
+          "blockSize": 65536,
+          "offsets": {
+            "stdout": 4194304,
+            "stderr": 4194304
+          },
+          "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+          "checkpoint": {
+            "sequence": 2,
+            "stdout": 65536,
+            "stderr": 65536
+          },
+          "sequence": 130,
+          "durationMs": 17799.690599999994,
+          "outputMiBps": 0.4494460145279156,
+          "sendMs": {
+            "n": 64,
+            "p50": 124.0028999999995,
+            "p95": 169.8110000000015,
+            "max": 180.35499999999956
+          },
+          "readMs": {
+            "n": 128,
+            "p50": 41.524099999998725,
+            "p95": 215.02409999999873,
+            "max": 354.2453000000023
+          },
+          "pacedEchoMs": {
+            "n": 7,
+            "p50": 160.0534000000007,
+            "p95": 163.63470000000234,
+            "max": 163.63470000000234
+          },
+          "firstWorkingSetBytes": {
+            "hub": 196804608,
+            "agent": 293175296,
+            "client": 114896896,
+            "child": 77512704
+          },
+          "peakWorkingSetBytes": {
+            "hub": 223305728,
+            "agent": 312664064,
+            "client": 150290432,
+            "child": 77946880
+          },
+          "samples": {
+            "hub": 95,
+            "agent": 95,
+            "client": 95,
+            "child": 59
+          }
+        }
+      ]
+    }
+  ],
+  "workloadSha256": "157f2624575587e0560a88279416d91be2b240a54232f67e95ac2b4c5a691b95",
+  "samplerSha256": "7deac7949990074b25d95514a02e17dd3befeaefd6605b52b4a77706ba3bcfdd",
+  "exclusions": {
+    "load-1793451519079.json": "Smaller 2 MiB pilot.",
+    "load-1793451602637.json": "Byte assertions passed, but later unrelated fixture teardown probes hit the REST quota, so the complete smoke invocation failed.",
+    "load-1793451816415.json": "Isolated signal-overlay pilot overlapped the change in the main agent checkout. Excluded from the final comparison."
+  },
+  "isolatedAgentSourceHashes": {
+    "lib/domain/actions/action_io_journal_changes.dart": {
+      "polling": null,
+      "notifications": "a0c691c4eb15b2cc990b72a4c69f756689987070a56276ad153e36c46bc6a477"
+    },
+    "lib/infrastructure/stores/drift_action_io_journal.dart": {
+      "polling": "1ff90718ba4c89127830783c88bbdfe5d1420caba38f430b2563a9cb998fa169",
+      "notifications": "0319c1bb373f5d58f9ce78078228fd56d199f882479bded063b874539e0e7382"
+    },
+    "lib/infrastructure/stores/action_io_output_journal.dart": {
+      "polling": "10fada89fb160535103e48de1f2f22b6a9c38a07ba98007246e61dfe72337c21",
+      "notifications": "a525eec9246f7525d094f39ca3734067016a31fd4ef08b5939db513491e9cb45"
+    },
+    "lib/application/actions/action_io_running_session.dart": {
+      "polling": "4ab51131c2eb2a84f54dadb3bb241293f0d972473cc2e692e2633181a5effbfe",
+      "notifications": "d324143f4e1f83c0a73267e7052eb73580360eebb547d203c2253f006a9cf193"
+    },
+    "lib/application/actions/action_io_remote_access.dart": {
+      "polling": "c09bc421302bcec7c8bbb525e7b045b631fcebc23995d297219bb535c71ddfa9",
+      "notifications": "ff128619de41734f2f128ed383962f6ddb982193fc8f1b1f110233f6f7db732b"
+    }
+  },
+  "summary": {
+    "polling": {
+      "socket": {
+        "pacedP95": {
+          "median": 253.20119999999997,
+          "min": 253.09530000000018,
+          "max": 392.7809000000002
+        },
+        "readP95": {
+          "median": 159.67510000000016,
+          "min": 158.5657000000001,
+          "max": 203.32629999999972
+        },
+        "sendP95": {
+          "median": 124.49169999999958,
+          "min": 114.96810000000005,
+          "max": 142.10000000000036
+        },
+        "outputMiBps": {
+          "median": 0.5523964958976861,
+          "min": 0.5263980841952285,
+          "max": 0.5568439067411189
+        },
+        "medianPeakMiB": {
+          "client": 115.26953125,
+          "hub": 193.3203125,
+          "agent": 297.8203125,
+          "child": 74.41796875
+        }
+      },
+      "rest": {
+        "pacedP95": {
+          "median": 334.7308000000012,
+          "min": 259.09180000000197,
+          "max": 433.41229999999996
+        },
+        "readP95": {
+          "median": 257.102600000002,
+          "min": 254.72919999999795,
+          "max": 271.8709000000017
+        },
+        "sendP95": {
+          "median": 167.35139999999956,
+          "min": 164.10160000000178,
+          "max": 183.01510000000053
+        },
+        "outputMiBps": {
+          "median": 0.44115252022328616,
+          "min": 0.4266443127801134,
+          "max": 0.443905745093629
+        },
+        "medianPeakMiB": {
+          "client": 124.11328125,
+          "hub": 210.73828125,
+          "agent": 303.3671875,
+          "child": 74.3671875
+        }
+      }
+    },
+    "journal-notifications": {
+      "socket": {
+        "pacedP95": {
+          "median": 137.01210000000015,
+          "min": 119.33500000000004,
+          "max": 146.84130000000005
+        },
+        "readP95": {
+          "median": 191.62519999999859,
+          "min": 184.15760000000046,
+          "max": 205.83319999999912
+        },
+        "sendP95": {
+          "median": 133.67360000000008,
+          "min": 129.071899999999,
+          "max": 198.34659999999894
+        },
+        "outputMiBps": {
+          "median": 0.5366219170047932,
+          "min": 0.5000190069725026,
+          "max": 0.556950627921106
+        },
+        "medianPeakMiB": {
+          "client": 113.84765625,
+          "hub": 194.2109375,
+          "agent": 297.01171875,
+          "child": 74.32421875
+        }
+      },
+      "rest": {
+        "pacedP95": {
+          "median": 253.1900999999998,
+          "min": 163.63470000000234,
+          "max": 255.1906999999992
+        },
+        "readP95": {
+          "median": 239.5164999999979,
+          "min": 215.02409999999873,
+          "max": 292.8634999999995
+        },
+        "sendP95": {
+          "median": 169.8110000000015,
+          "min": 168.04309999999896,
+          "max": 254.09149999999863
+        },
+        "outputMiBps": {
+          "median": 0.4494460145279156,
+          "min": 0.39086151702188227,
+          "max": 0.4503952415292336
+        },
+        "medianPeakMiB": {
+          "client": 143.20703125,
+          "hub": 212.35546875,
+          "agent": 300.02734375,
+          "child": 74.3359375
+        }
+      }
+    }
+  },
+  "currentWorkspaceConfirmation": {
+    "source": "load-1793452264104.json",
+    "comparison": false,
+    "description": "Independent run on the current plug_agente working tree, excluded from before/after statistics.",
+    "agentFiles": {
+      "lib/domain/actions/action_io_journal_changes.dart": "a0c691c4eb15b2cc990b72a4c69f756689987070a56276ad153e36c46bc6a477",
+      "lib/infrastructure/stores/drift_action_io_journal.dart": "264ffa23c290ef7b4d8efcc43a63eb1afcac21f9e04641d31608e78ca68a60df",
+      "lib/infrastructure/stores/action_io_output_journal.dart": "2ee8e52a17d3ef76fbcb9b35753e09b31c3d4dfddd2d51c867f0076e6455f4c3",
+      "lib/application/actions/action_io_running_session.dart": "33e91ac0c576450c1a31ca8f14940f2450476d1e62213342dc238eb5637b7d1e",
+      "lib/application/actions/action_io_remote_access.dart": "587d02aed5adcb18e74aa0ac9b0cf5047444830e237be3908fac67a81fccd641"
+    },
+    "channels": [
+      {
+        "channel": "socket",
+        "blocks": 64,
+        "blockSize": 65536,
+        "offsets": {
+          "stdout": 4194304,
+          "stderr": 4194304
+        },
+        "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+        "checkpoint": {
+          "sequence": 2,
+          "stdout": 65536,
+          "stderr": 65536
+        },
+        "sequence": 130,
+        "durationMs": 14459.5813,
+        "outputMiBps": 0.553266366018496,
+        "sendMs": {
+          "n": 64,
+          "p50": 92.01379999999972,
+          "p95": 125.66799999999967,
+          "max": 175.97199999999975
+        },
+        "readMs": {
+          "n": 128,
+          "p50": 23.237600000000384,
+          "p95": 168.3802999999989,
+          "max": 300.42729999999995
+        },
+        "pacedEchoMs": {
+          "n": 7,
+          "p50": 95.58609999999999,
+          "p95": 116.14559999999983,
+          "max": 116.14559999999983
+        },
+        "firstWorkingSetBytes": {
+          "hub": 169189376,
+          "agent": 295432192,
+          "client": 86081536,
+          "child": 77484032
+        },
+        "peakWorkingSetBytes": {
+          "hub": 204472320,
+          "agent": 313909248,
+          "client": 120365056,
+          "child": 77910016
+        },
+        "samples": {
+          "hub": 77,
+          "agent": 77,
+          "client": 77,
+          "child": 45
+        }
+      },
+      {
+        "channel": "rest",
+        "blocks": 64,
+        "blockSize": 65536,
+        "offsets": {
+          "stdout": 4194304,
+          "stderr": 4194304
+        },
+        "sha256": "4f1f8b605b8fd4ba8b9a16234a54da5a4cb15268d08bcc7dc8acd84a0d90bea3",
+        "checkpoint": {
+          "sequence": 2,
+          "stdout": 65536,
+          "stderr": 65536
+        },
+        "sequence": 130,
+        "durationMs": 17599.946599999996,
+        "outputMiBps": 0.4545468336818705,
+        "sendMs": {
+          "n": 64,
+          "p50": 131.14470000000074,
+          "p95": 165.83699999999953,
+          "max": 183.42159999999785
+        },
+        "readMs": {
+          "n": 128,
+          "p50": 36.95969999999943,
+          "p95": 221.2502999999997,
+          "max": 317.78160000000025
+        },
+        "pacedEchoMs": {
+          "n": 7,
+          "p50": 161.64350000000013,
+          "p95": 238.78390000000218,
+          "max": 238.78390000000218
+        },
+        "firstWorkingSetBytes": {
+          "hub": 199639040,
+          "agent": 290267136,
+          "client": 114491392,
+          "child": 77848576
+        },
+        "peakWorkingSetBytes": {
+          "hub": 222740480,
+          "agent": 324210688,
+          "client": 148242432,
+          "child": 78311424
+        },
+        "samples": {
+          "hub": 95,
+          "agent": 95,
+          "client": 95,
+          "child": 58
+        }
+      }
+    ]
+  }
+}

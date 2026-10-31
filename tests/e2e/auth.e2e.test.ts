@@ -12,7 +12,7 @@ import { createLiveRequester } from "./helpers/liveRequester";
 
 const e2eConfig = getPlugE2EConfig();
 
-describe.sequential("Plug Database auth E2E", () => {
+describe("Plug Database auth E2E", () => {
   it("logs in with the real client credentials", async ({ skip }) => {
     try {
       const session = await loginClient(createLiveRequester(), e2eConfig.credentials);

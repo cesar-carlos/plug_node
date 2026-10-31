@@ -44,13 +44,13 @@ export const createParallelChunkDecodeQueue = (options?: {
   let closed = false;
   let applying = false;
   interface Task {
+    next?: Task;
     readonly decode?: () => Promise<unknown>;
     readonly apply: (value: unknown) => Promise<void> | void;
     readonly bytes: number;
     readonly signal?: AbortSignal;
     readonly resolve: () => void;
     cancel: () => void;
-    started: boolean;
     ready: boolean;
     cancelled: boolean;
     released: boolean;
@@ -58,7 +58,15 @@ export const createParallelChunkDecodeQueue = (options?: {
     error?: unknown;
     failed: boolean;
   }
-  const tasks: Task[] = [];
+  let head: Task | undefined;
+  let tail: Task | undefined;
+  let nextDecode: Task | undefined;
+  const removeHead = (task: Task): void => {
+    head = task.next;
+    if (nextDecode === task) nextDecode = head;
+    if (!head) tail = undefined;
+    task.next = undefined;
+  };
   const drains: Array<() => void> = [];
   const metrics = {
     pendingFrames: 0,
@@ -78,18 +86,19 @@ export const createParallelChunkDecodeQueue = (options?: {
     task.resolve();
   };
   const finishDrains = (): void => {
-    if (tasks.length) return;
+    if (head) return;
     for (const resolve of drains.splice(0)) resolve();
   };
   const clearPendingDecodes = (): void => {
     if (closed) return;
     closed = true;
     options?.signal?.removeEventListener("abort", clearPendingDecodes);
-    for (const task of tasks) {
+    while (head) {
+      const task = head;
+      removeHead(task);
       task.cancelled = true;
       release(task);
     }
-    tasks.length = 0;
     finishDrains();
   };
   options?.signal?.addEventListener("abort", clearPendingDecodes, { once: true });
@@ -101,10 +110,10 @@ export const createParallelChunkDecodeQueue = (options?: {
   };
   const applyReady = (): void => {
     if (applying || closed) return;
-    while (tasks.length && tasks[0].ready) {
-      const task = tasks[0];
+    while (head?.ready) {
+      const task = head;
       if (task.cancelled) {
-        tasks.shift();
+        removeHead(task);
         release(task);
         continue;
       }
@@ -119,7 +128,7 @@ export const createParallelChunkDecodeQueue = (options?: {
           void applied.then(
             () => {
               applying = false;
-              if (tasks[0] === task) tasks.shift();
+              if (head === task) removeHead(task);
               release(task);
               applyReady();
               finishDrains();
@@ -127,7 +136,7 @@ export const createParallelChunkDecodeQueue = (options?: {
             (error) => {
               applying = false;
               if (task.cancelled) {
-                if (tasks[0] === task) tasks.shift();
+                if (head === task) removeHead(task);
                 applyReady();
                 finishDrains();
               } else fail(error);
@@ -136,7 +145,7 @@ export const createParallelChunkDecodeQueue = (options?: {
           return;
         }
         applying = false;
-        if (tasks[0] === task) tasks.shift();
+        if (head === task) removeHead(task);
         release(task);
       } catch (error) {
         applying = false;
@@ -148,10 +157,10 @@ export const createParallelChunkDecodeQueue = (options?: {
   };
   const pump = (): void => {
     if (closed) return;
-    for (const task of tasks) {
-      if (active >= maxParallel) break;
-      if (!task.decode || task.started || task.cancelled) continue;
-      task.started = true;
+    while (active < maxParallel && nextDecode) {
+      const task = nextDecode;
+      nextDecode = task.next;
+      if (!task.decode || task.cancelled) continue;
       active++;
       metrics.decodes++;
       const complete = (value: unknown, error?: unknown, failed = false): void => {
@@ -193,13 +202,15 @@ export const createParallelChunkDecodeQueue = (options?: {
           release(task);
           applyReady();
         },
-        started: false,
         ready: !decode,
         cancelled: false,
         released: false,
         failed: false,
       };
-      tasks.push(task);
+      if (tail) tail.next = task;
+      else head = task;
+      tail = task;
+      nextDecode ??= task;
       signal?.addEventListener("abort", task.cancel, { once: true });
     });
     pump();
@@ -211,9 +222,7 @@ export const createParallelChunkDecodeQueue = (options?: {
     enqueueOrderedWork: (work) => enqueue(undefined, work, 0),
     clearPendingDecodes,
     drainOrderedWork: () =>
-      tasks.length
-        ? new Promise<void>((resolve) => drains.push(resolve))
-        : Promise.resolve(),
+      head ? new Promise<void>((resolve) => drains.push(resolve)) : Promise.resolve(),
     enqueueDecodeThenOrdered: <T>(
       decode: () => Promise<T>,
       apply: (value: T) => Promise<void> | void,

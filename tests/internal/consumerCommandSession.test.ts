@@ -895,6 +895,48 @@ describe("executeConsumerCommand", () => {
     }
   });
 
+  it("preserves safe availability details through the legacy command session", async () => {
+    const controlled = createControlledTransport();
+    const result = executeConsumerCommand({
+      transport: controlled.transport,
+      session,
+      agentId: "agent-1",
+      command: { jsonrpc: "2.0", method: "sql.execute", id: "unavailable", params: {} },
+      responseMode: "aggregatedJson",
+      timeoutMs: 1_000,
+    });
+    const rejected = expect(result).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      retryable: false,
+      message: expect.stringContaining("desativado"),
+      details: {
+        capability: "sql.execute",
+        reason: "feature_disabled",
+        effects_possible: false,
+      },
+    });
+    await vi.waitFor(() => expect(controlled.transport.emit).toHaveBeenCalled());
+    const call = vi
+      .mocked(controlled.transport.emit)
+      .mock.calls.find(([event]) => event === "agents:command");
+    controlled.dispatch("agents:command_response", {
+      success: false,
+      requestId: readCommandRequestId(call?.[1]),
+      error: {
+        code: "CAPABILITY_UNAVAILABLE",
+        message: "SECRET",
+        statusCode: 503,
+        details: {
+          capability: "sql.execute",
+          reason: "feature_disabled",
+          effects_possible: false,
+        },
+      },
+    });
+    await rejected;
+    expect(controlled.listenerCount()).toBe(0);
+  });
+
   it("should time out when only unrelated commands produce socket activity", async () => {
     vi.useFakeTimers();
     const controlled = createControlledTransport();

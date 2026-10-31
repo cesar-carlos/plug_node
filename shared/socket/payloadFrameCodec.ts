@@ -194,11 +194,8 @@ const resolveVerificationKeys = (
 const signaturesMatch = (provided: Buffer, expected: Buffer): boolean =>
   provided.length === expected.length && timingSafeEqual(provided, expected);
 
-const buildSignatureInput = (
-  frame: PayloadFrameEnvelope,
-  binaryPayload: Buffer,
-): Buffer => {
-  const metadata = JSON.stringify({
+const signaturePrefix = (frame: PayloadFrameEnvelope): string =>
+  JSON.stringify({
     schemaVersion: frame.schemaVersion,
     enc: frame.enc,
     cmp: frame.cmp,
@@ -207,10 +204,7 @@ const buildSignatureInput = (
     compressedSize: frame.compressedSize,
     traceId: frame.traceId ?? null,
     requestId: frame.requestId ?? null,
-  });
-
-  return Buffer.concat([Buffer.from(metadata, "utf8"), Buffer.from([0]), binaryPayload]);
-};
+  }) + "\0";
 
 const signFrame = (
   frame: PayloadFrameEnvelope,
@@ -223,7 +217,8 @@ const signFrame = (
   }
 
   const value = createHmac("sha256", key)
-    .update(buildSignatureInput(frame, binaryPayload))
+    .update(signaturePrefix(frame), "utf8")
+    .update(binaryPayload)
     .digest("base64");
 
   return {
@@ -553,10 +548,11 @@ const verifyFrameSignature = (
   }
 
   const providedDigest = Buffer.from(provided, "base64");
-  const signatureInput = buildSignatureInput(frame, binaryPayload);
+  const prefix = signaturePrefix(frame);
   for (const entry of candidateKeys) {
     const expectedDigest = createHmac("sha256", entry.key)
-      .update(signatureInput)
+      .update(prefix, "utf8")
+      .update(binaryPayload)
       .digest();
     if (signaturesMatch(providedDigest, expectedDigest)) {
       return;
@@ -568,6 +564,11 @@ const verifyFrameSignature = (
 
 export const encodePayloadFrame = (
   data: unknown,
+  options?: Parameters<typeof encodeJsonPayloadFrame>[1],
+): PayloadFrameEnvelope => encodeJsonPayloadFrame(stringifyJson(data), options);
+
+export const encodeJsonPayloadFrame = (
+  json: string,
   options?: {
     readonly requestId?: string;
     readonly traceId?: string;
@@ -576,7 +577,6 @@ export const encodePayloadFrame = (
     readonly signing?: PayloadFrameSigningOptions;
   },
 ): PayloadFrameEnvelope => {
-  const json = stringifyJson(data);
   const original = Buffer.from(json, "utf8");
   const preference = options?.compression ?? "default";
   const { cmp, payload } = preparePayloadSync(original, preference);

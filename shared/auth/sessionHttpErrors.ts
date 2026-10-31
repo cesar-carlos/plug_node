@@ -1,5 +1,6 @@
 import { PlugError } from "../contracts/errors";
 import { isRecord } from "../utils/json";
+import { createFeatureUnavailableError } from "../contracts/featureAvailability";
 
 const toHeaderRecord = (
   headers: Record<string, string | string[] | undefined>,
@@ -276,7 +277,16 @@ export const createApiHttpError = (
   headers: Record<string, string | string[] | undefined>,
   requestKind: "login" | "refresh" | "api",
 ): PlugError => {
-  const apiError = extractApiError(body);
+  const apiError = extractApiError(
+    isRecord(body) && body.success === false && isRecord(body.error)
+      ? { ...body.error, requestId: body.requestId }
+      : body,
+  );
+  const availability = createFeatureUnavailableError(apiError.code, apiError.details, {
+    statusCode,
+    correlationId: apiError.correlationId,
+  });
+  if (availability) return availability;
   const normalizedHeaders = toHeaderRecord(headers);
   const retryAfterSeconds =
     parseRetryAfterSeconds(normalizedHeaders["retry-after"]) ??

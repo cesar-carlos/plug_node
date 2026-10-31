@@ -6,13 +6,16 @@ import { executePlugToolsResource } from "./plugToolsExecution";
 import { executePlugUserAccessNode } from "./plugUserAccessExecution";
 import type { PlugClientNodeExecutionConfig } from "./plugClientExecutionTypes";
 import { executePlugSqlNode } from "./plugSqlNodeExecution";
+import { executeActionIoNode } from "./actionIoExecution";
+import { executeSqlExtensionNode } from "./sqlExtensionExecution";
 
 export type {
   PlugClientNodeExecutionConfig,
   PlugSocketExecutor,
 } from "./plugClientExecutionTypes";
 
-type PlugUnifiedResource = "sql" | "clientAccess" | "userAccess" | "tools";
+type PlugUnifiedResource =
+  "sql" | "clientAccess" | "userAccess" | "tools" | "actionIo" | "sqlExtension";
 
 const resolveUnifiedResource = (
   context: IExecuteFunctions,
@@ -38,6 +41,10 @@ export const executePlugClientNode = async (
   }
 
   switch (resource) {
+    case "sqlExtension":
+      return executeSqlExtensionNode(context, config);
+    case "actionIo":
+      return executeActionIoNode(context, config);
     case "sql":
       return executePlugSqlNode(context, config);
     case "clientAccess":

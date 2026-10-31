@@ -10,6 +10,19 @@ import {
 } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/payloadFrameCodec";
 import type { PayloadFrameEnvelope } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/payload-frame";
 
+it("preserves the v1 HMAC across UTF-8 metadata and binary payload boundaries", () => {
+  const frame = encodePayloadFrame(
+    { text: "ação" },
+    {
+      compression: "none",
+      traceId: "traço",
+      requestId: "x",
+      signing: { key: "test-key" },
+    },
+  );
+  expect(frame.signature?.value).toBe("DE+MK4zmfzzOIRj+QE5OwfMgsqCl9HRXhtGwTIEhvDo=");
+});
+
 const createDeterministicRandom = (seed: number): (() => number) => {
   let state = seed >>> 0;
   return () => {

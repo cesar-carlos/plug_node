@@ -1,3 +1,4 @@
+import { toNodeExecutionError } from "../../generated/shared/n8n/nodeExecutionError";
 import type {
   IExecuteFunctions,
   INodeExecutionData,
@@ -12,6 +13,8 @@ import { waitForCustomSocketEventWithSocketIo } from "./customSocketEventListene
 import { publishCustomSocketEventWithSocketIo } from "./customSocketEventPublisher";
 import { createSocketCommandExecutor } from "./socketCommandExecutor";
 import { createRelaySocketExecutorForNode } from "./socketRelayExecutor";
+import { createSocketIoTransport } from "./socketIoTransport";
+import { openActionIoConnection } from "../../generated/shared/socket/actionIoConnection";
 
 export class PlugDatabase implements INodeType {
   description: INodeTypeDescription = {
@@ -54,6 +57,14 @@ export class PlugDatabase implements INodeType {
         legacySocketExecutor: relaySocketExecutor.execute,
         toolSocketEventPublisher: publishCustomSocketEventWithSocketIo,
         socketEventListener: waitForCustomSocketEventWithSocketIo,
+        actionIoTransportFactory: (input) =>
+          openActionIoConnection(
+            createSocketIoTransport(input),
+            input.agentId,
+            input.relay,
+            input.signing,
+            input,
+          ),
       });
     } catch (error: unknown) {
       if (this.continueOnFail()) {
@@ -71,7 +82,7 @@ export class PlugDatabase implements INodeType {
         ];
       }
 
-      throw error;
+      throw toNodeExecutionError(this.getNode(), error, 0);
     } finally {
       socketCommandExecutor.close();
       relaySocketExecutor.close();

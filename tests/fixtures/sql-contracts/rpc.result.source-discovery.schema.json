@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "contractVersion": {
+      "const": 1
+    },
+    "database": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "dialect": {
+      "enum": ["postgres", "mssql", "sybase"]
+    },
+    "identityHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "identityKind": {
+      "enum": ["native", "provisioned", "locator"]
+    },
+    "engineVersion": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "verifiedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "contractVersion",
+    "database",
+    "dialect",
+    "identityHash",
+    "identityKind",
+    "engineVersion",
+    "verifiedAt"
+  ]
+}

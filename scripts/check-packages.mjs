@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 
 import { plugPackageSurface } from "./package-surface.config.mjs";
 import { readNpmPackOutput } from "./npm-pack-output.mjs";
+import { listBuiltArtifacts, validatePublishedArtifacts } from "./package-artifacts.mjs";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const WARN_USAGE_RATIO = 0.85;
@@ -51,6 +52,8 @@ for (const pkg of plugPackageSurface) {
   const files = Array.isArray(packResult.files)
     ? packResult.files.map((file) => String(file.path))
     : [];
+
+  validatePublishedArtifacts(listBuiltArtifacts(`packages/${pkg.workspace}/dist`), files);
 
   if (!files.some((file) => file === "README.md")) {
     throw new Error(`README.md is missing from ${pkg.workspace} tarball`);

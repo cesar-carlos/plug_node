@@ -22,7 +22,7 @@ export const registerPlugSqlBatchLiveE2E = (
 ): void => {
   const label = channelLabel(channel);
 
-  describe.sequential(`Plug Database ${label} executeBatch E2E`, () => {
+  describe(`Plug Database ${label} executeBatch E2E`, () => {
     it(`executes sql.executeBatch over ${label}`, async ({ skip }) => {
       const node = new PublicPlugDatabase();
       const context = createLiveExecuteContext({

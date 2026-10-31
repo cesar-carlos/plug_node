@@ -4,7 +4,8 @@
   "description": "Plug Database n8n nodes with REST and consumer socket support",
   "license": "MIT",
   "author": {
-    "name": "cesar-carlos"
+    "name": "cesar-carlos",
+    "email": "52884188+cesar-carlos@users.noreply.github.com"
   },
   "repository": {
     "type": "git",
@@ -36,7 +37,7 @@
     "build:watch": "tsc --watch",
     "predev": "npm run sync-shared",
     "dev": "n8n-node dev",
-    "prelint": "npm run sync-shared",
+    "prelint": "npm run sync-shared && node ../../scripts/verify-runtime-dependencies.mjs",
     "lint": "n8n-node lint",
     "lint:fix": "n8n-node lint --fix",
     "pretest": "npm run sync-shared",
@@ -48,7 +49,10 @@
     "prepublishOnly": "npm run clean && npm run sync-shared && npm run build"
   },
   "files": [
-    "dist",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/*.json",
+    "dist/**/*.svg",
     "README.md"
   ],
   "n8n": {
@@ -60,6 +64,7 @@
       "dist/credentials/PlugDatabaseAdvancedApi.credentials.js",
       "dist/credentials/PlugDatabaseClientApi.credentials.js",
       "dist/credentials/PlugDatabaseUserApi.credentials.js",
+      "dist/credentials/PlugAgentApi.credentials.js",
       "dist/credentials/PluraAiAutomationsApi.credentials.js"
     ],
     "nodes": [
@@ -71,37 +76,37 @@
     ]
   },
   "devDependencies": {
-    "@n8n/node-cli": "0.28.0",
-    "@types/node": "24.19.1",
+    "@n8n/node-cli": "0.54.6",
+    "@types/node": "24.19.2",
     "@typescript/native": "npm:typescript@7.0.2",
-    "eslint": "9.39.5",
-    "n8n-workflow": "2.41.2",
-    "prettier": "3.9.9",
-    "release-it": "21.1.0",
+    "eslint": "10.14.0",
+    "n8n-workflow": "2.45.4",
+    "prettier": "3.9.10",
+    "release-it": "21.1.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "vitest": "5.0.3"
+    "vitest": "5.0.5"
   },
   "peerDependencies": {
     "n8n-workflow": "*"
   },
   "dependencies": {
     "@bwip-js/node": "4.11.4",
-    "@playwright/browser-chromium": "1.63.0",
+    "@playwright/browser-chromium": "1.64.1",
     "@zxing/library": "0.23.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
-    "jose": "6.2.12",
+    "jose": "6.2.14",
     "jsonata": "2.2.2",
-    "marked": "18.0.14",
+    "marked": "18.1.2",
     "papaparse": "5.7.0",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "6.4.299",
-    "playwright-core": "1.63.0",
+    "playwright-core": "1.64.1",
     "sharp": "0.35.5",
     "socket.io-client": "4.8.4",
-    "to-words": "7.1.0",
+    "to-words": "7.4.1",
     "zod": "3.25.76",
-    "zod4": "npm:zod@4.6.5"
+    "zod4": "npm:zod@4.6.7"
   },
   "type": "commonjs"
 }

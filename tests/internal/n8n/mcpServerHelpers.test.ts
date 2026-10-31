@@ -5,7 +5,7 @@ import {
   parseCapabilityParams,
   readForbiddenCapabilityNames,
   readToolCallBudget,
-} from "../../../packages/n8n-nodes-plug-database/nodes/PlugMcpServer/mcpServerHelpers";
+} from "../../../packages/n8n-nodes-plug-database/generated/shared/n8n/mcpServerHelpers";
 import { createMockExecuteContext } from "../../helpers/mockExecuteFunctions";
 
 const credentials = {
@@ -286,6 +286,54 @@ describe("mcpServerHelpers parseCapabilityDefinitions", () => {
 });
 
 describe("mcpServerHelpers readToolCallBudget", () => {
+  it.each([-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
+    "should reject invalid budget %s instead of disabling it",
+    (value) => {
+      for (const field of ["maxToolCallsPerTurn", "toolCallCount"]) {
+        const context = createMockExecuteContext({
+          credentials,
+          parameters: { [field]: value },
+          responses: [],
+        });
+        expect(() => readToolCallBudget(context)).toThrow("non-negative safe integers");
+      }
+    },
+  );
+
+  it("should fail when a configured Hub cannot be resolved", () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: { aiHubNodeName: "Missing Hub" },
+      responses: [],
+      evaluateExpression: () => {
+        throw new Error("not executed");
+      },
+      inputData: [{ json: { wiring: { maxToolCallsPerTurn: 100 } } }],
+    });
+    expect(() => readToolCallBudget(context)).toThrow("Configured AI Hub");
+    expect(() => readForbiddenCapabilityNames(context)).toThrow("Configured AI Hub");
+  });
+
+  it("should reject invalid inherited budgets", () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {},
+      responses: [],
+      inputData: [{ json: { wiring: { maxToolCallsPerTurn: -1 } } }],
+    });
+    expect(() => readToolCallBudget(context)).toThrow("AI Hub tool call budget");
+  });
+
+  it("should reject a configured Hub with an unrelated output shape", () => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: { aiHubNodeName: "Wrong node" },
+      responses: [],
+      evaluateExpression: () => ({ unrelated: true }),
+    });
+    expect(() => readToolCallBudget(context)).toThrow("Configured AI Hub");
+  });
+
   it("should default toolCallCount to 1 when max is set and count is omitted", () => {
     const context = createMockExecuteContext({
       credentials,

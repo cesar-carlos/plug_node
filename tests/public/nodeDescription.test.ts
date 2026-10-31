@@ -55,7 +55,13 @@ describe("consolidated Plug node descriptions", () => {
         expect.objectContaining({ value: "tools" }),
       ]),
     );
-    expect(operationProperties).toHaveLength(11);
+    expect(operationProperties).toHaveLength(13);
+    expect(resourceProperty?.options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: "actionIo" }),
+        expect.objectContaining({ value: "sqlExtension" }),
+      ]),
+    );
   });
 
   it("exposes only Plug Database as a tool", () => {
@@ -195,6 +201,11 @@ describe("consolidated Plug node descriptions", () => {
     const trigger = new PlugDatabaseSocketEventTrigger();
 
     expect(node.description.credentials).toEqual([
+      expect.objectContaining({
+        name: "plugAgentApi",
+        required: true,
+        displayOptions: { show: { resource: ["actionIo", "sqlExtension"] } },
+      }),
       expect.objectContaining({ name: "plugDatabaseAccountApi", required: true }),
     ]);
     expect(trigger.description.credentials).toEqual([

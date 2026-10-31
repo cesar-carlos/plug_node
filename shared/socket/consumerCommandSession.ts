@@ -461,6 +461,7 @@ export const executeConsumerCommand = async (
                   message: response.error.message,
                   statusCode: response.error.statusCode,
                   retryAfterMs: response.error.retryAfterMs,
+                  details: response.error.details,
                 }),
               );
               return;

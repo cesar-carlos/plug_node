@@ -31,6 +31,7 @@ export const plugPackageSurface = [
       credentials: [
         "dist/credentials/PlugDatabaseAccountApi.credentials.js",
         ...allowedLegacyCredentialAliasPaths,
+        "dist/credentials/PlugAgentApi.credentials.js",
         "dist/credentials/PluraAiAutomationsApi.credentials.js",
       ],
       nodes: [
@@ -44,6 +45,7 @@ export const plugPackageSurface = [
     require: [
       "dist/credentials/PlugDatabaseAccountApi.credentials.js",
       ...allowedLegacyCredentialAliasPaths,
+      "dist/credentials/PlugAgentApi.credentials.js",
       "dist/credentials/PluraAiAutomationsApi.credentials.js",
       "dist/nodes/PlugDatabase/PlugDatabase.node.js",
       "dist/nodes/PlugMcpServer/PlugMcpServer.node.js",

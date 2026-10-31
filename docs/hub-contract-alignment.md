@@ -15,75 +15,36 @@ When working side-by-side with `plug_server`, read these first:
 | Rate limits and quotas             | `plug_server/docs/limits/limites_acesso_e_quotas.md`             |
 | Hub ↔ agent sync checklist         | `plug_server/docs/plug_agente/communication_sync_plug_agente.md` |
 
-OpenAPI on a running hub: `GET /docs` and `GET /docs.json` under `/api/v1`.
+The Hub documents its OpenAPI endpoints as `GET /docs` and `GET /docs.json`. The REST command bridge is `POST /api/v1/agents/commands`.
 
 ## Transport matrix (commands only)
 
-REST is the channel for auth, catalog, and CRUD. Command execution can use:
+See [communication patterns](./communication-patterns.md) for channel selection and fallback boundaries, and [error and authorization contracts](./error-and-authorization-contracts.md) for empty rows, offline agents, replay guards and rate limits.
 
-| Path                             | Node setting                                         | Notes                                                |
-| -------------------------------- | ---------------------------------------------------- | ---------------------------------------------------- |
-| `POST /api/v1/agents/commands`   | `Channel = REST`                                     | Hub materializes SQL streams into one JSON response  |
-| `agents:command` on `/consumers` | `Channel = Socket`, node **typeVersion 2** (default) | Progressive chunks via `agents:command_stream_*`     |
-| `relay:*` on `/consumers`        | Socket **typeVersion 1** or fallback                 | Conversation-scoped; `client_request_id` idempotency |
-
-The node prefers `agents:command` for Socket on typeVersion 2. Relay fallback runs only when the **capability probe** fails (before the real command is emitted). Timeouts after `agents:command` has been sent are **not** retried on relay, to avoid double-execution on the hub.
-
-## Behaviors that affect n8n workflows
-
-### Successful SQL with zero rows
-
-The hub returns `success: true` with `rows: []` and often `row_count: 0`. That is **not** an error.
-
-With **Response Mode = Aggregated JSON**, the node emits **one output item** when `rows` is empty:
-
-- `rowCount: 0`
-- `rows: []`
-- `__plug.emptyResult: true`
-
-Downstream nodes can branch on `emptyResult` instead of treating “no items” as a stopped execution.
-
-### Agent offline vs not found
-
-| Situation                                                                     | Typical HTTP / envelope                                                                                     |
-| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Agent known in hub memory but no `/agents` socket, correlatable JSON-RPC `id` | HTTP **200**, `error.code: -32000`, `message: agent_offline`, `data.reason: agent_disconnected_at_dispatch` |
-| Agent never registered on this worker                                         | HTTP **404**                                                                                                |
-| Overload, mid-request disconnect, notification-only while offline             | HTTP **503** or stream failure                                                                              |
-
-The node maps offline reasons to a clear user message (see [Error and Authorization Contracts](./error-and-authorization-contracts.md)).
-
-### Replay guard (`-32014`)
-
-Repeating the same `command.id` (string/number) for the same `agentId` within about **two minutes** returns `error.code: -32014` and `data.reason: replay_detected` without re-dispatching to the agent. Generate a fresh JSON-RPC `id` per intentional retry.
-
-### Rate limits
-
-- HTTP **429** with `TOO_MANY_REQUESTS` on auth and command routes
-- Agent-side **-32013** (for example `client_token.getPolicy`) with `retry_after_ms` / `reset_at`; hub may set `Retry-After`
-
-Cache login tokens in long-running workflows (see server limits doc).
+The upstream faithful I/O specification and examples are in `plug_server/docs/plug_agente/remote_action_io_specification.md` and `remote_action_io_examples.md` in the same directory.
 
 ## Node parity checklist
 
-| Hub capability                         | Node support                                                                                                      |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `sql.execute`                          | Execute SQL (guided + advanced)                                                                                   |
-| `sql.executeBatch`                     | Execute Batch                                                                                                     |
-| `sql.bulkInsert`                       | Bulk Insert SQL (guided JSON for table/columns/rows)                                                              |
-| `sql.cancel`                           | Cancel SQL                                                                                                        |
-| `rpc.discover`                         | Discover RPC                                                                                                      |
-| `agent.getProfile`                     | Get Agent Profile                                                                                                 |
-| `client_token.getPolicy`               | Get Client Token Policy                                                                                           |
-| `options.prefer_db_streaming`          | Prefer DB Streaming (SQL options) + Auto Performance Hints on Socket                                              |
-| `options.execution_mode`               | Managed / Preserve                                                                                                |
-| `options.multi_result`                 | Multi Result                                                                                                      |
-| `fastPath` (relay)                     | Socket Options → Relay Fast Path (default on when unset); auto-omitted for all `sql.execute` / `sql.executeBatch` |
-| `requestServerTimings`                 | Socket Options; hub phases in `__plug.transport.serverTimings`                                                    |
-| `meta.agent_phases` (agent sub-phases) | Parsed when hub forwards nested timings; `agentPhases` in metadata                                                |
-| `clientRequestIdEcho` (extension)      | **Gap** — hub/agent handshake only; node uses JSON-RPC `id` as today                                              |
-| `streamPullWindowSize` adaptive        | Socket Options (`0` = omit explicit window; policy applies agent hint)                                            |
-| `max_parallel_read_only_batch_items`   | Batch options + Auto Performance Hints                                                                            |
+| Hub capability                         | Node support                                                                                                                                                   |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sql.execute`                          | Execute SQL (guided + advanced)                                                                                                                                |
+| `sql.executeBatch`                     | Execute Batch                                                                                                                                                  |
+| `sql.bulkInsert`                       | Bulk Insert SQL (guided JSON for table/columns/rows)                                                                                                           |
+| `sql.cancel`                           | Cancel SQL                                                                                                                                                     |
+| Agent Action I/O v1                    | Ten guided operations. See [workflow behavior and negotiation](./communication-alignment.md#workflow-use-and-safety).                                          |
+| SQL Extensions                         | Source and schema inspection, durable execute/get/cancel operations and agent health. See [implemented scope](./communication-alignment.md#implemented-scope). |
+| `rpc.discover`                         | Discover RPC                                                                                                                                                   |
+| `agent.getProfile`                     | Get Agent Profile                                                                                                                                              |
+| `client_token.getPolicy`               | Get Client Token Policy                                                                                                                                        |
+| `options.prefer_db_streaming`          | Prefer DB Streaming (SQL options) + Auto Performance Hints on Socket                                                                                           |
+| `options.execution_mode`               | Managed / Preserve                                                                                                                                             |
+| `options.multi_result`                 | Multi Result                                                                                                                                                   |
+| `fastPath` (relay)                     | Socket Options → Relay Fast Path (default on when unset); auto-omitted for all `sql.execute` / `sql.executeBatch`                                              |
+| `requestServerTimings`                 | Socket Options; hub phases in `__plug.transport.serverTimings`                                                                                                 |
+| `meta.agent_phases` (agent sub-phases) | Parsed when hub forwards nested timings; `agentPhases` in metadata                                                                                             |
+| `clientRequestIdEcho` (extension)      | **Gap** — hub/agent handshake only; node uses JSON-RPC `id` as today                                                                                           |
+| `streamPullWindowSize` adaptive        | Socket Options (`0` = omit explicit window; policy applies agent hint)                                                                                         |
+| `max_parallel_read_only_batch_items`   | Batch options + Auto Performance Hints                                                                                                                         |
 
 ## Test coverage matrix (plug_node)
 

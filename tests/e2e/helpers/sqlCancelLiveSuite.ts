@@ -22,7 +22,7 @@ export const registerPlugSqlCancelLiveE2E = (
 ): void => {
   const label = channelLabel(channel);
 
-  describe.sequential(`Plug Database ${label} sql.cancel E2E`, () => {
+  describe(`Plug Database ${label} sql.cancel E2E`, () => {
     it(`executes sql.cancel over ${label} when cancel ids are configured`, async ({
       skip,
     }) => {

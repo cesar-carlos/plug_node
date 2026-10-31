@@ -1,0 +1,158 @@
+{
+  "id": "PlugCatalogSmoke",
+  "name": "Plug catalog acceptance",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "catalog-0",
+      "name": "First page",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [240, 0],
+      "parameters": {
+        "resource": "actionIo",
+        "operation": "listAvailable",
+        "actionChannel": "rest",
+        "catalogPageSize": 1
+      },
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "catalogHub",
+          "name": "Catalog Hub"
+        },
+        "plugAgentApi": {
+          "id": "catalogAllowed",
+          "name": "Catalog Allowed"
+        }
+      }
+    },
+    {
+      "id": "catalog-1",
+      "name": "Second page",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [480, 0],
+      "parameters": {
+        "resource": "actionIo",
+        "operation": "listAvailable",
+        "actionChannel": "rest",
+        "catalogPageSize": 1,
+        "catalogCursor": "={{ $json.next_cursor }}"
+      },
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "catalogHub",
+          "name": "Catalog Hub"
+        },
+        "plugAgentApi": {
+          "id": "catalogAllowed",
+          "name": "Catalog Allowed"
+        }
+      }
+    },
+    {
+      "id": "catalog-2",
+      "name": "Empty catalog",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [720, 0],
+      "parameters": {
+        "resource": "actionIo",
+        "operation": "listAvailable",
+        "actionChannel": "rest",
+        "catalogPageSize": 1
+      },
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "catalogHub",
+          "name": "Catalog Hub"
+        },
+        "plugAgentApi": {
+          "id": "catalogEmpty",
+          "name": "Catalog Empty"
+        }
+      }
+    },
+    {
+      "id": "catalog-3",
+      "name": "Denied catalog",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [960, 0],
+      "parameters": {
+        "resource": "actionIo",
+        "operation": "listAvailable",
+        "actionChannel": "rest",
+        "catalogPageSize": 1
+      },
+      "credentials": {
+        "plugDatabaseAccountApi": {
+          "id": "catalogHub",
+          "name": "Catalog Hub"
+        },
+        "plugAgentApi": {
+          "id": "catalogDenied",
+          "name": "Catalog Denied"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "First page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "First page": {
+      "main": [
+        [
+          {
+            "node": "Second page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Second page": {
+      "main": [
+        [
+          {
+            "node": "Empty catalog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Empty catalog": {
+      "main": [
+        [
+          {
+            "node": "Denied catalog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

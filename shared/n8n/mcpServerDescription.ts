@@ -526,7 +526,7 @@ const buildOperationProperties = (): INodeProperties[] => [
       },
     },
     description:
-      "Optional hard limit for tool calls in the current turn. Set 0 to inherit from Plug AI Hub wiring when present.",
+      "Limit enforced across items in this execution and against the workflow counter. Separate executions require a trusted counter. Set 0 to inherit from Plug AI Hub wiring when present.",
   },
   {
     displayName: "Tool Call Count",
@@ -542,7 +542,7 @@ const buildOperationProperties = (): INodeProperties[] => [
       },
     },
     description:
-      "Current tool-call ordinal for this turn (including this call). Track and increment in the workflow. When Max Tool Calls Per Turn is set and this is 0/empty, the node treats the call as #1 so the budget still applies.",
+      "Current tool-call ordinal for this turn (including this call). Track and increment in the workflow. When omitted, counting starts at 1 within this execution. Separate executions do not share a counter.",
   },
   {
     displayName: "Show Advanced Options",

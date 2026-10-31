@@ -13,7 +13,10 @@ export class PluraAiAutomationsApi implements ICredentialType {
 
   documentationUrl = "https://docs.plura.ai/";
 
-  icon: Icon = "file:../nodes/PluraAiAutomationsTrigger/plura.svg";
+  icon: Icon = {
+    light: "file:../nodes/PluraAiAutomationsTrigger/plura.svg",
+    dark: "file:../nodes/PluraAiAutomationsTrigger/plura.svg",
+  };
 
   authenticate: IAuthenticateGeneric = {
     type: "generic",

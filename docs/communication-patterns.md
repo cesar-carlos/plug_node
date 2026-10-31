@@ -1,63 +1,28 @@
-# Communication Patterns
+# Communication patterns
 
-## REST flow
+Choose the transport by resource. Authentication, catalog and access management use REST. The command paths below share a Hub login, but differ in how they handle a lost response.
 
-1. Login with `/client-auth/login`.
-2. Reuse the access token inside the execution.
-3. Refresh with `/client-auth/refresh` when the access token is near expiry (about 60 seconds before JWT `exp`) or when a refreshable auth error occurs (typically `401`, or token-related `403`).
-4. On refresh `401`, retry once with a fresh login using the credential email and password.
-5. Execute commands through `/agents/commands`.
-6. Normalize JSON-RPC responses into n8n-friendly JSON output.
+| Resource                            | REST                                          | Socket on `/consumers`                                            | Recovery                                                                                                                                                    |
+| ----------------------------------- | --------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Legacy SQL commands                 | `POST /api/v1/agents/commands`                | TypeVersion 2 prefers `agents:command`. TypeVersion 1 uses relay. | A failed capability probe can select relay for an eligible single command **before dispatch**. A timeout after emission does not trigger a switch to relay. |
+| Agent Action I/O and SQL Extensions | Same bridge, dedicated single-dispatch client | Direct socket or a relay conversation with the selected agent     | No automatic replay, credential refresh retry, relay fast path or transport fallback. Use the original operation identity to inspect the outcome.           |
 
-## Socket command flow
+### REST flow
 
-`Plug Database` opens a Socket.IO connection to `/consumers` for the execution only when `Channel = Socket`.
+Legacy commands use the execution's client session. For login, refresh conditions and retry limits, see [Session refresh and retry behavior](./error-and-authorization-contracts.md#session-refresh-and-retry-behavior). Action I/O and SQL Extensions use the Hub account credential plus **Plug Agent API** for the agent ID and local credential. Discovery describes the catalog. The authenticated registration determines whether the feature is available.
 
-### typeVersion 2 (default) — `agents:command`
+### Socket command flow
 
-1. Login and obtain tokens.
-2. Connect to `/consumers`.
-3. Wait for `connection:ready` (PayloadFrame).
-4. Optionally probe capability with `rpc.discover` (cached ~60s per namespace URL).
-5. Emit `agents:command` with the JSON-RPC body (same shape as REST `POST /agents/commands`).
-6. Collect `agents:command_response`, stream chunks, and completion; pull stream windows as needed.
-7. Decode PayloadFrame / gzip payloads.
-8. Normalize the final response to JSON.
-9. Disconnect (or reuse the transport within the same node execution).
+Connect to `/consumers` with the Hub access token and wait for `connection:ready`. Direct SQL commands use `agents:command_response` and stream events when needed. Relay starts a conversation with `relay:conversation.start` before sending `relay:rpc.request`. In the dedicated client a correlated `relay:rpc.accepted` with `success:false` ends the call immediately. A successful acceptance is not the RPC result. The result arrives on `relay:rpc.response`. See [SQL over Socket](./socket/sql-socket.md) for probe, streaming, pull windows and legacy fast-path settings.
 
-If the capability probe times out on a **single** command, the node may fall back to relay **before** emitting the real command. After `agents:command` has been sent, timeouts are **not** retried on relay (avoids double-execution).
+### Output rules
 
-### typeVersion 1 / relay fallback — `relay:*`
+For SQL, response mode determines whether the workflow receives rows, aggregated JSON or Socket chunks. A successful empty result in aggregated mode emits one item with `rows: []` and `__plug.emptyResult: true`. See [error and output contracts](./error-and-authorization-contracts.md#empty-sql-result-sets). Faithful action output is binary. Persist the cursor and byte offsets after consuming each page. See [workflow use and recovery](./communication-alignment.md#workflow-use-and-safety).
 
-1. Login and obtain tokens.
-2. Connect to `/consumers` and wait for `connection:ready`.
-3. Start a relay conversation (`relay:conversation.start`).
-4. Send `relay:rpc.request` (optional `fastPath` for unary non-SQL; omitted for all `sql.execute` / `sql.executeBatch`).
-5. Collect response, chunks, and completion; pull stream windows as needed (batch items that open a stream are aggregated the same way).
-6. Decode PayloadFrame / gzip payloads and normalize to JSON.
-7. End the conversation on failure (or after success when not reusing a managed conversation) and disconnect when the managed transport is not kept.
+### Custom Socket Events
 
-Normative Socket guides: [docs/socket/sql-socket.md](./socket/sql-socket.md) and [docs/hub-contract-alignment.md](./hub-contract-alignment.md).
+Custom publish, wait and trigger operations have their own event lifecycle. See [custom events](./socket/custom-events.md) and the [Socket guide index](./socket/README.md).
 
-## Custom Socket Events
+### PayloadFrame handling
 
-Custom Socket Events also use `/consumers`. `Plug Database` can publish through REST or `socket:event.publish`, wait one-shot for the first matching `client:custom.*` event inside `Tools`, enforces server-aligned local payload limits before sending, and the trigger listens to exact `client:custom.*` names or the internal `client:agent.profile.updated` push.
-
-The normative guide for custom socket events is [docs/socket/custom-events.md](./socket/custom-events.md). See the [Socket guide index](./socket/README.md) for SQL over Socket, trigger behavior, PayloadFrame, examples, troubleshooting, and shared-code maintenance notes.
-
-## PayloadFrame handling
-
-- supports `cmp: none | gzip`
-- validates size and inflation limits
-- returns normalized JSON to the workflow user
-
-## Output rules
-
-- `Execute SQL`
-  - one n8n item per row when rows are present
-- `Execute Batch`
-  - normalized raw JSON by default
-- `Raw JSON-RPC`
-  - preserves the normalized RPC envelope
-- `Chunk Items`
-  - available when `Channel = Socket` on `Plug Database > Resource = SQL`; emits each stream chunk as its own item without aggregating
+See [PayloadFrame](./socket/payload-frame.md) for encoding, compression and decoding limits. The [Hub contract index](./hub-contract-alignment.md) identifies the upstream references for each transport.

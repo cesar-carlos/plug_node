@@ -24,14 +24,7 @@ for (const file of manifests) {
 }
 
 const rootManifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
-assert.equal(rootManifest.packageManager, "npm@12.2.0");
-assert.equal(
-  rootManifest.devDependencies.ignore,
-  "5.3.2",
-  "Legacy CLI optional peer bridge",
-);
-const rootRequire = createRequire(path.join(root, "package.json"));
-assert.equal(rootRequire("ignore/package.json").version, "5.3.2");
+assert.equal(rootManifest.packageManager, "npm@12.2.1");
 const cruiserRequire = createRequire(import.meta.resolve("dependency-cruiser"));
 assert.match(
   cruiserRequire("ignore/package.json").version,
@@ -39,6 +32,10 @@ assert.match(
   "Do not downgrade dependency-cruiser's parser",
 );
 assert.equal(process.version, "v24.18.0");
+assert.ok(
+  process.env.npm_execpath,
+  "Run npm run verify:toolchain so the active npm executable can be verified",
+);
 if (process.env.npm_execpath) {
   const version = execFileSync(
     process.execPath,
@@ -47,7 +44,7 @@ if (process.env.npm_execpath) {
       encoding: "utf8",
     },
   ).trim();
-  assert.equal(version, "12.2.0", "Run with the workspace's pinned npm version");
+  assert.equal(version, "12.2.1", "Run with the workspace's pinned npm version");
   const tsc = execFileSync(
     process.execPath,
     [
@@ -65,5 +62,5 @@ if (process.env.npm_execpath) {
   assert.match(tsc, /\b7\.0\.2\b/u, "The n8n CLI must resolve the native tsc");
 }
 console.log(
-  "Verified Node 24.18.0, npm 12.2.0, TypeScript 7 compiler and TypeScript 6 API.",
+  "Verified Node 24.18.0, npm 12.2.1, TypeScript 7 compiler and TypeScript 6 API.",
 );

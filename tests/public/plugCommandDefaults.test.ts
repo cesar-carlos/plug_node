@@ -16,6 +16,14 @@ const executionContext: PlugResolvedExecutionContext = {
 };
 
 describe("applyCommandDefaults", () => {
+  it("forwards the agent credential when cancelling owned SQL work", () => {
+    expect(
+      applyCommandDefaults(
+        { method: "sql.cancel", params: { execution_id: "e" } },
+        executionContext,
+      ).params,
+    ).toEqual({ execution_id: "e", client_token: "client-token" });
+  });
   it("sets jsonrpc and default api_version on every command", () => {
     const command = applyCommandDefaults(
       { method: "rpc.discover" } as RpcSingleCommand,

@@ -90,12 +90,14 @@ const aggregateSocketSqlStream = (
 
   const { stream_id: streamId, ...resultWithoutStreamId } = response.item.result;
   void streamId;
-  const initialRows = Array.isArray(resultWithoutStreamId.rows)
+  const rows = Array.isArray(resultWithoutStreamId.rows)
     ? [...(resultWithoutStreamId.rows as unknown[])]
     : [];
-  const chunkRows = chunkPayloads.flatMap((chunk) =>
-    Array.isArray(chunk.rows) ? chunk.rows : [],
-  );
+  chunkPayloads.forEach((chunk) => {
+    if (Array.isArray(chunk.rows)) {
+      chunk.rows.forEach((row) => rows.push(row));
+    }
+  });
 
   return {
     ...response,
@@ -103,7 +105,7 @@ const aggregateSocketSqlStream = (
       ...response.item,
       result: {
         ...resultWithoutStreamId,
-        rows: [...initialRows, ...chunkRows],
+        rows,
       },
     },
   };

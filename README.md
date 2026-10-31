@@ -1,5 +1,10 @@
 # Plug Database n8n Workspace
 
+Agent Action I/O and SQL Extensions provide faithful binary actions, source
+inspection and durable SQL operations over REST, Socket and relay. Start with
+[communication patterns](docs/communication-patterns.md) for channel selection and
+[workflow use and safety](docs/communication-alignment.md#workflow-use-and-safety) for credentials and recovery.
+
 [![CI](https://github.com/cesar-carlos/plug_node/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cesar-carlos/plug_node/actions/workflows/ci.yml)
 [![Release](https://github.com/cesar-carlos/plug_node/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/cesar-carlos/plug_node/actions/workflows/publish.yml)
 
@@ -13,6 +18,7 @@ This repository contains the unified Plug Database n8n community node package.
   - one canonical Plug Database package
   - exposes one consolidated `Plug Database` node
   - supports REST and consumer Socket execution
+  - includes Plug MCP Server for governed business capabilities and Plug AI Hub for agent prompt/configuration
   - includes Socket Event publishing, one-shot Socket Event waiting, `Plug Database Socket Event Trigger`, `Plug Database Plura.ai Automations Trigger`, PDF, barcode, document, image, data, security, date/value, identity, and Plug-specific tools
 
 The former `n8n-nodes-plug-database-advanced` package has been folded into `n8n-nodes-plug-database`. Deprecate the advanced package on npm after publishing this major release, and migrate workflows to the unified node surface.
@@ -93,6 +99,7 @@ Recommended Node.js version:
 Main commands:
 
 ```bash
+npm install --global npm@12.2.1
 npm ci
 npm run verify
 npm run test:e2e
@@ -107,6 +114,12 @@ npm run changeset:status
 npm run test:coverage
 npm run scan:public
 ```
+
+## AI capabilities and compatibility
+
+Plug MCP Server validates and executes authored capabilities; Plug AI Hub emits prompts and governance wiring. This is an n8n contract, not an HTTP/stdio MCP daemon. See [MCP Hub](./docs/mcp-hub/README.md).
+
+Packaged installation checks cover `n8n-workflow` 2.16.0 and 2.45.4, including a native-runtime profile on 2.45.4. The wildcard peer dependency follows host installation conventions; it is not evidence of compatibility with every host version. See [testing strategy](./docs/testing-strategy.md).
 
 ## Documentation
 

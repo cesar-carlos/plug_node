@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createRequire } from "node:module";
 
 import words from "../fixtures/number-to-words-compatibility.json";
 import { numberToWordsValue } from "../../packages/n8n-nodes-plug-database/generated/shared/tools/dateValue";
@@ -11,6 +12,15 @@ import {
 import { markdownToHtmlDocument } from "../../packages/n8n-nodes-plug-database/generated/shared/tools/documents";
 
 describe("updated runtime dependency contracts", () => {
+  it("should handle a non-callable toString in qs comma arrays without crashing", () => {
+    const require = createRequire(import.meta.url);
+    const qs = require("qs") as {
+      stringify: (value: unknown, options: { arrayFormat: string }) => string;
+    };
+    expect(qs.stringify({ ids: [{ toString: 1 }] }, { arrayFormat: "comma" })).toBe(
+      "ids=%5Bobject%20Object%5D",
+    );
+  });
   it.each(words)(
     "should preserve number-to-words for $value in $locale",
     async (fixture) => {

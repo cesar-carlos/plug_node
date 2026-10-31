@@ -1,5 +1,9 @@
 import { PlugError } from "../contracts/errors";
 import { isRecord } from "../utils/json";
+import {
+  createFeatureUnavailableError,
+  featureUnavailablePresentation,
+} from "../contracts/featureAvailability";
 
 const compactRecord = (value: Record<string, unknown>): Record<string, unknown> =>
   Object.fromEntries(
@@ -39,6 +43,11 @@ const resolveReasonDescription = (error: PlugError): string | undefined => {
 /** Strips internal Plug fields before surfacing errors to n8n operators. */
 export const toNodeFacingError = (error: unknown): Error | string => {
   if (error instanceof PlugError) {
+    const availability = createFeatureUnavailableError(error.code, error.details, {
+      statusCode: error.statusCode,
+      correlationId: error.correlationId,
+    });
+    if (availability) return availability;
     return new PlugError(error.message, {
       code: error.code,
       statusCode: error.statusCode,
@@ -47,6 +56,10 @@ export const toNodeFacingError = (error: unknown): Error | string => {
       retryAfterSeconds: error.retryAfterSeconds,
       description: resolveReasonDescription(error) ?? error.description,
       authRelated: error.authRelated,
+      ...(error.details?.outcome_unknown !== undefined ||
+      error.details?.effects_possible !== undefined
+        ? { details: actionIoErrorDetails(error.details) }
+        : {}),
     });
   }
 
@@ -65,7 +78,10 @@ export const serializeErrorForContinueOnFail = (
   error: unknown,
 ): Record<string, unknown> => {
   const technicalMessage =
-    error instanceof PlugError ? error.technicalMessage : undefined;
+    error instanceof PlugError &&
+    !featureUnavailablePresentation(error.code, error.details)
+      ? error.technicalMessage
+      : undefined;
   const nodeFacing = toNodeFacingError(error);
   if (nodeFacing instanceof PlugError) {
     return compactRecord({
@@ -77,6 +93,7 @@ export const serializeErrorForContinueOnFail = (
       correlationId: nodeFacing.correlationId,
       retryable: nodeFacing.retryable,
       retryAfterSeconds: nodeFacing.retryAfterSeconds,
+      ...(nodeFacing.details ? { details: nodeFacing.details } : {}),
     });
   }
 
@@ -95,3 +112,4 @@ export const serializeErrorForContinueOnFail = (
     message: "Unknown error",
   };
 };
+import { actionIoErrorDetails } from "../contracts/actionIo/errorDetails";

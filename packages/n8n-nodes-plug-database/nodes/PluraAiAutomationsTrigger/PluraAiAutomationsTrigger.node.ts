@@ -42,7 +42,6 @@ const readAuthorizationHeader = (value: unknown): string | undefined => {
   return undefined;
 };
 
-// eslint-disable-next-line @n8n/community-nodes/node-usable-as-tool -- Triggers are event sources, not AI-agent tools; n8n's type only supports truthy tool exposure.
 export class PluraAiAutomationsTrigger implements INodeType {
   description: INodeTypeDescription = {
     displayName: "Plug Database Plura.ai Automations Trigger",

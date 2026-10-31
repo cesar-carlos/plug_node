@@ -92,6 +92,48 @@ const sampleCapabilityDefinitions = [
 ];
 
 describe("Plug MCP Server node", () => {
+  it("should count calls across input items even when the supplied ordinal repeats", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      inputData: [{ json: {} }, { json: {} }, { json: {} }],
+      parameters: {
+        operation: "call",
+        capabilityName: "validar_documento",
+        capabilityParamsJson: JSON.stringify({ document: "52998224725" }),
+        capabilityDefinitionsJson: JSON.stringify(sampleCapabilityDefinitions),
+        maxToolCallsPerTurn: 2,
+        toolCallCount: 1,
+      },
+      responses: [],
+    });
+    const [items] = await new PlugMcpServer().execute.call(context);
+    expect(items).toHaveLength(3);
+    expect(items[0].json.isError).not.toBe(true);
+    expect(items[1].json.isError).not.toBe(true);
+    expect(items[2].json.isError).toBe(true);
+    expect(JSON.stringify(items[2].json.content)).toContain("Maximum of 2");
+    expect(items[2].pairedItem).toEqual({ item: 2 });
+  });
+
+  it("should continue from the trusted ordinal across batched calls", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      inputData: [{ json: {} }, { json: {} }],
+      parameters: {
+        operation: "call",
+        capabilityName: "validar_documento",
+        capabilityParamsJson: JSON.stringify({ document: "52998224725" }),
+        capabilityDefinitionsJson: JSON.stringify(sampleCapabilityDefinitions),
+        maxToolCallsPerTurn: 3,
+        toolCallCount: 3,
+      },
+      responses: [],
+    });
+    const [items] = await new PlugMcpServer().execute.call(context);
+    expect(items[0].json.isError).not.toBe(true);
+    expect(items[1].json.isError).toBe(true);
+  });
+
   it("should expose list and call operations in the node description", () => {
     const node = new PlugMcpServer();
 

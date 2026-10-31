@@ -1,5 +1,18 @@
 # Workflow Examples
 
+## Authorized action catalog
+
+Import [the catalog acceptance workflow](./socket/examples/catalog-acceptance-workflow.json) into n8n. Select your Hub account and map each agent credential by role. **Allowed** can list the two fixture actions. **Empty** can list actions but its allowlist contains no matching ID. **Denied** has a valid token without the list scope. The example uses REST and Page Size 1.
+
+| Node           | Expected output in the fixture                                                                                                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| First page     | One action (`action`) and a nonempty `next_cursor`                                                                                                                                                                       |
+| Second page    | `={{ $json.next_cursor }}` passes the cursor from the first node. The result contains `action-second` and `next_cursor: null`.                                                                                           |
+| Empty catalog  | One n8n item containing `actions: []` and `next_cursor: null`                                                                                                                                                            |
+| Denied catalog | With **On Error → Continue**, `json.error` contains `ACTION_IO_UNAUTHORIZED`, `scope_or_action_denied` and `retryable: false`. Branch on `error` before inspecting any input fields carried through by Continue On Fail. |
+
+With **On Error → Stop Workflow**, the denied node stops execution. It reports “O agente negou acesso ao catálogo de ações” and identifies the local permissions to check. The acceptance harness also executes this variant on its own. See [real workflow validation](./communication-alignment.md#real-n8n-workflow).
+
 ## Validate access
 
 Use `Validate Context` as a quick end-to-end check for:

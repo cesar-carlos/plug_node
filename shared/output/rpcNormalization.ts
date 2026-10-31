@@ -9,6 +9,8 @@ import type {
 } from "../contracts/api";
 import { PlugError, PlugValidationError } from "../contracts/errors";
 import { isRecord } from "../utils/json";
+import { actionIoErrorDetails } from "../contracts/actionIo/errorDetails";
+import { createFeatureUnavailableError } from "../contracts/featureAvailability";
 
 const isJsonRpcId = (value: unknown): value is JsonRpcId =>
   value === null || typeof value === "string" || typeof value === "number";
@@ -332,6 +334,17 @@ export const toPlugErrorFromRpcItem = (
   }
 
   const errorData = readRpcErrorData(item.error);
+  const availability = createFeatureUnavailableError(
+    `RPC_${item.error.code}`,
+    { ...item.error.data, rpc_code: item.error.code },
+    { correlationId: errorData.correlationId ?? context.requestId },
+  );
+  if (availability) return availability;
+  const recovery = actionIoErrorDetails(item.error.data);
+  const reconcile =
+    recovery.effects_possible === true ||
+    recovery.outcome_unknown === true ||
+    typeof recovery.recovery === "string";
   const retryAfterSeconds = buildRpcRetryAfterSeconds(errorData);
 
   const correlationId = errorData.correlationId ?? context.requestId;
@@ -341,15 +354,19 @@ export const toPlugErrorFromRpcItem = (
     {
       code: `RPC_${item.error.code}`,
       correlationId,
-      retryable:
-        item.error.code === -32013
+      retryable: reconcile
+        ? false
+        : item.error.code === -32013
           ? true
           : typeof errorData.retryable === "boolean"
             ? errorData.retryable
             : retryAfterSeconds !== undefined,
       retryAfterSeconds,
-      description: buildRpcDescription(item.error, errorData, retryAfterSeconds),
+      description: reconcile
+        ? "Reconcile the original execution or message before any new mutation. Do not replay automatically."
+        : buildRpcDescription(item.error, errorData, retryAfterSeconds),
       details: {
+        ...recovery,
         agentId: context.agentId,
         requestId: context.requestId,
         ...(errorData.reason ? { reason: errorData.reason } : {}),
@@ -362,7 +379,9 @@ export const toPlugErrorFromRpcItem = (
         rpcError: item.error,
         rpcItemId: item.id,
       },
-      technicalMessage: errorData.technicalMessage ?? item.error.message,
+      technicalMessage: reconcile
+        ? undefined
+        : (errorData.technicalMessage ?? item.error.message),
     },
   );
 };

@@ -8,6 +8,76 @@ import {
 } from "../../shared/socket/streamPullPrefetch";
 
 describe("createParallelChunkDecodeQueue", () => {
+  it("reuses an empty queue while its cancelled decoder is still running", async () => {
+    const abort = new AbortController();
+    const queue = createParallelChunkDecodeQueue({ maxParallel: 1, maxPendingBytes: 16 });
+    let finishOld!: (value: number) => void;
+    const applies: number[] = [];
+    const apply = (value: number) => {
+      applies.push(value);
+    };
+    queue.enqueueDecodeThenOrdered(
+      () =>
+        new Promise<number>((resolve) => {
+          finishOld = resolve;
+        }),
+      apply,
+      16,
+      abort.signal,
+    );
+    abort.abort();
+    await queue.drainOrderedWork();
+    expect(queue.metrics.pendingBytes).toBe(0);
+    const replacement = queue.enqueueDecodeThenOrdered(async () => 2, apply, 16);
+    expect(queue.metrics.decodes).toBe(1);
+    finishOld(1);
+    await replacement;
+    await queue.enqueueDecodeThenOrdered(async () => 3, apply, 16);
+    expect(applies).toEqual([2, 3]);
+    expect(queue.metrics).toMatchObject({
+      decodes: 3,
+      pendingFrames: 0,
+      pendingBytes: 0,
+    });
+  });
+  it("skips a cancelled waiter while draining an out-of-order decode backlog", async () => {
+    const queue = createParallelChunkDecodeQueue({ maxParallel: 2, maxPendingBytes: 4 });
+    const abort = new AbortController();
+    let release!: () => void;
+    const first = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const starts: number[] = [];
+    const applied: number[] = [];
+    const enqueue = (id: number, signal?: AbortSignal) =>
+      queue.enqueueDecodeThenOrdered(
+        async () => {
+          starts.push(id);
+          if (id === 1) await first;
+          return id;
+        },
+        (value) => {
+          applied.push(value);
+        },
+        1,
+        signal,
+      );
+    const pending = [enqueue(1), enqueue(2), enqueue(3, abort.signal), enqueue(4)];
+    abort.abort();
+    pending.push(enqueue(5));
+    await vi.waitFor(() => expect(starts).toEqual([1, 2, 4, 5]));
+    expect(applied).toEqual([]);
+    expect(queue.metrics.pendingBytes).toBe(4);
+    release();
+    await Promise.all(pending);
+    await queue.drainOrderedWork();
+    expect(applied).toEqual([1, 2, 4, 5]);
+    expect(queue.metrics).toMatchObject({
+      pendingBytes: 0,
+      pendingFrames: 0,
+      decodes: 4,
+    });
+  });
   it("should ignore a late rejection from a cancelled application and continue the next owner", async () => {
     const abort = new AbortController();
     const onError = vi.fn();

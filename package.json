@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "license": "MIT",
-  "packageManager": "npm@12.2.0",
+  "packageManager": "npm@12.2.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cesar-carlos/plug_node.git"
@@ -59,29 +59,35 @@
     "test:e2e:ci": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/auth.e2e.test.ts tests/e2e/custom-socket-events.e2e.test.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
-    "verify": "npm run format:check && npm run verify:toolchain && npm run verify:compiler-watch && npm run verify:surface && npm run verify:doc-links && npm run migrate:workflows:check-examples && npm run verify:deps && npm run lint && npm run typecheck && npm test && npm run build",
+    "verify": "npm run format:check && npm run verify:rules && npm run verify:toolchain && npm run verify:compiler-watch && npm run verify:surface && npm run verify:doc-links && npm run migrate:workflows:check-examples && npm run verify:deps && npm run lint && npm run typecheck && npm run test:coverage && npm run test:packages && npm run build",
     "verify:toolchain": "node ./scripts/verify-toolchain.mjs",
     "verify:compiler-watch": "node ./scripts/verify-compiler-watch.mjs",
     "bench:typescript": "node ./scripts/benchmark-typescript.mjs",
-    "bench:dependencies": "node ./scripts/benchmark-dependency-runtime.mjs"
+    "bench:dependencies": "node ./scripts/benchmark-dependency-runtime.mjs",
+    "verify:rules": "node ./scripts/verify-rules.mjs",
+    "test:e2e:release": "npm run sync-shared && node ./node_modules/vitest/vitest.mjs run --config tests/e2e/vitest.config.mts tests/e2e/release-smoke.e2e.test.ts",
+    "bench:footprint": "node ./scripts/benchmark-package-footprint.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "3.0.3",
     "@types/papaparse": "5.5.2",
-    "@vitest/coverage-v8": "5.0.3",
-    "dependency-cruiser": "18.5.0",
-    "dotenv": "18.0.5",
-    "vitest": "5.0.3",
+    "@vitest/coverage-v8": "5.0.5",
+    "dependency-cruiser": "18.7.0",
+    "dotenv": "18.0.9",
+    "vitest": "5.0.5",
     "typescript": "npm:@typescript/typescript6@6.0.2",
-    "@typescript/native": "npm:typescript@7.0.2",
-    "ignore": "5.3.2"
+    "@typescript/native": "npm:typescript@7.0.2"
   },
   "overrides": {
-    "@typescript/old": "npm:typescript@6.0.2"
+    "@typescript/old": "npm:typescript@6.0.2",
+    "qs@>=6.0.0 <6.17.1": "6.17.1"
   },
   "allowScripts": {
-    "@playwright/browser-chromium@1.63.0": true,
     "unrs-resolver": true,
-    "eslint-plugin-n8n-nodes-base": false
+    "eslint-plugin-n8n-nodes-base": false,
+    "@playwright/browser-chromium@1.64.1": true,
+    "ssh2": false,
+    "isolated-vm": false,
+    "cpu-features": false
   }
 }

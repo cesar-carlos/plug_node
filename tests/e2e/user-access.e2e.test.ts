@@ -30,7 +30,7 @@ const getOptionalOwnerCredentials = ():
   };
 };
 
-describe.sequential("Plug user access /me/clients E2E", () => {
+describe("Plug user access /me/clients E2E", () => {
   it("lists owned clients for a real owner account when owner credentials are configured", async ({
     skip,
   }) => {

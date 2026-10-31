@@ -1,3 +1,4 @@
+---
 description: "Universal rule governance and verification workflow"
 globs: ["packages/**/*.ts", "shared/**/*.ts", "scripts/**/*.mjs", "**/*.test.ts", "**/*.spec.ts"]
 alwaysApply: true
@@ -25,3 +26,5 @@ alwaysApply: true
 - The canonical package may depend on `socket.io-client`, but keep Socket.IO usage behind package-local transport adapters.
 - n8n node entry files may import from shared modules and package-local helpers, but shared modules must stay reusable and independent from package-local nodes or credentials.
 - Tests may cross boundaries when necessary, but production code must keep package boundaries clean.
+
+- Rule files must have YAML frontmatter delimited by `---`, with description, globs, and alwaysApply. Validate them in the default quality gate.

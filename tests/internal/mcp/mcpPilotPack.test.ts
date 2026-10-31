@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { buildRegistry, listCapabilities } from "../../../shared/mcp/registry";
-import { parseCapabilityDefinition } from "../../../packages/n8n-nodes-plug-database/nodes/PlugMcpServer/mcpServerHelpers";
+import { parseCapabilityDefinition } from "../../../packages/n8n-nodes-plug-database/generated/shared/n8n/mcpServerHelpers";
 
 describe("pilot capability pack", () => {
   it("should parse the documented pilot pack without validation errors", () => {

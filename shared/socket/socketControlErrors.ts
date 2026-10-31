@@ -1,4 +1,5 @@
 import { PlugError } from "../contracts/errors";
+import { createFeatureUnavailableError } from "../contracts/featureAvailability";
 
 export interface RetryAfterInput {
   readonly retryAfterMs?: number;
@@ -53,6 +54,10 @@ export const createSocketControlError = (
       ? input.code
       : options.defaultCode;
 
+  const availability = createFeatureUnavailableError(code, input.details, {
+    statusCode: input.statusCode,
+  });
+  if (availability) return availability;
   if (code === "VALIDATION_ERROR" || input.statusCode === 400) {
     return new PlugError("Plug rejected the socket request payload.", {
       code,

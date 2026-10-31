@@ -36,6 +36,7 @@ export interface PlugSocketExecutor {
 }
 
 export interface PlugClientNodeExecutionConfig {
+  readonly actionIoTransportFactory?: import("./actionIoExecution").ActionIoTransportFactory;
   readonly supportsSocket: boolean;
   readonly credentialName?: string;
   readonly nodeDisplayName?: string;

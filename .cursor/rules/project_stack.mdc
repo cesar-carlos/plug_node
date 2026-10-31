@@ -1,3 +1,4 @@
+---
 description: "Stack-specific libraries and conventions for the Plug Database n8n workspace"
 globs: ["packages/**/*.ts", "shared/**/*.ts", "scripts/**/*.mjs", "**/*.test.ts", "**/*.spec.ts"]
 alwaysApply: true
@@ -7,10 +8,10 @@ alwaysApply: true
 
 - This is a stack-specific rule file for the chosen libraries and ecosystem conventions.
 - Workspace tooling uses `npm workspaces`, `@n8n/node-cli`, `TypeScript`, `ESLint`, `Prettier`, `Vitest`, and `release-it`.
-- Pin npm `12.2.0` in local execution and CI. Install-script approvals belong in the root manifest; do not repair native bindings with untracked `--no-save` installs.
+- Pin npm `12.2.1` in local execution and CI. Install-script approvals belong in the root manifest; do not repair native bindings with untracked `--no-save` installs.
 - Use the TypeScript `7.0.2` native alias for compilation and watch, and the TypeScript `6.0.2` API compatibility alias for analysis tools. Verify their actual resolution with `npm run verify:toolchain`.
-- Keep the CLI `0.28.0` compatibility profile until its replacement supports this package's existing runtime dependencies. The root `ignore@5.3.2` dev dependency satisfies the legacy SDK's optional peer; dependency-cruiser keeps its own version 7. Remove this bridge with the legacy CLI profile.
-- Use `zod4` only for the existing Plug JSON-RPC schemas; retain `zod@3.25.76` for n8n peers. Remove the alias split when the host accepts Zod 4. Preserve the public validation error contract through the local tested serializer.
+- Use CLI `0.54.6` and ESLint `10.14.0`. The self-hosted lint profile replaces the blanket runtime-dependency prohibition with `scripts/verify-runtime-dependencies.mjs`, and applies n8n error wrapping at node entry points rather than protocol helpers. These tested exceptions live in the package ESLint config; remove them when upstream supports these boundaries. The legacy root `ignore` peer bridge is no longer needed.
+- Use `zod4` (`npm:zod@4.6.7`) for Plug JSON-RPC and faithful I/O schemas; retain `zod@3.25.76` for n8n peers. Remove the alias split when the host accepts Zod 4. Preserve the public validation error contract through the local tested serializer.
 - Use `npm run verify` as the default local quality gate before handing work off.
 - Target the workspace development environment at Node `24.18.0`, matching `.nvmrc`, `.node-version`, and CI.
 - Runtime integration targets `n8n` and `n8n-workflow`; keep package metadata aligned with official n8n package conventions.
@@ -29,10 +30,13 @@ alwaysApply: true
 - Do not add `supertest` unless the repository actually introduces an HTTP server that must be tested through request/response assertions.
 - Do not add `morgan`, `cors`, `helmet`, or `multer` unless the repository actually introduces an HTTP server or upload endpoint.
 - Do not add `jsonwebtoken` unless this repository must sign or verify JWTs locally. Current Plug usage only forwards bearer and refresh tokens returned by the API.
-- Do not add `dotenv` unless the repository introduces a standalone local process that reads runtime configuration from `.env`. The node itself relies on n8n credentials, not `.env` files.
-- Do not add `moment` for date formatting in v1. Prefer built-in date and `Intl` APIs.
-- Do not add `axios`, `zod`, `uuid`, `pako`, `ws`, `turbo`, or `lerna` unless a concrete requirement appears and the user agrees with the added complexity.
+- `dotenv` is a development-only dependency for E2E configuration. Runtime nodes rely on n8n credentials, never `.env` files.
+- Do not add `moment` for date formatting. Prefer built-in date and `Intl` APIs.
+- The existing Zod aliases are described above. Do not add `axios`, `uuid`, `pako`, `ws`, `turbo`, or `lerna` unless a concrete requirement appears and the user agrees with the added complexity.
 - Prefer `crypto.randomUUID()` over bringing `uuid` into the project.
 - Prefer `this.helpers.httpRequest` in n8n execution code for HTTP calls instead of adding a custom HTTP client dependency.
 - Prefer small handwritten guards for the current Plug payload boundaries instead of adding a runtime schema library by default.
 - Keep third-party library usage behind small helpers when that improves reuse or testability.
+
+- Use `npm run verify:rules` to validate rule metadata and local rule references.
+- Keep npm aligned before installing dependencies: `npm install --global npm@12.2.1`, or use an isolated npm 12.2.1 installation when global writes are unavailable.

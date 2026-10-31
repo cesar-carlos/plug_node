@@ -31,7 +31,7 @@ export const registerPlugSqlLiveE2E = (
   const label = channelLabel(channel);
   const credentials = () => credentialsForChannel(e2eConfig, channel);
 
-  describe.sequential(`Plug Database ${label} E2E`, () => {
+  describe(`Plug Database ${label} E2E`, () => {
     it(`validates the configured credentials and client token via ${label}`, async ({
       skip,
     }) => {

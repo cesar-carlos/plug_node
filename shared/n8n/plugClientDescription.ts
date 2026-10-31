@@ -10,6 +10,8 @@ import {
   type PlugToolExposure,
 } from "./toolExposure";
 import { buildPlugUserAccessProperties } from "./plugUserAccessDescription";
+import { buildActionIoProperties } from "./actionIoDescription";
+import { buildSqlExtensionProperties } from "./sqlExtensionDescription";
 
 const addResourceDisplayOption = (
   property: INodeProperties,
@@ -61,6 +63,11 @@ export const buildPlugClientNodeDescription = (
       outputs: [NodeConnectionTypes.Main],
       credentials: [
         {
+          name: "plugAgentApi",
+          required: true,
+          displayOptions: { show: { resource: ["actionIo", "sqlExtension"] } },
+        },
+        {
           name: options.credentialName,
           required: true,
         },
@@ -73,6 +80,18 @@ export const buildPlugClientNodeDescription = (
           default: "sql",
           description: "Choose which Plug capability group this node should expose.",
           options: [
+            {
+              name: "Agent Action I/O",
+              value: "actionIo",
+              description:
+                "Operate approved saved actions with faithful binary I/O and explicit recovery.",
+            },
+            {
+              name: "SQL Extensions",
+              value: "sqlExtension",
+              description:
+                "Inspect source identity/schema and manage durable SQL operations.",
+            },
             {
               name: "SQL",
               value: "sql",
@@ -97,6 +116,12 @@ export const buildPlugClientNodeDescription = (
         },
         ...buildPlugSqlProperties(options.supportsSocket).map((property) =>
           addResourceDisplayOption(property, "sql"),
+        ),
+        ...buildActionIoProperties().map((property) =>
+          addResourceDisplayOption(property, "actionIo"),
+        ),
+        ...buildSqlExtensionProperties().map((property) =>
+          addResourceDisplayOption(property, "sqlExtension"),
         ),
         ...buildPlugClientAccessProperties().map((property) =>
           addResourceDisplayOption(property, "clientAccess"),

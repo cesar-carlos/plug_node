@@ -50,6 +50,7 @@ export const applyCommandDefaults = (
 
   if (
     nextCommand.method === "agent.getProfile" ||
+    nextCommand.method === "sql.cancel" ||
     nextCommand.method === "client_token.getPolicy"
   ) {
     return {

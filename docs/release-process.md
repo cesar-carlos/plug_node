@@ -48,13 +48,13 @@ Repository policy keeps `main` as the only permanent branch:
 
 ## Notes
 
-- Use npm `12.2.0` for install, verification and release. CI installs the exact version before `npm ci`; the previous floating npm upgrade and native `--no-save` repairs are removed.
-- When the system npm cannot be upgraded without administrator rights, use `npx --yes npm@12.2.0 run verify` and the same launcher for other workspace commands. No administrator access is needed for this isolated execution.
+- Use npm `12.2.1` for install, verification and release. CI installs the exact version before `npm ci`; the previous floating npm upgrade and native `--no-save` repairs are removed.
+- When the system npm cannot be upgraded without administrator rights, use `npx --yes npm@12.2.1 run verify` and the same launcher for other workspace commands. No administrator access is needed for this isolated execution.
 - `npm run verify:toolchain` checks TypeScript `7.0.2` for compilation and the `6.0.2` API compatibility package for analysis. The root override pins only `@typescript/old`, the compatibility wrapper's dependency, so a floating patch cannot silently change the compiler API.
-- CLI `0.50.4` was evaluated but rejects this package's existing runtime dependencies. Keep CLI `0.28.0` and its compatible ESLint `9.39.5` profile until the official configuration supports the current package architecture. Do not disable lint rules to adopt the newer CLI.
-- ESLint `9.39.5` is deprecated by the registry; `10.12.0` remains blocked until the official plugin set supports it. The final audit found zero production findings and 23 in the complete development/host tooling tree, down from 57 including one critical finding. Remaining direct advisory chains include the CLI SDK, development `n8n-workflow` and `release-it`; forced fixes or downgrades were not applied.
-- The legacy CLI SDK has an optional `ignore@^5` peer. The explicit root dev dependency `ignore@5.3.2` satisfies it without downgrading dependency-cruiser's separate version 7. Remove it when replacing the legacy CLI.
-- `npm run pack:check` loads all five nodes and six credentials from installed tarballs with `n8n-workflow` `2.16.0` and `2.41.2`. A third installation enables approved scripts and exercises sharp, Chromium PDF generation and PDF.js extraction. Package size gates remain unchanged.
+- CLI `0.54.6` and ESLint `10.14.0` are validated with a narrow self-hosted profile: runtime dependencies must be reviewed and exactly pinned, while protocol errors are normalized at node entry points. All other upstream lint checks remain enabled. See the documented exceptions in the package ESLint config.
+- Dependency updates must retain the TypeScript compiler/API aliases and the Zod 3 host peer until their consumers support newer APIs. Use the audit report to distinguish host/tooling findings from the package runtime; do not apply forced major-version replacements to silence advisories.
+- The legacy root `ignore@5.3.2` peer bridge was removed with CLI 0.54.6. Dependency-cruiser resolves its own version 7.
+- `npm run pack:check` loads all five nodes and six credentials from installed tarballs with `n8n-workflow` `2.16.0` and `2.45.4`. A third installation enables approved scripts and exercises sharp, Chromium PDF generation and PDF.js extraction. Package size gates remain unchanged.
 - npm 12 install-script approvals are explicit in the root manifest. Chromium and the resolver are approved; the CLI plugin's pnpm-only preinstall is denied because it does not build any required runtime artifact. Unreviewed optional SDK native scripts are not executed by this migration.
 
 - `n8n-nodes-plug-database` is the n8n verification candidate
@@ -67,3 +67,7 @@ Repository policy keeps `main` as the only permanent branch:
 - `npm run pack:check` now includes a real tarball installation smoke test, so run it only after a successful build/verify path
 - after the unified major release, deprecate `n8n-nodes-plug-database-advanced` on npm and direct users to `n8n-nodes-plug-database`
 - Dependabot opens weekly pull requests for GitHub Actions updates
+
+## Required staging smoke
+
+Publishing requires a successful `test:e2e:release` job on the exact release commit in the GitHub `staging` environment. Configure `PLUG_E2E_USER`, `PLUG_E2E_PASSWORD`, `PLUG_E2E_AGENT_ID`, `PLUG_E2E_CLIENT_TOKEN`, and `PLUG_E2E_BASE_URL` there. Optional socket credentials use `PLUG_E2E_SOCKET_AGENT_ID` and `PLUG_E2E_SOCKET_CLIENT_TOKEN`. Missing configuration or offline infrastructure blocks publication; version-PR creation does not require staging.

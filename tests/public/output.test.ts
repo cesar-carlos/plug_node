@@ -290,6 +290,8 @@ describe("buildNodeOutputItems", () => {
         { id: 2, name: "Beta" },
       ],
     });
+    // Reusing the transport result must not append the same chunk a second time.
+    expect(buildNodeOutputItems(result, "aggregatedSingleItem")).toEqual(items);
   });
 
   it("returns one synthetic item when aggregated JSON receives row_count 0 without a rows array", () => {

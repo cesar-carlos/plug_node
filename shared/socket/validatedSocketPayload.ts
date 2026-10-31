@@ -16,13 +16,13 @@ const validated = new WeakMap<
 const frozenContexts = new WeakMap<PayloadFrameSigningOptions, string>();
 export const signingContext = (signing?: PayloadFrameSigningOptions): string => {
   if (!signing) return "unsigned";
+  const cached = frozenContexts.get(signing);
+  if (cached !== undefined) return cached;
   const immutable =
     Object.isFrozen(signing) &&
     (!signing.previousKeys ||
       (Object.isFrozen(signing.previousKeys) &&
         signing.previousKeys.every(Object.isFrozen)));
-  const cached = immutable ? frozenContexts.get(signing) : undefined;
-  if (cached) return cached;
   const context = JSON.stringify({
     key: signing.key,
     keyId: signing.keyId,
@@ -51,7 +51,7 @@ export const getValidatedSocketPayload = <T>(
 ): DecodedPayloadFrame<T> | undefined => {
   if (typeof value !== "object" || value === null) return undefined;
   const entry = validated.get(value);
-  return entry?.context === signingContext(signing)
+  return entry && entry.context === signingContext(signing)
     ? (entry.decoded as DecodedPayloadFrame<T>)
     : undefined;
 };

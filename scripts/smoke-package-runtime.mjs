@@ -17,9 +17,30 @@ for (const file of [...manifest.n8n.nodes, ...manifest.n8n.credentials]) {
   assert.ok(instance.name || instance.description?.name, `${file}: n8n metadata`);
 }
 assert.equal(manifest.n8n.nodes.length, 5);
-assert.equal(manifest.n8n.credentials.length, 6);
-assert.equal(manifest.dependencies.zod4, "npm:zod@4.6.5");
+assert.equal(manifest.n8n.credentials.length, 7);
+assert.equal(manifest.dependencies.zod4, "npm:zod@4.6.7");
 assert.equal(manifest.dependencies.zod, "3.25.76");
+const { NodeOperationError } = require("n8n-workflow");
+const { toNodeExecutionError } = require(
+  path.join(packageRoot, "dist/generated/shared/n8n/nodeExecutionError.js"),
+);
+const node = {
+  id: "compatibility-smoke",
+  name: "Plug",
+  type: "plugDatabase",
+  typeVersion: 2,
+  position: [0, 0],
+  parameters: {},
+};
+const wrapped = toNodeExecutionError(node, new Error("Smoke error"), 2);
+assert.ok(wrapped instanceof NodeOperationError);
+assert.equal(wrapped.message, "Smoke error");
+assert.equal(wrapped.context.itemIndex, 2);
+assert.equal(toNodeExecutionError(node, wrapped), wrapped);
+const { numberToWordsValue } = require(
+  path.join(packageRoot, "dist/generated/shared/tools/dateValue.js"),
+);
+assert.equal(await numberToWordsValue(1001, "pt-BR"), "Mil E Um");
 for (const name of ["@n8n/node-cli", "@typescript/native", "vitest"]) {
   assert.throws(() => require.resolve(name), { code: "MODULE_NOT_FOUND" });
 }
@@ -54,5 +75,5 @@ if (process.argv.includes("--native")) {
   }
 }
 console.log(
-  `Loaded five nodes and six credentials${process.argv.includes("--native") ? "; sharp, Chromium and PDF extraction passed" : ""}.`,
+  `Loaded five nodes and seven credentials${process.argv.includes("--native") ? "; sharp, Chromium and PDF extraction passed" : ""}.`,
 );

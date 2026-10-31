@@ -2,9 +2,9 @@
 
 ## Native TypeScript and dependency compatibility
 
-Use Node `24.18.0` and npm `12.2.0`. `npm run verify` includes checks of the actual native compiler and compatibility API resolution, plus a native watch smoke covering initial emission, a type error, repair, file deletion and recreation. It preserves existing lint, typecheck, architectural and package-surface checks.
+Use Node `24.18.0` and npm `12.2.1`. `npm run verify` includes checks of the actual native compiler and compatibility API resolution, plus a native watch smoke covering initial emission, a type error, repair, file deletion and recreation. It preserves existing lint, typecheck, architectural and package-surface checks.
 
-Vitest and coverage use matching `5.0.3` versions. Fork isolation and serial file execution remain enabled. Schema error fixtures were captured from the pre-migration build and assert the complete public error, including SQL refinements. Zod 4 is imported only through `zod4`; n8n retains its Zod 3 peer. Remove that alias split only after the host supports Zod 4. Keep the local error serializer until an intentional public error-contract change.
+Vitest and coverage use matching `5.0.5` versions. Fork isolation and serial file execution remain enabled. Schema error fixtures were captured from the pre-migration build and assert the complete public error, including SQL refinements. Zod 4 is imported only through `zod4`; n8n retains its Zod 3 peer. Remove that alias split only after the host supports Zod 4. Keep the local error serializer until an intentional public error-contract change.
 
 Runtime regression cases exercise number-to-words results in English and Brazilian Portuguese, fractions and negatives, CSV Unicode/quotes, asynchronous JSONata, Markdown, JSON Schema formats, and PDF loading cleanup on success and failure. Run the real browser smoke with `PLUG_TEST_REAL_PDF=1`; a default skip does not establish Chromium validation.
 
@@ -100,3 +100,19 @@ Performance-sensitive PayloadFrame changes must also keep `npm run bench:payload
 3. Replace `scripts/benchmarks/payload-frame-baseline.json` with the calibrated file and commit only when intentional.
 
 Refresh the baseline only when an intentional, measured improvement lands or when CI runners show systematic platform skew.
+
+## Release gates and compatibility evidence
+
+`npm run verify` validates rule metadata and runs coverage with enforced floors in addition to lint, type checking, tests, and build. Coverage floors are defined in `vitest.config.mts`; increase them as untested branches gain coverage.
+
+Before publication, `npm run test:e2e:release` must pass authentication/refresh and read-only `SELECT 1` probes over REST and Socket. This suite never skips unavailable infrastructure. Configure staging credentials in the GitHub `staging` environment; missing secrets block publication. Exploratory E2E suites retain their skip behavior.
+
+`npm run pack:check` already installs the tarball against `n8n-workflow` 2.16.0 and 2.45.4 and tests native dependencies on 2.45.4. These are package-runtime checks, not full n8n UI/workflow-engine certification. The peer wildcard is not an unbounded support claim.
+
+E2E suites use `describe` with `sequence.concurrent: false` in their config. Vitest 5 does not expose `describe.sequential`; do not reintroduce that legacy API.
+
+Use `npm run bench:footprint` to measure isolated import time, RSS delta, and installed size of heavy runtime dependencies. Chromium browser downloads live outside npm package directories and are reported separately. Retain functionality unless measurements justify a packaging change.
+
+Dependency-upgrade regression tests cover the self-hosted runtime dependency allowlist, effective ESLint scopes, normalized n8n error boundaries, number-to-words output compatibility, and native package installation. Keep `@types/node` on the Node 24 line used by this workspace, even when the latest tag targets a newer Node major.
+
+The to-words 7.4.1 update intentionally adopts corrected Portuguese conjunctions and scale plurals: 1001 is "Mil E Um", 1100 is "Mil E Cem", 1101 is "Mil Cento E Um", and 2000000 is "Dois Milhões". Fixtures record these corrections rather than preserving the older grammatical defect.

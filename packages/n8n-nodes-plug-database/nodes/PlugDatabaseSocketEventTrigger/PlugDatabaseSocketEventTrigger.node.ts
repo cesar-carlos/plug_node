@@ -53,7 +53,6 @@ import {
 } from "./triggerHelpers";
 import { TriggerReconnectManager } from "./triggerReconnectManager";
 
-// eslint-disable-next-line @n8n/community-nodes/node-usable-as-tool -- Triggers are event sources, not AI-agent tools.
 export class PlugDatabaseSocketEventTrigger implements INodeType {
   description: INodeTypeDescription = {
     ...plugDatabaseSocketEventTriggerDescription,

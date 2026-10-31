@@ -3,6 +3,7 @@ import type { IHttpRequestOptions } from "n8n-workflow";
 import type { PlugHttpRequester, PlugHttpRequestOptions } from "../contracts/api";
 import { PlugError, PlugTimeoutError } from "../contracts/errors";
 import { isRecord } from "../utils/json";
+import { ActionIoError } from "../contracts/actionIo/client";
 
 export interface N8nHttpRequesterContext {
   readonly helpers: {
@@ -40,6 +41,14 @@ export const buildN8nHttpRequester = (
   context: N8nHttpRequesterContext,
 ): PlugHttpRequester => {
   return async <TBody = unknown>(options: PlugHttpRequestOptions) => {
+    const command = isRecord(options.body) ? options.body.command : undefined;
+    const protectedDispatch = (Array.isArray(command) ? command : [command]).some(
+      (value) =>
+        isRecord(value) &&
+        typeof value.method === "string" &&
+        (value.method.startsWith("agent.action.") ||
+          value.method.startsWith("sql.operation.")),
+    );
     const requestOptions: IHttpRequestOptions = {
       method: options.method,
       url: options.url,
@@ -59,6 +68,7 @@ export const buildN8nHttpRequester = (
     try {
       response = await context.helpers.httpRequest(requestOptions);
     } catch (error: unknown) {
+      if (protectedDispatch) throw new ActionIoError("HTTP_REQUEST_UNCONFIRMED", true);
       if (isTimeoutLikeError(error)) {
         throw new PlugTimeoutError("Plug HTTP request timed out before completion.", {
           timeoutMs: options.timeoutMs,
@@ -80,6 +90,8 @@ export const buildN8nHttpRequester = (
     }
 
     if (!isRecord(response) || typeof response.statusCode !== "number") {
+      if (protectedDispatch)
+        throw new ActionIoError("HTTP_RESPONSE_MISSING_STATUS", true);
       throw new PlugError(
         "Plug HTTP transport returned a response without a status code.",
         {

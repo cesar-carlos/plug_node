@@ -161,3 +161,9 @@ Nunca expor Client Access / User Access a agentes de atendimento.
 - [ ] `includeAuditInOutput=false` no branch que volta ao Agent
 - [ ] Registry validado (`validate`) + pack sem admin
 - [ ] Testes: param faltando, vazio, truncado, forbidden, budget
+
+## Technical enforcement and trust boundaries
+
+The MCP runner counts calls across input items in one execution. Across separate executions, the workflow must maintain and supply the current call ordinal; the node does not persist a per-session quota. Keep the counter, capability definitions, forbidden names, and Hub wiring under workflow-owner control, outside model-generated parameters.
+
+An explicitly configured AI Hub must resolve successfully; resolution errors stop execution instead of silently dropping its policy. Audit user/session IDs are correlation metadata, not authorization. Server-side permissions attached to Plug credentials remain authoritative.

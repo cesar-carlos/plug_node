@@ -27,7 +27,27 @@
   {
     "value": 1001,
     "locale": "pt-BR",
-    "expected": "Mil Um"
+    "expected": "Mil E Um"
+  },
+  {
+    "value": 1100,
+    "locale": "pt-BR",
+    "expected": "Mil E Cem"
+  },
+  {
+    "value": 1101,
+    "locale": "pt-BR",
+    "expected": "Mil Cento E Um"
+  },
+  {
+    "value": 2000000,
+    "locale": "pt-BR",
+    "expected": "Dois Milhões"
+  },
+  {
+    "value": -1001,
+    "locale": "pt-BR",
+    "expected": "Menos Mil E Um"
   },
   {
     "value": 1.25,

@@ -17,6 +17,14 @@ export interface SocketIoTransportLike {
 class SocketIoTransport implements SocketIoTransportLike, CustomSocketEventTransport {
   constructor(private readonly socket: Socket) {}
 
+  get io(): Socket["io"] {
+    return this.socket.io;
+  }
+
+  get volatile(): Socket["volatile"] {
+    return this.socket.volatile;
+  }
+
   get id(): string | undefined {
     return this.socket.id;
   }
@@ -59,7 +67,7 @@ export const createSocketIoTransport = (input: {
   readonly baseUrl: string;
   readonly accessToken: string;
   readonly namespace?: string;
-}): SocketIoTransportLike => {
+}): SocketIoTransport => {
   const namespaceUrl = deriveSocketNamespaceUrl(
     input.baseUrl,
     input.namespace ?? "/consumers",

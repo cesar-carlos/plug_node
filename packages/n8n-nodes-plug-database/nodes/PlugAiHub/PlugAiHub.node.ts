@@ -1,3 +1,4 @@
+import { toNodeExecutionError } from "../../generated/shared/n8n/nodeExecutionError";
 import type {
   IDataObject,
   IExecuteFunctions,
@@ -75,7 +76,7 @@ export class PlugAiHub implements INodeType {
           continue;
         }
 
-        throw error;
+        throw toNodeExecutionError(this.getNode(), error, itemIndex);
       }
     }
 

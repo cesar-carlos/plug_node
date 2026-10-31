@@ -4,7 +4,24 @@ import {
   disposeSocketEventDispatcher,
 } from "../../shared/socket/socketEventDispatcher";
 import * as codec from "../../shared/socket/payloadFrameCodec";
+import { rememberValidatedSocketPayload } from "../../shared/socket/validatedSocketPayload";
 import type { RelaySocketTransport } from "../../shared/socket/relaySessionTypes";
+
+it("revalidates a delivered chunk when a previous signing key changes", async () => {
+  const previous = { key: "old", keyId: "previous" };
+  const signing = Object.freeze({
+    key: "current",
+    keyId: "current",
+    previousKeys: Object.freeze([previous]),
+  });
+  const frame = codec.encodePayloadFrame({ rows: [1] }, { signing: previous });
+  const decoded = await codec.decodePayloadFrameAsync(frame, { signing });
+  rememberValidatedSocketPayload(frame, decoded, signing);
+  previous.key = "replacement";
+  await expect(codec.decodePayloadFrameAsync(frame, { signing })).rejects.toThrow(
+    /signature verification failed/,
+  );
+});
 
 class Transport implements RelaySocketTransport {
   connected = true;
