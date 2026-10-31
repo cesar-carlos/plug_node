@@ -317,13 +317,7 @@ export const getPlugE2EConfig = (): PlugE2EConfig => {
     return cachedConfig;
   }
 
-  if (!existsSync(envPath)) {
-    throw new Error(
-      `Missing ${envPath}. Copy .env.example to .env and provide the Plug test credentials before running E2E tests.`,
-    );
-  }
-
-  loadDotEnv({ path: envPath, quiet: true });
+  if (existsSync(envPath)) loadDotEnv({ path: envPath, quiet: true });
 
   const credentials: PlugCredentials = {
     user: getRequiredEnv("PLUG_E2E_USER"),
