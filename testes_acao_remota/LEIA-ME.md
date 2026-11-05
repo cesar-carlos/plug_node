@@ -27,14 +27,8 @@ Esta pasta fica na raiz do `plug_node` e não entra em `npm run test:e2e`. O E2E
 ```json
 {
   "agent_actions": {
-    "scopes": [
-      "agent_actions.run",
-      "agent_actions.read_execution",
-      "agent_actions.io"
-    ],
-    "action_ids": [
-      "cole-aqui-o-action-id"
-    ]
+    "scopes": ["agent_actions.run", "agent_actions.read_execution", "agent_actions.io"],
+    "action_ids": ["cole-aqui-o-action-id"]
   }
 }
 ```

@@ -13,26 +13,40 @@ env:
   CHANGESET_RELEASE_BRANCH: changeset-release/main
 
 jobs:
-  format:
+  package-size:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-node@v5
         with:
           node-version: 24.18.0
-          cache: npm
-
-      - name: Install pinned npm
-        run: npm install --global npm@12.2.1
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Check formatting
-        run: npm run format:check
+          package-manager-cache: false
+      - run: npm install --global npm@12.2.1
+      - name: Compare built npm packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          package=n8n-nodes-plug-database
+          for revision in base candidate; do
+            (
+              cd "$revision"
+              npm ci
+              npm run build
+              npm pack --workspace "$package" --dry-run --ignore-scripts --json > "$RUNNER_TEMP/$revision.json"
+            )
+          done
+          node candidate/scripts/compare-pack-size.mjs "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/candidate.json" | tee -a "$GITHUB_STEP_SUMMARY"
 
   socket-protocol:
     runs-on: ubuntu-latest
@@ -100,7 +114,6 @@ jobs:
 
   verify:
     runs-on: ubuntu-latest
-    needs: [format]
 
     steps:
       - name: Checkout
