@@ -162,51 +162,55 @@ function Read-FaithfulStdout {
     )
 
     $after = 0
-    $chunks = @()
-    while ([DateTime]::UtcNow -lt $Deadline) {
-        $read = Invoke-HubJson -Url "$HubUrl/api/v1/agents/commands" -AccessToken $AccessToken -Body @{
-            agentId   = $AgentId
-            timeoutMs = $TimeoutMs
-            command   = @{
-                jsonrpc = '2.0'
-                id      = "read-$IdempotencyKey-$after"
-                method  = 'agent.action.readIo'
-                params  = @{
-                    client_token   = $ClientToken
-                    execution_id   = $ExecutionId
-                    after_sequence = $after
-                    max_bytes      = 65536
-                    wait_ms        = 1000
+    $bytes = [IO.MemoryStream]::new()
+    try {
+        while ([DateTime]::UtcNow -lt $Deadline) {
+            $read = Invoke-HubJson -Url "$HubUrl/api/v1/agents/commands" -AccessToken $AccessToken -Body @{
+                agentId   = $AgentId
+                timeoutMs = $TimeoutMs
+                command   = @{
+                    jsonrpc = '2.0'
+                    id      = "read-$IdempotencyKey-$after"
+                    method  = 'agent.action.readIo'
+                    params  = @{
+                        client_token   = $ClientToken
+                        execution_id   = $ExecutionId
+                        after_sequence = $after
+                        max_bytes      = 65536
+                        wait_ms        = 1000
+                    }
                 }
             }
-        }
-        $readItem = Get-BridgeItem $read.Body
-        if ($read.StatusCode -ne 200 -or $null -eq $readItem -or $readItem.success -ne $true) {
-            return $null
-        }
-        $page = $readItem.result
-        foreach ($event in @($page.events)) {
-            if ($null -eq $event -or [string]$event.type -ne 'output' -or [string]$event.stream -ne 'stdout') {
+            $readItem = Get-BridgeItem $read.Body
+            if ($read.StatusCode -ne 200 -or $null -eq $readItem -or $readItem.success -ne $true) {
+                return $null
+            }
+            $page = $readItem.result
+            foreach ($event in @($page.events)) {
+                if ($null -eq $event -or [string]$event.type -ne 'output' -or [string]$event.stream -ne 'stdout') {
+                    continue
+                }
+                if ($null -eq $event.offset -or $event.offset -ne $bytes.Length) {
+                    throw 'Offset de stdout descontínuo.'
+                }
+                $block = [Convert]::FromBase64String($event.data_base64)
+                $bytes.Write($block, 0, $block.Length)
+            }
+            $next = [int64]$page.next_sequence
+            if ($page.output_complete -is [bool] -and $page.output_complete) {
+                return [Text.UTF8Encoding]::new($false, $true).GetString($bytes.GetBuffer(), 0, [int]$bytes.Length)
+            }
+            if ($next -le $after) {
+                Start-Sleep -Seconds 1
                 continue
             }
-            $chunks += [pscustomobject]@{
-                Offset = [int64]$event.offset
-                Text   = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$event.data_base64))
-            }
+            $after = $next
         }
-        $next = [int64]$page.next_sequence
-        $complete = [bool]$page.output_complete
-        if ($complete) {
-            break
-        }
-        if ($next -le $after) {
-            Start-Sleep -Seconds 1
-            continue
-        }
-        $after = $next
-    }
 
-    return (($chunks | Sort-Object Offset | ForEach-Object { $_.Text }) -join '')
+        return $null
+    } finally {
+        $bytes.Dispose()
+    }
 }
 
 function Save-CallRecord {
@@ -384,13 +388,10 @@ if ($terminalStatuses -notcontains $latest.status) {
     exit 3
 }
 
-$stdout = ''
-if ($null -ne $latest.output -and $null -ne $latest.output.stdout) {
-    $stdout = [string]$latest.output.stdout.text
-}
-$faithfulStdout = Read-FaithfulStdout -HubUrl $hubUrl -AccessToken $accessToken -AgentId ([string]$config.agentId) -TimeoutMs $timeoutMs -ClientToken ([string]$config.clientToken) -ExecutionId $executionId -IdempotencyKey $idempotencyKey -Deadline $deadline
-if (-not [string]::IsNullOrEmpty($faithfulStdout)) {
-    $stdout = $faithfulStdout
+$stdout = Read-FaithfulStdout -HubUrl $hubUrl -AccessToken $accessToken -AgentId ([string]$config.agentId) -TimeoutMs $timeoutMs -ClientToken ([string]$config.clientToken) -ExecutionId $executionId -IdempotencyKey $idempotencyKey -Deadline $deadline
+if ($null -eq $stdout) {
+    Write-Host "SAIDA_INCOMPLETA execution_id=$executionId"
+    exit 2
 }
 $exitCode = $null
 if ($null -ne $latest.process) {
@@ -398,7 +399,7 @@ if ($null -ne $latest.process) {
 }
 $markerFound = $stdout.Contains('PLUG_REMOTE_ACTION_OK')
 $echoLine = "PLUG_REMOTE_ECHO=$echo"
-$echoFound = $stdout.Contains($echoLine)
+$echoFound = [Array]::IndexOf([regex]::Split($stdout, '\r\n|\r|\n'), $echoLine) -ge 0
 
 if (-not [string]::IsNullOrWhiteSpace($stdout)) {
     Write-Host '--- stdout do agente ---'
@@ -406,7 +407,7 @@ if (-not [string]::IsNullOrWhiteSpace($stdout)) {
     Write-Host '--- fim do stdout ---'
 }
 
-if ($latest.status -eq 'succeeded') {
+if ($latest.status -eq 'succeeded' -and ($exitCode -is [int] -or $exitCode -is [long]) -and $exitCode -eq 0) {
     if ($markerFound) {
         Write-Host "PROCESSO_OK exit_code=$exitCode marcador=PLUG_REMOTE_ACTION_OK"
     } else {

@@ -49,17 +49,36 @@ export class ActionIoError extends PlugError {
     code = /^[A-Za-z0-9_.:-]{1,128}$/.test(code) ? code : "REMOTE_ERROR";
     const availability = featureUnavailablePresentation(code, details);
     if (availability?.methodNotExecuted) outcomeUnknown = false;
-    const presentation =
-      availability ??
-      (operation === "listAvailable" &&
+    let presentation: { message: string; description: string } | undefined = availability;
+    if (
+      !presentation &&
       (code === "ACTION_IO_UNAUTHORIZED" ||
         details.failure_code === "ACTION_IO_UNAUTHORIZED")
-        ? {
-            message: "O agente negou acesso ao catálogo de ações.",
-            description:
-              "Confira a validade da credencial local, o vínculo com o agente e as permissões agent_actions.list, agent_actions.run e agent_actions.io.",
-          }
-        : undefined);
+    ) {
+      if (operation === "listAvailable") {
+        presentation = {
+          message: "O agente negou acesso ao catálogo de ações.",
+          description:
+            "Confira a validade da credencial local, o vínculo com o agente e as permissões agent_actions.list, agent_actions.run e agent_actions.io.",
+        };
+      } else if (
+        operation === "validateRun" &&
+        details.reason === "scope_or_action_denied"
+      ) {
+        presentation = {
+          message: "O agente negou a validação da ação.",
+          description:
+            "Confira se a credencial local permite esta ação e inclui os escopos agent_actions.validate_run e agent_actions.io.",
+        };
+      }
+    }
+    if (!presentation && operation === "validateRun" && code === "NOT_FOUND") {
+      presentation = {
+        message: "Recurso não encontrado ao validar a ação (NOT_FOUND).",
+        description:
+          "Confira o Agent ID da credencial Plug Agent API, o Action ID e, se informado, o Trigger ID nesse agente. O preflight não inicia o processo.",
+      };
+    }
     super(presentation?.message ?? `Plug command failed (${code}).`, {
       code,
       retryable: false,
@@ -133,7 +152,11 @@ export const callActionIo = async (
   try {
     response = await dispatchEncodedCommand(transport, command, json, bytes);
   } catch (error) {
-    if (error instanceof ActionIoError) throw error;
+    if (error instanceof ActionIoError) {
+      if (operation === "validateRun")
+        throw new ActionIoError(error.code, false, error.details, operation);
+      throw error;
+    }
     throw new ActionIoError("TRANSPORT_UNCONFIRMED", mutation);
   }
   if (

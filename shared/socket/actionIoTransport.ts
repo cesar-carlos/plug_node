@@ -18,9 +18,18 @@ export interface ActionIoSocket {
   emit(event: string, payload: unknown): unknown;
 }
 export type ActionIoSocketTransport = ActionIoTransport & { dispose(): void };
+// Other protocols share this transport; keep unknown methods conservative.
+const readOnlyActionMethods = new Set([
+  "agent.action.validateRun",
+  "agent.action.listAvailable",
+  "agent.action.getExecution",
+  "agent.action.findExecution",
+  "agent.action.readIo",
+  "agent.action.getInputStatus",
+]);
 interface Pending {
   waitingRead: boolean;
-  readsOutput: boolean;
+  mayHaveEffects: boolean;
   send?: () => void;
   resolve(value: unknown): void;
   reject(error: ActionIoError): void;
@@ -61,7 +70,9 @@ export const createSocketActionIoTransport = (options: {
     flushTimer = undefined;
     for (const item of pending.values()) {
       clearTimeout(item.timer);
-      item.reject(new ActionIoError(code, item.send === undefined && !item.readsOutput));
+      item.reject(
+        new ActionIoError(code, item.send === undefined && item.mayHaveEffects),
+      );
     }
     pending.clear();
   };
@@ -125,7 +136,9 @@ export const createSocketActionIoTransport = (options: {
                   typeof error?.code === "string"
                     ? error.code
                     : "INVALID_SOCKET_ENVELOPE",
-                  details.effects_possible !== false || details.outcome_unknown === true,
+                  item.mayHaveEffects &&
+                    (details.effects_possible !== false ||
+                      details.outcome_unknown === true),
                   details,
                 ),
               );
@@ -185,7 +198,8 @@ export const createSocketActionIoTransport = (options: {
     item.reject(
       new ActionIoError(
         typeof body.error.code === "string" ? body.error.code : "RELAY_REQUEST_REFUSED",
-        details.effects_possible !== false || details.outcome_unknown === true,
+        item.mayHaveEffects &&
+          (details.effects_possible !== false || details.outcome_unknown === true),
         details,
       ),
     );
@@ -205,9 +219,9 @@ export const createSocketActionIoTransport = (options: {
       (options.maxRequestBytes ?? 512 * 1024)
     )
       throw new ActionIoError("SOCKET_REQUEST_TOO_LARGE", false);
-    const readsOutput = command.method === "agent.action.readIo";
+    const mayHaveEffects = !readOnlyActionMethods.has(command.method);
     const waitingRead =
-      readsOutput &&
+      command.method === "agent.action.readIo" &&
       typeof command.params.wait_ms === "number" &&
       command.params.wait_ms > 0;
     if (
@@ -231,9 +245,9 @@ export const createSocketActionIoTransport = (options: {
       const timer = setTimeout(() => {
         const dispatched = pending.get(command.id)?.send === undefined;
         pending.delete(command.id);
-        reject(new ActionIoError("SOCKET_TIMEOUT", dispatched && !readsOutput));
+        reject(new ActionIoError("SOCKET_TIMEOUT", dispatched && mayHaveEffects));
       }, 30000);
-      pending.set(command.id, { resolve, reject, timer, waitingRead, readsOutput });
+      pending.set(command.id, { resolve, reject, timer, waitingRead, mayHaveEffects });
       const item = pending.get(command.id)!;
       const deadline = performance.now() + 30000;
       item.send = () => {
@@ -253,7 +267,7 @@ export const createSocketActionIoTransport = (options: {
         } catch {
           pending.delete(command.id);
           clearTimeout(timer);
-          item.reject(new ActionIoError("SOCKET_SEND_UNKNOWN", !readsOutput));
+          item.reject(new ActionIoError("SOCKET_SEND_UNKNOWN", mayHaveEffects));
         }
       };
       if (flushTimer === undefined) flush();

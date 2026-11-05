@@ -111,12 +111,20 @@ export const executeActionIoNode = async (
         params.sequence = get("actionSequence", 0);
       if (operation === "sendInput") params.data_base64 = await readInput(context, index);
       if (operation === "getExecution") params.include_output = false;
-      if (operation === "readIo")
+      let offsets: { stdout: number; stderr: number } | undefined;
+      if (operation === "readIo") {
+        offsets = {
+          stdout: Number(get("actionStdoutOffset", 0)),
+          stderr: Number(get("actionStderrOffset", 0)),
+        };
+        if (Object.values(offsets).some((n) => !Number.isSafeInteger(n) || n < 0))
+          throw new ActionIoError("INVALID_CHECKPOINT", false);
         Object.assign(params, {
           after_sequence: get("actionAfterSequence", 0),
           max_bytes: get("actionMaxBytes", 262144),
           wait_ms: get("actionWaitMs", 20000),
         });
+      }
       const channel = get("actionChannel", "rest");
       let transport: ActionIoTransport;
       if (channel === "rest")
@@ -149,13 +157,7 @@ export const executeActionIoNode = async (
         json: result as IDataObject,
         pairedItem: { item: index },
       };
-      if (operation === "readIo") {
-        const offsets = {
-          stdout: Number(get("actionStdoutOffset", 0)),
-          stderr: Number(get("actionStderrOffset", 0)),
-        };
-        if (Object.values(offsets).some((n) => !Number.isSafeInteger(n) || n < 0))
-          throw new ActionIoError("INVALID_CHECKPOINT", false);
+      if (offsets) {
         item.json = { ...item.json, next_offsets: nextActionIoOffsets(result, offsets) };
         item.binary = {};
         for (const event of result.events as unknown[]) {

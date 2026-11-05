@@ -109,6 +109,20 @@ describe("n8n faithful I/O", () => {
     expect(factory).not.toHaveBeenCalled();
     expect(stream.destroyed).toBe(true);
   });
+  it.each([{ actionStdoutOffset: -1 }, { actionStderrOffset: 1.5 }])(
+    "rejects invalid offsets before opening the agent transport: %j",
+    async (offsets) => {
+      const context = setup({ operation: "readIo", actionExecutionId: "e", ...offsets });
+      const factory = vi.fn();
+      await expect(
+        executeActionIoNode(context, {
+          supportsSocket: true,
+          actionIoTransportFactory: factory,
+        }),
+      ).rejects.toThrow("INVALID_CHECKPOINT");
+      expect(factory).not.toHaveBeenCalled();
+    },
+  );
   it("emits byte-identical binary events and an uncommitted next checkpoint", async () => {
     const context = setup({
       operation: "readIo",

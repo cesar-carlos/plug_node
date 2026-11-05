@@ -19,6 +19,41 @@ class SocketFixture extends EventEmitter {
 }
 afterEach(() => vi.useRealTimers());
 describe.each([false, true])("single-dispatch Socket relay=%s", (relay) => {
+  it.each([
+    ["validateRun", false],
+    ["getExecution", false],
+    ["findExecution", false],
+    ["listAvailable", false],
+    ["getInputStatus", false],
+    ["readIo", false],
+    ["run", true],
+    ["closeInput", true],
+    ["sendInput", true],
+    ["cancel", true],
+  ] as const)(
+    "classifies a disconnect after dispatch of %s",
+    async (operation, effects) => {
+      const socket = new SocketFixture();
+      const transport = createSocketActionIoTransport({
+        socket,
+        agentId: "a",
+        relayConversationId: relay ? "c" : undefined,
+      });
+      const result = transport({
+        id: "cmd",
+        jsonrpc: "2.0",
+        method: `agent.action.${operation}`,
+        params: {},
+      });
+      expect(socket.sent).toHaveLength(1);
+      socket.emit("disconnect");
+      await expect(result).rejects.toMatchObject({
+        code: "SOCKET_DISCONNECTED",
+        details: { effects_possible: effects, outcome_unknown: effects },
+      });
+      transport.dispose();
+    },
+  );
   it("enforces the configured command budget in UTF-8 bytes before emission", async () => {
     const socket = new SocketFixture();
     const params = { action_id: 'ação"\\', idempotency_key: "k" };

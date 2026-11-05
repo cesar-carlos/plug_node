@@ -30,13 +30,18 @@ try {
     $reader.Dispose()
 }
 
-Write-Output "$marker $whenUtc"
-Write-Output "computer=$env:COMPUTERNAME"
-Write-Output "user=$env:USERDOMAIN\$env:USERNAME"
-Write-Output "os=$osCaption"
-Write-Output "arch=$arch"
-Write-Output "pid=$PID"
-Write-Output "local_time=$whenLocal"
-Write-Output "script=$scriptPath"
-Write-Output "PLUG_REMOTE_ECHO=$received"
+$writer = [IO.StreamWriter]::new([Console]::OpenStandardOutput(), $encoding)
+try {
+    $writer.WriteLine("$marker $whenUtc")
+    $writer.WriteLine("computer=$env:COMPUTERNAME")
+    $writer.WriteLine("user=$env:USERDOMAIN\$env:USERNAME")
+    $writer.WriteLine("os=$osCaption")
+    $writer.WriteLine("arch=$arch")
+    $writer.WriteLine("pid=$PID")
+    $writer.WriteLine("local_time=$whenLocal")
+    $writer.WriteLine("script=$scriptPath")
+    $writer.WriteLine("PLUG_REMOTE_ECHO=$received")
+} finally {
+    $writer.Dispose()
+}
 exit 0

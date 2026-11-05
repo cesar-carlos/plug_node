@@ -38,6 +38,16 @@ O pacote `n8n-nodes-plug-database` **3.8.0** oferece dois recursos novos no nó 
 5. Em **Read I/O**, comece com o checkpoint inicial do nó. Consuma os eventos de saída na ordem recebida. Cada evento de saída também aparece em `binary.event_<sequence>`, com o fluxo e o deslocamento no JSON. No programa de eco, o stdout acumulado deve conter exatamente os cinco bytes enviados. Se a primeira página ainda não trouxer todos os bytes, continue lendo.
 6. Com o eco ainda aguardando entrada, execute **Cancel**. Consulte **Get Execution** até obter `status = cancelled` e `flags.terminal = true`. Para um programa que deve concluir normalmente ao receber EOF, use **Close Input** com a próxima sequência e um novo Message ID. Continue lendo a saída até confirmar `output_complete`.
 
+## Teste de eco com término normal
+
+Se já conhece o **Action ID**, comece pelo **Validate Run**. A listagem é opcional. Para validar, executar e ler o eco, a credencial local precisa permitir a ação e ter os escopos `agent_actions.validate_run`, `agent_actions.run`, `agent_actions.io` e `agent_actions.read_execution`. Ao substituir o token no agente, atualize **Local Client Token** na credencial **Plug Agent API** usada por todos os nós de ação.
+
+1. Em **Validate Run** e **Run**, use o mesmo Action ID, Trigger ID (se aplicável) e chave de idempotência. Ative **Include Initial Input** e **Close Input After Initial Input**, selecione **Base64** e preencha **Input Base64** com `ZWNvLXJlbW90by1vaw==` (texto `eco-remoto-ok`). O fechamento sinaliza EOF para a aplicação.
+2. Coloque um **IF** depois do preflight e prossiga para **Run** somente quando `{{ $json.valid }}` for verdadeiro. Use o `execution_id` devolvido por **Run** em **Read I/O** e **Get Execution**.
+3. Leia até `output_complete = true` e consulte o estado até `flags.terminal = true`. No script de eco usado no teste da Campo e Lavoura, os critérios de sucesso foram `status = succeeded`, `process.exit_code = 0` e a linha `PLUG_REMOTE_ECHO=eco-remoto-ok` no stdout.
+
+Se o preflight retornar `scope_or_action_denied`, confira os escopos e a lista de ações permitidas na credencial local. Para `NOT_FOUND`, compare o **Agent ID** da credencial **Plug Agent API**, o **Action ID** e o **Trigger ID** com os usados na chamada direta que passou. Deixe o Trigger ID vazio quando a chamada direta o omitir. O código sozinho não identifica qual recurso faltou.
+
 ## Retomar após timeout, desconexão ou reinício do n8n
 
 | O que aconteceu                                   | Como retomar                                                                                                                                                                                                                                        |

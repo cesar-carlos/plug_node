@@ -107,25 +107,40 @@ export const buildActionIoProperties = (): INodeProperties[] => {
       "boolean",
       false,
     ),
-    {
-      displayName: "Input Format",
-      name: "actionInputFormat",
-      type: "options",
-      default: "base64",
-      options: [
-        { name: "Base64", value: "base64" },
-        { name: "n8n Binary", value: "binary" },
-      ],
-      displayOptions: { show: { operation: ["run", "validateRun", "sendInput"] } },
-    },
-    property("Input Base64", "actionBase64", ["run", "validateRun", "sendInput"]),
-    property(
-      "Input Binary Field",
-      "actionBinaryField",
-      ["run", "validateRun", "sendInput"],
-      "string",
-      "data",
-    ),
+    ...[true, false].flatMap((initial): INodeProperties[] => {
+      const operations = initial ? ["run", "validateRun"] : ["sendInput"];
+      const show = {
+        operation: operations,
+        ...(initial ? { actionInitial: [true] } : {}),
+      };
+      return [
+        {
+          displayName: "Input Format",
+          name: "actionInputFormat",
+          type: "options",
+          default: "base64",
+          options: [
+            { name: "Base64", value: "base64" },
+            { name: "n8n Binary", value: "binary" },
+          ],
+          displayOptions: { show },
+        },
+        {
+          ...property("Input Base64", "actionBase64", operations),
+          displayOptions: { show: { ...show, actionInputFormat: ["base64"] } },
+        },
+        {
+          ...property(
+            "Input Binary Field",
+            "actionBinaryField",
+            operations,
+            "string",
+            "data",
+          ),
+          displayOptions: { show: { ...show, actionInputFormat: ["binary"] } },
+        },
+      ];
+    }),
     property("After Sequence", "actionAfterSequence", ["readIo"], "number", 0),
     property(
       "Expected Stdout Byte Offset",

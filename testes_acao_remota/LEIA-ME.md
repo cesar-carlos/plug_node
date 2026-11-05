@@ -27,7 +27,7 @@ Esta pasta fica na raiz do `plug_node` e não entra em `npm run test:e2e`. O E2E
 ```json
 {
   "agent_actions": {
-    "scopes": ["agent_actions.run", "agent_actions.read_execution", "agent_actions.io"],
+    "scopes": ["agent_actions.validate_run", "agent_actions.run", "agent_actions.read_execution", "agent_actions.io"],
     "action_ids": ["cole-aqui-o-action-id"]
   }
 }
@@ -38,6 +38,8 @@ Na raiz do repositório:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\testes_acao_remota\chamar_daqui.ps1
 ```
+
+O chamador retorna código 0 quando a ação termina em `succeeded`, o processo informa código 0 e a leitura chega a `output_complete = true` com a linha exata `PLUG_REMOTE_ECHO=<echo>`. A leitura verifica os offsets de stdout em bytes antes de decodificar o texto UTF-8. Se o eco chegar antes da última página, o teste ainda aguarda a confirmação de saída completa.
 
 Só o preflight, sem iniciar processo:
 

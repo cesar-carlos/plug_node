@@ -152,6 +152,113 @@ it("preserves an explicit unknown HTTP outcome when effects are marked false", a
   });
 });
 describe("faithful I/O contracts", () => {
+  it.each(["bridge", "rpc"])("explains NOT_FOUND during %s preflight", async (source) => {
+    const transport = createRestActionIoTransport({
+      endpoint: "http://fixture.invalid",
+      agentId: "agent",
+      bearerToken: () => "hub",
+      fetch: async (_, init) => {
+        if (source === "bridge")
+          return Response.json(
+            { success: false, error: { code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        const { command } = JSON.parse(String(init?.body));
+        return Response.json({
+          agentId: "agent",
+          response: {
+            type: "single",
+            item: {
+              id: command.id,
+              success: false,
+              error: {
+                code: -32004,
+                message: "private diagnostic",
+                data: { code: "NOT_FOUND" },
+              },
+            },
+          },
+        });
+      },
+    });
+    await expect(
+      callActionIo(
+        transport,
+        "validateRun",
+        {
+          action_id: "echo",
+          idempotency_key: "check",
+          io: { version: 1, mode: "faithful", close_input: true },
+        },
+        "token",
+      ),
+    ).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      description: expect.stringContaining("Trigger ID"),
+      details: { effects_possible: false },
+      retryable: false,
+    });
+  });
+  it.each(["bridge", "rpc"])(
+    "explains a denied %s preflight without exposing remote messages",
+    async (source) => {
+      const params = {
+        action_id: "echo",
+        idempotency_key: "check",
+        io: { version: 1, mode: "faithful", close_input: true },
+      };
+      const send = vi.fn(async (command: { id: string }) => ({
+        jsonrpc: "2.0",
+        id: command.id,
+        error: {
+          code: -32002,
+          message: "private diagnostic",
+          data: {
+            failure_code: "ACTION_IO_UNAUTHORIZED",
+            reason: "scope_or_action_denied",
+            user_message: "private diagnostic",
+          },
+        },
+      }));
+      const fetch = vi.fn(async () =>
+        Response.json(
+          {
+            success: false,
+            error: {
+              code: "ACTION_IO_UNAUTHORIZED",
+              message: "private diagnostic",
+              details: {
+                reason: "scope_or_action_denied",
+                user_message: "private diagnostic",
+              },
+            },
+          },
+          { status: 403 },
+        ),
+      );
+      const transport =
+        source === "bridge"
+          ? createRestActionIoTransport({
+              endpoint: "http://fixture.invalid",
+              agentId: "agent",
+              bearerToken: () => "hub",
+              fetch,
+            })
+          : send;
+      const result = callActionIo(transport, "validateRun", params, "token");
+      await expect(result).rejects.toMatchObject({
+        code: "ACTION_IO_UNAUTHORIZED",
+        message: "O agente negou a validação da ação.",
+        description: expect.stringContaining(
+          "agent_actions.validate_run e agent_actions.io",
+        ),
+        retryable: false,
+        details: { reason: "scope_or_action_denied", effects_possible: false },
+      });
+      await expect(result).rejects.not.toHaveProperty("details.user_message");
+      expect(source === "bridge" ? fetch : send).toHaveBeenCalledOnce();
+    },
+  );
   it("surfaces catalog denial with permission guidance and keeps it distinct from an empty page", async () => {
     const send = vi.fn(async (command: { id: string }) => ({
       jsonrpc: "2.0",
