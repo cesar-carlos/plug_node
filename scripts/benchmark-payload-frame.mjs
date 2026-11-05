@@ -46,6 +46,15 @@ const rejectedInflationFrame = {
   originalSize: frames.largeGzip.compressedSize * 21,
 };
 
+const rejectUnsafeInflation = () => {
+  try {
+    decodePayloadFrame(rejectedInflationFrame);
+  } catch {
+    return;
+  }
+  throw new Error("Expected unsafe PayloadFrame to be rejected");
+};
+
 const measure = (name, fn, count = effectiveIterations) => {
   const startedAt = performance.now();
   for (let index = 0; index < count; index += 1) {
@@ -59,6 +68,14 @@ const measure = (name, fn, count = effectiveIterations) => {
     avgMs: Number((durationMs / count).toFixed(4)),
     opsPerSecond: Number(((count / durationMs) * 1000).toFixed(1)),
   };
+};
+
+const measureInflationRejection = () => {
+  const name = "reject unsafe gzip inflation metadata";
+  measure(name, rejectUnsafeInflation);
+  const samples = Array.from({ length: 5 }, () => measure(name, rejectUnsafeInflation));
+  samples.sort((a, b) => a.avgMs - b.avgMs);
+  return samples[2];
 };
 
 const measureAsync = async (name, fn, count = effectiveIterations) => {
@@ -123,14 +140,7 @@ export const runPayloadFrameBenchmark = async () => {
       },
       gzipAsyncIterations,
     ),
-    measure("reject unsafe gzip inflation metadata", () => {
-      try {
-        decodePayloadFrame(rejectedInflationFrame);
-      } catch {
-        return;
-      }
-      throw new Error("Expected unsafe PayloadFrame to be rejected");
-    }),
+    measureInflationRejection(),
     await measureAsync("async decode small PayloadFrame without gzip", async () => {
       await decodePayloadFrameAsync(frames.smallNone);
     }),

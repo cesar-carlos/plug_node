@@ -93,7 +93,7 @@ Some E2E tests can skip when the agent or hub is temporarily unavailable. This a
 
 Every behavior change captured by an audit, bug fix, or contract change must be paired with a regression test. The R1 + R2 + R3 audits that produced 3.0.0 added 23 regression tests across shared validators, page guards, stream pull fail-fast, custom event REST parsing, and relay conversation validation.
 
-Performance-sensitive PayloadFrame changes must also keep `npm run bench:payload-frame:check` green against `scripts/benchmarks/payload-frame-baseline.json` (sync + async decode paths; CI uses a 50% `avgMs` gate with `PLUG_BENCH_ITERATIONS=100`). Calibrate the baseline on **Linux CI** (`ubuntu-latest`, Node 24.18.0), not Windows:
+Performance-sensitive PayloadFrame changes must also keep `npm run bench:payload-frame:check` green against `scripts/benchmarks/payload-frame-baseline.json` (sync + async decode paths; CI uses a 50% `avgMs` gate with `PLUG_BENCH_ITERATIONS=100`). The unsafe gzip rejection case uses one warm-up batch and reports the median of five measured batches of the same size. Calibrate the baseline on **Linux CI** (`ubuntu-latest`, Node 24.18.0), not Windows:
 
 1. Run CI `workflow_dispatch` (job `payload-frame-benchmark` writes artifact `payload-frame-baseline-linux`).
 2. Or locally on Linux: `PLUG_BENCH_ITERATIONS=100 npm run sync-shared && npm run build --workspace n8n-nodes-plug-database && node ./scripts/calibrate-payload-frame-baseline.mjs`.
