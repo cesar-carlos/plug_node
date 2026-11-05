@@ -46,7 +46,7 @@ jobs:
               npm pack --workspace "$package" --dry-run --ignore-scripts --json > "$RUNNER_TEMP/$revision.json"
             )
           done
-          node candidate/scripts/compare-pack-size.mjs "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/candidate.json" >> "$GITHUB_STEP_SUMMARY"
+          node candidate/scripts/compare-pack-size.mjs "$RUNNER_TEMP/base.json" "$RUNNER_TEMP/candidate.json" | tee -a "$GITHUB_STEP_SUMMARY"
 
   socket-protocol:
     runs-on: ubuntu-latest

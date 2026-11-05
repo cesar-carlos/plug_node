@@ -33,8 +33,11 @@ describe("release staging smoke", () => {
         config,
         channel === "rest" ? "rest" : "socket",
       );
+      const actionAgent = process.env.PLUG_E2E_ACTION_AGENT_ID?.trim();
       const actionToken =
-        channel === "rest" || credentials.agentId === config.credentials.agentId
+        actionAgent ||
+        channel === "rest" ||
+        credentials.agentId === config.credentials.agentId
           ? process.env.PLUG_E2E_ACTION_CLIENT_TOKEN?.trim()
           : undefined;
       const socketToken =
@@ -44,6 +47,9 @@ describe("release staging smoke", () => {
       const context = createLiveExecuteContext({
         credentials: {
           ...credentials,
+          user: process.env.PLUG_E2E_ACTION_USER?.trim() || credentials.user,
+          password: process.env.PLUG_E2E_ACTION_PASSWORD || credentials.password,
+          agentId: actionAgent || credentials.agentId,
           clientToken: socketToken || actionToken || credentials.clientToken,
         },
         requestTimeoutMs: config.timeoutMs,
