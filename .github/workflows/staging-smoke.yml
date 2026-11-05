@@ -1,0 +1,35 @@
+name: Staging Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.18.0
+          cache: npm
+      - run: npm install --global npm@12.2.1
+      - run: npm ci
+      - name: Run read-only staging probes
+        env:
+          PLUG_E2E_USER: ${{ secrets.PLUG_E2E_USER }}
+          PLUG_E2E_PASSWORD: ${{ secrets.PLUG_E2E_PASSWORD }}
+          PLUG_E2E_AGENT_ID: ${{ secrets.PLUG_E2E_AGENT_ID }}
+          PLUG_E2E_CLIENT_TOKEN: ${{ secrets.PLUG_E2E_CLIENT_TOKEN }}
+          PLUG_E2E_SOCKET_ACTION_CLIENT_TOKEN: ${{ secrets.PLUG_E2E_SOCKET_ACTION_CLIENT_TOKEN }}
+          PLUG_E2E_ACTION_USER: ${{ secrets.PLUG_E2E_ACTION_USER }}
+          PLUG_E2E_ACTION_PASSWORD: ${{ secrets.PLUG_E2E_ACTION_PASSWORD }}
+          PLUG_E2E_ACTION_AGENT_ID: ${{ secrets.PLUG_E2E_ACTION_AGENT_ID }}
+          PLUG_E2E_ACTION_CLIENT_TOKEN: ${{ secrets.PLUG_E2E_ACTION_CLIENT_TOKEN }}
+          PLUG_E2E_BASE_URL: ${{ secrets.PLUG_E2E_BASE_URL }}
+          PLUG_E2E_SOCKET_AGENT_ID: ${{ secrets.PLUG_E2E_SOCKET_AGENT_ID }}
+          PLUG_E2E_SOCKET_CLIENT_TOKEN: ${{ secrets.PLUG_E2E_SOCKET_CLIENT_TOKEN }}
+        run: npm run test:e2e:release

@@ -100,23 +100,6 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: npm run pack:check
 
-      - name: Require staging release smoke
-        if: steps.release_mode.outputs.mode == 'publish'
-        env:
-          PLUG_E2E_USER: ${{ secrets.PLUG_E2E_USER }}
-          PLUG_E2E_PASSWORD: ${{ secrets.PLUG_E2E_PASSWORD }}
-          PLUG_E2E_AGENT_ID: ${{ secrets.PLUG_E2E_AGENT_ID }}
-          PLUG_E2E_CLIENT_TOKEN: ${{ secrets.PLUG_E2E_CLIENT_TOKEN }}
-          PLUG_E2E_SOCKET_ACTION_CLIENT_TOKEN: ${{ secrets.PLUG_E2E_SOCKET_ACTION_CLIENT_TOKEN }}
-          PLUG_E2E_ACTION_USER: ${{ secrets.PLUG_E2E_ACTION_USER }}
-          PLUG_E2E_ACTION_PASSWORD: ${{ secrets.PLUG_E2E_ACTION_PASSWORD }}
-          PLUG_E2E_ACTION_AGENT_ID: ${{ secrets.PLUG_E2E_ACTION_AGENT_ID }}
-          PLUG_E2E_ACTION_CLIENT_TOKEN: ${{ secrets.PLUG_E2E_ACTION_CLIENT_TOKEN }}
-          PLUG_E2E_BASE_URL: ${{ secrets.PLUG_E2E_BASE_URL }}
-          PLUG_E2E_SOCKET_AGENT_ID: ${{ secrets.PLUG_E2E_SOCKET_AGENT_ID }}
-          PLUG_E2E_SOCKET_CLIENT_TOKEN: ${{ secrets.PLUG_E2E_SOCKET_CLIENT_TOKEN }}
-        run: npm run test:e2e:release
-
       - name: Run Changesets release action
         uses: changesets/action@v1
         with:

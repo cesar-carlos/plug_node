@@ -66,6 +66,6 @@ Repository policy keeps `main` as the only permanent branch:
 - `Scan Public Package` is triggered by a `package-published` repository dispatch after npm version verification; `n8n-nodes-plug-database@*` tags remain a fallback
 - Dependabot opens weekly pull requests for GitHub Actions updates
 
-## Required staging smoke
+## Optional staging smoke
 
-Publishing requires a successful `test:e2e:release` job on the exact release commit in the GitHub `staging` environment. Configure `PLUG_E2E_USER`, `PLUG_E2E_PASSWORD`, `PLUG_E2E_AGENT_ID`, `PLUG_E2E_CLIENT_TOKEN`, and `PLUG_E2E_BASE_URL` there. Optional socket credentials use `PLUG_E2E_SOCKET_AGENT_ID` and `PLUG_E2E_SOCKET_CLIENT_TOKEN`. Missing configuration or offline infrastructure blocks publication; version-PR creation does not require staging.
+When the staging agent is available, choose **Actions → Staging Smoke → Run workflow** and select the branch or tag to test. This manual workflow uses the GitHub staging environment. CI and npm publication run independently of the live Hub and agent. See [Testing strategy](./testing-strategy.md) for the required credentials and probes.
