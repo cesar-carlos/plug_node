@@ -1,0 +1,14 @@
+{
+  "hubUrl": "https://plug-server.se7esistemassinop.com.br",
+  "email": "",
+  "password": "",
+  "accessToken": "",
+  "agentId": "",
+  "clientToken": "",
+  "actionId": "",
+  "triggerId": "",
+  "echo": "eco-remoto-ok",
+  "timeoutMs": 30000,
+  "pollIntervalSeconds": 2,
+  "pollTimeoutSeconds": 120
+}

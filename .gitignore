@@ -23,6 +23,10 @@ tmp/**
 .env.*
 !.env.example
 
+# Manual remote-action probe: credentials and the last execution record
+testes_acao_remota/config.local.json
+testes_acao_remota/ultima_chamada.json
+
 # Tests / coverage
 coverage/
 *.lcov
