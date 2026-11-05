@@ -26,6 +26,44 @@ describe("release staging smoke", () => {
     expect(refreshed.loginResponse.client.id).toBe(session.loginResponse.client.id);
   });
 
+  it.each(["rest", "socket", "relay"] as const)(
+    "should read one bounded Action I/O catalog page over %s",
+    async (channel) => {
+      const credentials = credentialsForChannel(
+        config,
+        channel === "rest" ? "rest" : "socket",
+      );
+      const actionToken =
+        channel === "rest" || credentials.agentId === config.credentials.agentId
+          ? process.env.PLUG_E2E_ACTION_CLIENT_TOKEN?.trim()
+          : undefined;
+      const socketToken =
+        channel === "rest"
+          ? undefined
+          : process.env.PLUG_E2E_SOCKET_ACTION_CLIENT_TOKEN?.trim();
+      const context = createLiveExecuteContext({
+        credentials: {
+          ...credentials,
+          clientToken: socketToken || actionToken || credentials.clientToken,
+        },
+        requestTimeoutMs: config.timeoutMs,
+        inputData: [{ json: {} }],
+        parameters: {
+          resource: "actionIo",
+          operation: "listAvailable",
+          actionChannel: channel,
+          catalogPageSize: 1,
+        },
+      });
+      const [items] = await new PlugDatabase().execute.call(context);
+      expect(items).toHaveLength(1);
+      const { actions, next_cursor } = items[0].json;
+      expect(Array.isArray(actions)).toBe(true);
+      expect((actions as unknown[]).length).toBeLessThanOrEqual(1);
+      expect(next_cursor === null || typeof next_cursor === "string").toBe(true);
+    },
+  );
+
   it.each(["rest", "socket"] as const)(
     "should execute a read-only query over %s",
     async (channel) => {
