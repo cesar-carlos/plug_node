@@ -44,6 +44,11 @@ describe("release staging smoke", () => {
         channel === "rest"
           ? undefined
           : process.env.PLUG_E2E_SOCKET_ACTION_CLIENT_TOKEN?.trim();
+      if (actionAgent && !socketToken && !actionToken) {
+        throw new Error(
+          `Missing PLUG_E2E_ACTION_CLIENT_TOKEN for the dedicated staging Action I/O agent (${channel}).`,
+        );
+      }
       const context = createLiveExecuteContext({
         credentials: {
           ...credentials,
