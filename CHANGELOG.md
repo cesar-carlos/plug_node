@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 The package changelog (`packages/n8n-nodes-plug-database/CHANGELOG.md`) is canonical for published releases (via Changesets). This root file is a workspace summary.
 
+## [3.8.1] - 2026-11-05
+
+- Action I/O preflight errors identify the permissions or identifiers to check. Disconnect diagnostics distinguish read-only calls from dispatched mutations.
+- Read I/O validates checkpoint offsets before contacting the agent. The n8n editor shows input fields for the selected operation and format.
+- The remote echo test checks complete UTF-8 output, an exact echo line and a zero exit code.
+
 ## [3.8.0] - 2026-10-31
 
 - Discover authorized actions and run them on the remote agent over REST, Socket or relay. Workflows can send sequenced input, read output from a saved checkpoint and cancel the execution.
