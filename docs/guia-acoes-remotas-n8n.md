@@ -42,9 +42,31 @@ O pacote `n8n-nodes-plug-database` **3.8.0** oferece dois recursos novos no nó 
 
 Se já conhece o **Action ID**, comece pelo **Validate Run**. A listagem é opcional. Para validar, executar e ler o eco, a credencial local precisa permitir a ação e ter os escopos `agent_actions.validate_run`, `agent_actions.run`, `agent_actions.io` e `agent_actions.read_execution`. Ao substituir o token no agente, atualize **Local Client Token** na credencial **Plug Agent API** usada por todos os nós de ação.
 
-1. Em **Validate Run** e **Run**, use o mesmo Action ID, Trigger ID (se aplicável) e chave de idempotência. Ative **Include Initial Input** e **Close Input After Initial Input**, selecione **Base64** e preencha **Input Base64** com `ZWNvLXJlbW90by1vaw==` (texto `eco-remoto-ok`). O fechamento sinaliza EOF para a aplicação.
+1. Em um nó **Edit Fields** chamado `Referencia`, defina `inputBase64` como `YcOnw6NvIPCfjLE=` e `echo` como `ação 🌱` (texto esperado para a comparação). Em **Validate Run** e **Run**, use o mesmo Action ID, Trigger ID (se aplicável) e chave de idempotência. Ative **Include Initial Input** e **Close Input After Initial Input**, selecione **Input Format → Base64** e preencha **Input Base64** com `{{ $('Referencia').item.json.inputBase64 }}`. O fechamento sinaliza EOF para a aplicação.
 2. Coloque um **IF** depois do preflight e prossiga para **Run** somente quando `{{ $json.valid }}` for verdadeiro. Use o `execution_id` devolvido por **Run** em **Read I/O** e **Get Execution**.
-3. Leia até `output_complete = true` e consulte o estado até `flags.terminal = true`. No script de eco usado no teste da Campo e Lavoura, os critérios de sucesso foram `status = succeeded`, `process.exit_code = 0` e a linha `PLUG_REMOTE_ECHO=eco-remoto-ok` no stdout.
+3. Leia até `output_complete = true` e consulte o estado até `flags.terminal = true`. No script de eco usado no teste da Campo e Lavoura, exija `status = succeeded`, `process.exit_code = 0` e a linha `PLUG_REMOTE_ECHO=ação 🌱` no stdout. Mantenha `echo` consistente com o conteúdo representado por `inputBase64`; ele é a expectativa do teste, não a fonte da entrada enviada.
+
+### Base64 no envio e na leitura
+
+O campo `inputBase64` já contém os bytes codificados. Passe-o diretamente nos dois nós: não aplique `.base64Encode()` novamente e não acrescente `\n` ou outros caracteres. O exemplo representa exatamente 11 bytes UTF-8 (`61 c3 a7 c3 a3 6f 20 f0 9f 8c b1`), sem quebra de linha. Codificar novamente faria a aplicação receber o texto Base64 em vez de `ação 🌱`.
+
+O plug_node valida e encaminha o Base64 em `io.initial_input_base64`; o plug_agente o decodifica para os bytes entregues ao stdin da aplicação. Na volta, **Read I/O** mantém `events[].data_base64` no JSON e disponibiliza os bytes decodificados em `binary.event_<sequence>`. O nó **Saida da execucao** do workflow de teste decodifica os eventos, concatena os buffers de cada stream na ordem recebida e só então converte para UTF-8. Não converta cada chunk isoladamente para texto: um caractere pode estar dividido entre chunks.
+
+Para comparar o eco em bytes, extraia do stdout acumulado apenas o conteúdo após `PLUG_REMOTE_ECHO=` e antes do CRLF adicionado pelo script, e compare com `Buffer.from(inputBase64, 'base64')`. Os metadados e a quebra de linha produzidos pelo script não fazem parte da entrada original.
+
+### Evidência de eco UTF-8 nos três canais
+
+Testes manuais reais realizados em **6 de novembro de 2026**, no workflow **Plug teste de ação remota**, usando a credencial Campo e Lavoura. Em cada teste, **Validate Run**, **Run**, **Read I/O** e **Get Execution** usaram o canal indicado, com uma chave de idempotência nova para a execução pretendida. A entrada foi `YcOnw6NvIPCfjLE=` nos três casos, sem recodificação.
+
+| Canal  | Execução n8n                                                                               | Preflight      | Bytes do eco  | Saída completa | Código de saída | stderr |
+| ------ | ------------------------------------------------------------------------------------------ | -------------- | ------------- | -------------- | --------------- | ------ |
+| REST   | [100696](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/100696) | `valid = true` | 11, idênticos | `true`         | `0`             | vazio  |
+| Socket | [100699](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/100699) | `valid = true` | 11, idênticos | `true`         | `0`             | vazio  |
+| Relay  | [100700](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/100700) | `valid = true` | 11, idênticos | `true`         | `0`             | vazio  |
+
+Em todos os casos, o processo terminou com `status = succeeded` e `terminal = true`. O conteúdo do eco retornou exatamente `ação 🌱`, e sua representação Base64 voltou a ser `YcOnw6NvIPCfjLE=` na comparação dos bytes. Após os testes, os quatro nós foram restaurados para **REST**, mantendo o exemplo UTF-8 em `Referencia`.
+
+Os links exigem acesso à instância n8n e dependem da retenção das execuções. Esta evidência confirma os testes daquela data; não garante disponibilidade contínua do agente nem constitui teste de reconexão ou de carga.
 
 Se o preflight retornar `scope_or_action_denied`, confira os escopos e a lista de ações permitidas na credencial local. Para `NOT_FOUND`, compare o **Agent ID** da credencial **Plug Agent API**, o **Action ID** e o **Trigger ID** com os usados na chamada direta que passou. Deixe o Trigger ID vazio quando a chamada direta o omitir. O código sozinho não identifica qual recurso faltou.
 
