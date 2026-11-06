@@ -10,6 +10,77 @@ import {
 import { createMockExecuteContext } from "../helpers/mockExecuteFunctions";
 
 describe("plugInputItemParallelism", () => {
+  it.each([
+    {
+      operation: ["discoverRpc", "executeSql"],
+      inputMode: "guided",
+      sql: "UPDATE Inventory SET Qty = 0",
+    },
+    {
+      operation: "executeSql",
+      inputMode: ["guided", "advanced"],
+      sql: "SELECT 1",
+      advancedCommandJson: JSON.stringify({
+        method: "sql.execute",
+        params: { sql: "UPDATE Inventory SET Qty = 0" },
+      }),
+    },
+    {
+      operation: "executeBatch",
+      inputMode: ["guided", "advanced"],
+      batchCommandsJson: '[{"sql":"SELECT 1"}]',
+      advancedCommandJson: JSON.stringify({
+        method: "sql.executeBatch",
+        params: { commands: [{ sql: "SELECT 1" }], options: { transaction: true } },
+      }),
+    },
+    {
+      operation: "executeSql",
+      inputMode: "advanced",
+      advancedCommandJson: ['{"method":"sql.execute","params":{"sql":"SELECT 1"}}', "{"],
+    },
+    {
+      operation: "executeBatch",
+      inputMode: "guided",
+      batchCommandsJson: ['[{"sql":"SELECT 1"}]', "["],
+    },
+    {
+      operation: "executeSql",
+      inputMode: "guided",
+      sql: "SELECT id INTO InventoryCopy FROM Inventory",
+    },
+  ])("keeps unsafe or invalid items sequential (%j)", (parameters) => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "fixture",
+        password: "fixture",
+        baseUrl: "https://fixture.invalid",
+      },
+      parameters,
+      responses: [],
+      inputData: [{ json: {} }, { json: {} }],
+    });
+    expect(resolvePlugSqlInputItemParallelism(context, context.getInputData())).toBe(1);
+  });
+
+  it("allows mixed modes when every item is read-only", () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "fixture",
+        password: "fixture",
+        baseUrl: "https://fixture.invalid",
+      },
+      parameters: {
+        operation: "executeSql",
+        inputMode: ["guided", "advanced"],
+        sql: "SELECT 1",
+        advancedCommandJson: '{"method":"sql.execute","params":{"sql":"SELECT 2"}}',
+      },
+      responses: [],
+      inputData: [{ json: {} }, { json: {} }],
+    });
+    expect(resolvePlugSqlInputItemParallelism(context, context.getInputData())).toBe(2);
+  });
   const originalEnv = process.env.PLUG_MAX_PARALLEL_INPUT_ITEMS;
 
   afterEach(() => {

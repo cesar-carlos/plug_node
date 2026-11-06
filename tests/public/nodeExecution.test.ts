@@ -28,6 +28,121 @@ const loadFixture = <T>(name: string): T =>
   ) as T;
 
 describe("executePlugClientNode", () => {
+  it("keeps successful batch items when continueOnFail disables coalescing", async () => {
+    const context = createMockExecuteContext({
+      credentials,
+      continueOnFail: true,
+      parameters: {
+        operation: "executeBatch",
+        inputMode: "guided",
+        batchCommandsJson: ["{", '[{"sql":"SELECT 1"}]'],
+        batchOptions: { coalesceInputItems: true },
+      },
+      inputData: [{ json: { row: 1 } }, { json: { row: 2 } }],
+      responses: [
+        { statusCode: 200, headers: {}, body: loadFixture("login.success.json") },
+        {
+          statusCode: 200,
+          headers: {},
+          body: {
+            mode: "bridge",
+            agentId: "agent-1",
+            requestId: "request-2",
+            response: {
+              type: "single",
+              success: true,
+              item: { id: "rpc-2", success: true, result: { rows: [{ batch: "ok" }] } },
+            },
+          },
+        },
+      ],
+    });
+    const result = await executePlugClientNode(context, { supportsSocket: false });
+    expect(result[0]).toHaveLength(2);
+    expect(result[0][0].json.error).toMatchObject({
+      message: expect.stringContaining("must be valid JSON"),
+    });
+    expect(result[0][1].json).toMatchObject({ batch: "ok" });
+    expect(context.httpRequestMock).toHaveBeenCalledTimes(2);
+    expect(context.httpRequestMock.mock.calls[1][0].body).toMatchObject({
+      command: { params: { commands: [{ sql: "SELECT 1" }] } },
+    });
+  });
+
+  it.each(["agentId", "clientToken"])(
+    "rejects coalesced %s mismatches before HTTP dispatch",
+    async (field) => {
+      const context = createMockExecuteContext({
+        credentials,
+        parameters: {
+          operation: "executeBatch",
+          batchCommandsJson: '[{"sql":"SELECT 1"}]',
+          [field]: ["fixture-one", "fixture-two"],
+        },
+        inputData: [{ json: {} }, { json: {} }],
+        responses: [],
+      });
+      await expect(
+        executePlugClientNode(context, { supportsSocket: false }),
+      ).rejects.toThrow(/same agent and client credential/);
+      expect(context.httpRequestMock).not.toHaveBeenCalled();
+    },
+  );
+  it.each([false, true])(
+    "handles malformed advanced SQL per item with continueOnFail=%s",
+    async (continueOnFail) => {
+      const context = createMockExecuteContext({
+        credentials,
+        continueOnFail,
+        parameters: {
+          operation: "executeSql",
+          inputMode: "advanced",
+          responseMode: "aggregatedJson",
+          advancedCommandJson: [
+            "{",
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: "rpc-2",
+              method: "sql.execute",
+              params: { sql: "SELECT 1 AS id" },
+            }),
+          ],
+        },
+        inputData: [{ json: { row: 1 } }, { json: { row: 2 } }],
+        responses: [
+          { statusCode: 200, headers: {}, body: loadFixture("login.success.json") },
+          {
+            statusCode: 200,
+            headers: {},
+            body: {
+              mode: "bridge",
+              agentId: "agent-1",
+              requestId: "request-2",
+              response: {
+                type: "single",
+                success: true,
+                item: { id: "rpc-2", success: true, result: { rows: [{ id: 1 }] } },
+              },
+            },
+          },
+        ],
+      });
+      const execution = executePlugClientNode(context, { supportsSocket: false });
+      if (!continueOnFail) {
+        await expect(execution).rejects.toThrow("must be valid JSON");
+        expect(context.httpRequestMock).not.toHaveBeenCalled();
+        return;
+      }
+      const result = await execution;
+      expect(result[0]).toHaveLength(2);
+      expect(result[0][0].json.error).toMatchObject({
+        message: expect.stringContaining("must be valid JSON"),
+      });
+      expect(result[0][0].pairedItem).toEqual({ item: 0 });
+      expect(result[0][1].json).toMatchObject({ id: 1 });
+      expect(context.httpRequestMock).toHaveBeenCalledTimes(2);
+    },
+  );
   vi.spyOn(plugTransientRetry, "sleepMs").mockResolvedValue(undefined);
 
   it("routes the consolidated node to client access operations", async () => {
@@ -578,7 +693,7 @@ describe("executePlugClientNode", () => {
               type: "single",
               success: true,
               item: {
-                id: "rpc-retry",
+                id: "request-retry",
                 success: true,
                 result: {
                   rows: [{ CodCliente: 1 }],

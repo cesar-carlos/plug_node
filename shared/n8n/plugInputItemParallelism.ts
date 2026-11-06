@@ -180,15 +180,11 @@ const isAdvancedSqlItemReadOnly = (
   );
 };
 
-export const isSqlInputItemParallelismSafe = (
+const isSqlInputItemReadOnly = (
   context: IExecuteFunctions,
-  itemCount: number,
+  itemIndex: number,
 ): boolean => {
-  if (itemCount <= 1) {
-    return false;
-  }
-
-  const operation = context.getNodeParameter("operation", 0) as string;
+  const operation = context.getNodeParameter("operation", itemIndex) as string;
 
   switch (operation) {
     case "validateContext":
@@ -197,31 +193,45 @@ export const isSqlInputItemParallelismSafe = (
     case "getClientTokenPolicy":
       return true;
     case "executeSql": {
-      const inputMode = context.getNodeParameter("inputMode", 0, "guided") as string;
+      const inputMode = context.getNodeParameter(
+        "inputMode",
+        itemIndex,
+        "guided",
+      ) as string;
       if (inputMode === "advanced") {
-        return Array.from({ length: itemCount }, (_, itemIndex) =>
-          isAdvancedSqlItemReadOnly(context, itemIndex, "executeSql"),
-        ).every(Boolean);
+        return isAdvancedSqlItemReadOnly(context, itemIndex, "executeSql");
       }
-
-      return Array.from({ length: itemCount }, (_, itemIndex) =>
-        isGuidedExecuteSqlItemReadOnly(context, itemIndex),
-      ).every(Boolean);
+      return isGuidedExecuteSqlItemReadOnly(context, itemIndex);
     }
     case "executeBatch": {
-      const inputMode = context.getNodeParameter("inputMode", 0, "guided") as string;
+      const inputMode = context.getNodeParameter(
+        "inputMode",
+        itemIndex,
+        "guided",
+      ) as string;
       if (inputMode === "advanced") {
-        return Array.from({ length: itemCount }, (_, itemIndex) =>
-          isAdvancedSqlItemReadOnly(context, itemIndex, "executeBatch"),
-        ).every(Boolean);
+        return isAdvancedSqlItemReadOnly(context, itemIndex, "executeBatch");
       }
-
-      return Array.from({ length: itemCount }, (_, itemIndex) =>
-        isGuidedExecuteBatchItemReadOnly(context, itemIndex),
-      ).every(Boolean);
+      return isGuidedExecuteBatchItemReadOnly(context, itemIndex);
     }
     default:
       return false;
+  }
+};
+
+export const isSqlInputItemParallelismSafe = (
+  context: IExecuteFunctions,
+  itemCount: number,
+): boolean => {
+  if (itemCount <= 1) return false;
+  try {
+    for (let index = 0; index < itemCount; index++) {
+      if (!isSqlInputItemReadOnly(context, index)) return false;
+    }
+    return true;
+  } catch {
+    // Execution validates each item again and applies its continueOnFail policy.
+    return false;
   }
 };
 
@@ -232,6 +242,7 @@ export const resolvePlugSqlInputItemParallelism = (
   const useEmptyInput = sourceItems.length === 0;
   const itemCount = useEmptyInput ? 1 : sourceItems.length;
   const allowParallel = isSqlInputItemParallelismSafe(context, itemCount);
+  if (!allowParallel) return 1;
   const operation = context.getNodeParameter("operation", 0) as string;
   const optionsCollection = sqlOptionsCollectionForOperation(operation);
   const options =

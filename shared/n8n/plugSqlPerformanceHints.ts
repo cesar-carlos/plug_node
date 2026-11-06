@@ -12,8 +12,8 @@ const stripSqlCommentsAndStrings = (sql: string): string =>
   sql
     .replace(/'([^']|'')*'/g, "''")
     .replace(/"([^"]|"")*"/g, '""')
-    .replace(/--.*$/gm, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "");
+    .replace(/--.*$/gm, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ");
 
 const splitSqlStatements = (sql: string): string[] =>
   stripSqlCommentsAndStrings(sql)
@@ -32,7 +32,10 @@ export const isLikelyReadOnlySql = (sql: string): boolean => {
     return false;
   }
 
-  return !mutationKeywordPattern.test(normalizedStatement);
+  return (
+    !mutationKeywordPattern.test(normalizedStatement) &&
+    !/\binto\b/i.test(normalizedStatement)
+  );
 };
 
 /**
@@ -94,29 +97,17 @@ export const resolveAutoMaxParallelReadOnlyBatchItems = (
   return Math.min(commands.length, plugMaxParallelReadOnlyBatchItems);
 };
 
-const estimateBulkInsertJsonBytes = (
+const countBulkInsertJsonBytes = (
   table: string,
   columns: readonly { readonly name: string; readonly type: string }[],
   rows: readonly (readonly unknown[])[],
 ): number => {
-  if (rows.length === 0) {
-    return new TextEncoder().encode(JSON.stringify({ table, columns, rows: [] })).length;
+  let bytes = Buffer.byteLength(JSON.stringify({ table, columns, rows: [] }));
+  for (let index = 0; index < rows.length; index++) {
+    if (bytes > plugBulkInsertMaxJsonBytes) break;
+    bytes += Buffer.byteLength(JSON.stringify(rows[index])) + (index > 0 ? 1 : 0);
   }
-
-  if (rows.length <= 50) {
-    return new TextEncoder().encode(JSON.stringify({ table, columns, rows })).length;
-  }
-
-  const baseBytes = new TextEncoder().encode(
-    JSON.stringify({ table, columns, rows: [] }),
-  ).length;
-  const sampleIndices = [0, Math.floor(rows.length / 2), rows.length - 1];
-  const sampleRows = sampleIndices.map((index) => rows[index]);
-  const sampleBytes = new TextEncoder().encode(
-    JSON.stringify({ table, columns, rows: sampleRows }),
-  ).length;
-  const sampleRowBytes = (sampleBytes - baseBytes) / sampleRows.length;
-  return Math.ceil((baseBytes + sampleRowBytes * rows.length) * 1.1);
+  return bytes;
 };
 
 export const assertBulkInsertWithinHubLimits = (
@@ -130,7 +121,7 @@ export const assertBulkInsertWithinHubLimits = (
     );
   }
 
-  const serializedBytes = estimateBulkInsertJsonBytes(table, columns, rows);
+  const serializedBytes = countBulkInsertJsonBytes(table, columns, rows);
   if (serializedBytes > plugBulkInsertMaxJsonBytes) {
     const maxMiB = Math.round(plugBulkInsertMaxJsonBytes / (1024 * 1024));
     throw new PlugValidationError(

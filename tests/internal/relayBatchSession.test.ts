@@ -35,6 +35,13 @@ const session = {
 } as const;
 
 class MockRelayBatchTransport implements RelaySocketTransport {
+  constructor(
+    private readonly responseOptions: {
+      id?: "foreign" | "hub";
+      rows?: number;
+      duplicate?: "client" | "hub";
+    } = {},
+  ) {}
   connected = false;
 
   readonly emittedEvents: Array<{ readonly event: string; readonly payload?: unknown }> =
@@ -86,8 +93,9 @@ class MockRelayBatchTransport implements RelaySocketTransport {
               requestId: "hub-1",
             },
             {
-              clientRequestId: "client-2",
-              requestId: "hub-2",
+              clientRequestId:
+                this.responseOptions.duplicate === "client" ? "client-1" : "client-2",
+              requestId: this.responseOptions.duplicate === "hub" ? "hub-1" : "hub-2",
             },
           ],
         });
@@ -110,8 +118,19 @@ class MockRelayBatchTransport implements RelaySocketTransport {
               encodePayloadFrame(
                 {
                   jsonrpc: "2.0",
-                  id: item.clientRequestId,
-                  result: item.result,
+                  id:
+                    this.responseOptions.id === "hub"
+                      ? item.requestId
+                      : (this.responseOptions.id ?? item.clientRequestId),
+                  result:
+                    this.responseOptions.rows === undefined
+                      ? item.result
+                      : {
+                          rows: Array.from(
+                            { length: this.responseOptions.rows },
+                            (_, id) => ({ id }),
+                          ),
+                        },
                 },
                 { requestId: item.requestId, compression: "none" },
               ),
@@ -140,6 +159,94 @@ const buildCommand = (id: string): RpcSingleCommand => ({
 });
 
 describe("executeRelayBatchCommand", () => {
+  it.each(["client", "hub"] as const)(
+    "rejects duplicate %s IDs in acceptance without waiting for timeout",
+    async (duplicate) => {
+      const transport = new MockRelayBatchTransport({ duplicate });
+      transport.connected = true;
+      await expect(
+        executeRelayBatchCommand({
+          transport,
+          session,
+          agentId: "agent-1",
+          commands: [buildCommand("client-1"), buildCommand("client-2")],
+          responseMode: "aggregatedJson",
+          managedTransport: true,
+          skipConversationEnd: true,
+          timeoutMs: 60_000,
+        }),
+      ).rejects.toMatchObject({ code: "PLUG_VALIDATION_ERROR", retryable: false });
+      expect(
+        transport.emittedEvents.filter(
+          (item) => item.event === "relay:rpc.request.batch",
+        ),
+      ).toHaveLength(1);
+      expect(
+        transport.emittedEvents.some((item) => item.event === "relay:conversation.end"),
+      ).toBe(true);
+    },
+    2000,
+  );
+
+  it.each(["foreign", "hub"] as const)(
+    "validates classic relay batch response ID %s",
+    async (id) => {
+      const transport = new MockRelayBatchTransport({ id });
+      transport.connected = true;
+      const result = executeRelayBatchCommand({
+        transport,
+        session,
+        agentId: "agent-1",
+        commands: [buildCommand("client-1"), buildCommand("client-2")],
+        responseMode: "aggregatedJson",
+        managedTransport: true,
+        timeoutMs: 1000,
+      });
+      if (id === "hub") await expect(result).resolves.toHaveLength(2);
+      else
+        await expect(result).rejects.toMatchObject({
+          code: "PLUG_VALIDATION_ERROR",
+          retryable: false,
+        });
+      expect(
+        transport.emittedEvents.filter(
+          (item) => item.event === "relay:rpc.request.batch",
+        ),
+      ).toHaveLength(1);
+      expect(
+        transport.emittedEvents.some((item) => item.event === "relay:conversation.end"),
+      ).toBe(true);
+    },
+  );
+
+  it.each([0, 3, 4])(
+    "enforces per-command row limits without streams (%s rows)",
+    async (rows) => {
+      const transport = new MockRelayBatchTransport({ rows });
+      transport.connected = true;
+      const result = executeRelayBatchCommand({
+        transport,
+        session,
+        agentId: "agent-1",
+        commands: [buildCommand("client-1"), buildCommand("client-2")],
+        responseMode: "aggregatedJson",
+        managedTransport: true,
+        skipConversationEnd: true,
+        bufferLimits: { maxBufferedRows: 3 },
+        timeoutMs: 1000,
+      });
+      if (rows <= 3) await expect(result).resolves.toHaveLength(2);
+      else {
+        await expect(result).rejects.toMatchObject({
+          code: "SOCKET_BUFFER_LIMIT",
+          details: { bufferedRows: 4, maxBufferedRows: 3 },
+        });
+        expect(
+          transport.emittedEvents.some((item) => item.event === "relay:conversation.end"),
+        ).toBe(true);
+      }
+    },
+  );
   it("should clean up a waiter when connect throws synchronously", async () => {
     const transport = new MockRelayBatchTransport();
     const on = vi.spyOn(transport, "on");

@@ -1,6 +1,7 @@
 import {
   ActionIoError,
   currentActionIoEncoding,
+  commandMayHaveEffects,
   type ActionIoTransport,
 } from "../contracts/actionIo/client";
 import { isRecord } from "../utils/json";
@@ -16,6 +17,7 @@ export const createRestActionIoTransport = (options: {
   readonly maxResponseBytes?: number;
 }): ActionIoTransport => {
   const transport: ActionIoTransport = async (command) => {
+    const mayHaveEffects = commandMayHaveEffects(command.method);
     const prepared = currentActionIoEncoding(command, transport);
     const response = await (options.fetch ?? fetch)(options.endpoint, {
       method: "POST",
@@ -33,7 +35,7 @@ export const createRestActionIoTransport = (options: {
     });
     // Allow bounded REST metadata around the negotiated 512 KiB logical response.
     const reader = response.body?.getReader();
-    if (!reader) throw new ActionIoError("EMPTY_HTTP_RESPONSE", true);
+    if (!reader) throw new ActionIoError("EMPTY_HTTP_RESPONSE", mayHaveEffects);
     const chunks: Uint8Array[] = [];
     let size = 0;
     try {
@@ -50,7 +52,7 @@ export const createRestActionIoTransport = (options: {
           }
           throw new ActionIoError(
             "HTTP_RESPONSE_TOO_LARGE",
-            true,
+            mayHaveEffects,
             cleanupFailed ? { cleanup_failed: true } : {},
           );
         }
@@ -67,7 +69,7 @@ export const createRestActionIoTransport = (options: {
         ),
       );
     } catch {
-      throw new ActionIoError("INVALID_HTTP_JSON", true);
+      throw new ActionIoError("INVALID_HTTP_JSON", mayHaveEffects);
     }
     if (
       !response.ok &&
@@ -82,7 +84,8 @@ export const createRestActionIoTransport = (options: {
       });
       throw new ActionIoError(
         body.error.code,
-        details.effects_possible !== false || details.outcome_unknown === true,
+        mayHaveEffects &&
+          (details.effects_possible !== false || details.outcome_unknown === true),
         details,
       );
     }
@@ -93,7 +96,7 @@ export const createRestActionIoTransport = (options: {
       body.response.type !== "single" ||
       !isRecord(body.response.item)
     ) {
-      throw new ActionIoError(`HTTP_${response.status}_INVALID_ENVELOPE`, true);
+      throw new ActionIoError(`HTTP_${response.status}_INVALID_ENVELOPE`, mayHaveEffects);
     }
     const item = body.response.item;
     const envelope = {
@@ -119,7 +122,7 @@ export const createRestActionIoTransport = (options: {
     ) {
       return { ...envelope, error: item.error };
     }
-    throw new ActionIoError("INVALID_HTTP_RESULT", true);
+    throw new ActionIoError("INVALID_HTTP_RESULT", mayHaveEffects);
   };
   return transport;
 };

@@ -7,6 +7,7 @@ import {
   shouldCoalesceBatchInputItems,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugBatchCoalesce";
 import { createMockExecuteContext } from "../helpers/mockExecuteFunctions";
+import { resolvePlugExecutionContext } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugCommandRequestBuilder";
 
 const credentials = {
   user: "client@example.com",
@@ -17,6 +18,68 @@ const credentials = {
 };
 
 describe("plugBatchCoalesce", () => {
+  it.each([
+    { agentId: ["agent-1", "agent-2"] },
+    { clientToken: ["fixture-one", "fixture-two"] },
+    { operation: ["executeBatch", "executeSql"] },
+    { inputMode: ["guided", "advanced"] },
+    { channel: ["rest", "socket"] },
+  ])("rejects incompatible coalesced contexts (%j)", (overrides) => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeBatch",
+        inputMode: "guided",
+        channel: "rest",
+        batchCommandsJson: '[{"sql":"SELECT 1"}]',
+        ...overrides,
+      },
+      inputData: [{ json: {} }, { json: {} }],
+      responses: [],
+    });
+    expect(() =>
+      buildCoalescedBatchRequest({
+        context,
+        credentialDefaults: credentials,
+        config: { supportsSocket: true },
+        resolveExecutionContext: resolvePlugExecutionContext,
+        finalizeBuiltRequest: (request) => request,
+      }),
+    ).toThrow(/Coalesce Input Items requires/);
+  });
+
+  it("disables coalescing when continueOnFail needs per-item errors", () => {
+    const context = createMockExecuteContext({
+      credentials,
+      continueOnFail: true,
+      parameters: {
+        operation: "executeBatch",
+        batchOptions: { coalesceInputItems: true },
+      },
+      responses: [],
+    });
+    expect(shouldCoalesceBatchInputItems(context, 0)).toBe(false);
+  });
+
+  it.each([33, 150000])("rejects %s commands before mapping their contents", (count) => {
+    const context = createMockExecuteContext({
+      credentials,
+      parameters: {
+        operation: "executeBatch",
+        batchCommandsJson: JSON.stringify(Array(count).fill(null)),
+      },
+      responses: [],
+    });
+    expect(() =>
+      buildCoalescedBatchRequest({
+        context,
+        credentialDefaults: credentials,
+        config: { supportsSocket: false },
+        resolveExecutionContext: resolvePlugExecutionContext,
+        finalizeBuiltRequest: (request) => request,
+      }),
+    ).toThrow(/exceeds 32 commands/);
+  });
   it("detects coalesce flag on executeBatch", () => {
     const enabled = createMockExecuteContext({
       credentials,

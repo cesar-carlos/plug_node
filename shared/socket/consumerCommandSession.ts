@@ -1,4 +1,9 @@
 import { registerSocketCommand, applySocketDecodeInOrder } from "./socketEventDispatcher";
+import {
+  assertResponseAgentIdentity,
+  assertRpcResponseType,
+  assertRpcResponseIdentity,
+} from "../contracts/rpcIdentity";
 import { resolveCommandTimeoutPolicy } from "./commandTimeoutPolicy";
 import {
   DEFAULT_API_VERSION,
@@ -447,6 +452,15 @@ export const executeConsumerCommand = async (
               return;
             }
 
+            assertResponseAgentIdentity(decodedPayload, input.agentId);
+            if (response.success)
+              assertRpcResponseType(
+                isConsumerNotificationResponse(response.response),
+                command,
+              );
+            if (response.success && !isConsumerNotificationResponse(response.response)) {
+              assertRpcResponseIdentity(response.response, command, response.requestId);
+            }
             idleTimer.resetIdleTimer();
             capturedServerTimings =
               extractServerTimings(response) ??
@@ -483,6 +497,16 @@ export const executeConsumerCommand = async (
 
             if (isConsumerSingleSuccessWithRows(response.response)) {
               bufferedRows += countRows(response.response.item.result.rows);
+            }
+            if (
+              isRecord(response.response) &&
+              response.response.type === "batch" &&
+              Array.isArray(response.response.items)
+            ) {
+              for (const item of response.response.items) {
+                if (isRecord(item) && item.success === true && isRecord(item.result))
+                  bufferedRows += countRows(item.result.rows);
+              }
             }
             assertBufferLimits();
 

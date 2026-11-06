@@ -14,6 +14,21 @@ export interface ActionIoCommand {
   readonly params: Readonly<Record<string, unknown>>;
 }
 export type ActionIoTransport = (command: ActionIoCommand) => Promise<unknown>;
+// Unknown methods remain conservative when sharing the single-dispatch transports.
+const readOnlyMethods = new Set([
+  "agent.action.validateRun",
+  "agent.action.listAvailable",
+  "agent.action.getExecution",
+  "agent.action.findExecution",
+  "agent.action.readIo",
+  "agent.action.getInputStatus",
+  "agent.getHealth",
+  "sql.operation.get",
+  "sql.describeSource",
+  "sql.describeSchema",
+]);
+export const commandMayHaveEffects = (method: string): boolean =>
+  !readOnlyMethods.has(method);
 // Only the selected transport may reuse the snapshot during synchronous dispatch.
 const sending = new WeakMap<
   ActionIoCommand,

@@ -6,7 +6,7 @@
     "type": "single",
     "success": true,
     "item": {
-      "id": "rpc-1",
+      "id": "request-1",
       "success": true,
       "result": {
         "policy": "approved",

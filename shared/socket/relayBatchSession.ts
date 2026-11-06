@@ -12,6 +12,10 @@ import type {
 } from "../contracts/api";
 import type { PayloadFrameEnvelope } from "../contracts/payload-frame";
 import { PlugValidationError } from "../contracts/errors";
+import {
+  assertRpcResponseIdentity,
+  assertResponseAgentIdentity,
+} from "../contracts/rpcIdentity";
 import { plugLogger } from "../logging/plugLogger";
 import { normalizeRpcPayload } from "../output/rpcNormalization";
 import { decodePayloadFrameAsync, encodePayloadFrameAsync } from "./payloadFrameCodec";
@@ -47,7 +51,11 @@ import {
   type RelayStreamAggregationMetrics,
 } from "./relayStreamAggregation";
 import { resolveAdaptiveStreamPullWindowSize } from "./streamPullWindowPolicy";
-import { resolveSocketBufferLimits } from "./streamCommandSessionCommon";
+import {
+  resolveSocketBufferLimits,
+  assertSocketBufferWithinLimits,
+  countResultRows,
+} from "./streamCommandSessionCommon";
 import { buildSocketCommandTimeoutError } from "./socketSessionLifecycle";
 
 export const MAX_RELAY_BATCH_COMMANDS = 32;
@@ -227,6 +235,7 @@ const resolveHubRequestId = (
 export const executeRelayBatchCommand = async (
   input: ExecuteRelayBatchCommandInput,
 ): Promise<readonly RelayBatchCommandItemResult[]> => {
+  input.signal?.throwIfAborted();
   const commands = ensureRelayBatchCommands(input.commands);
   const timeouts = resolveCommandTimeoutPolicy({
     timeoutMs: input.timeoutMs,
@@ -276,6 +285,7 @@ export const executeRelayBatchCommand = async (
     if (!managedTransport || !input.transport.connected) input.transport.connect();
     await readyPromise;
 
+    signal.throwIfAborted();
     if (!conversationId) {
       const conversationPromise = waitForRelaySingleEvent(
         input.transport,
@@ -305,6 +315,8 @@ export const executeRelayBatchCommand = async (
       signing: input.payloadFrameSigning,
       ...(fastPath ? { omitTraceId: true } : {}),
     });
+
+    signal.throwIfAborted();
 
     const batchFailureWaiter = fastPath
       ? waitForRelayBatchAcceptedFailure(input.transport)
@@ -608,7 +620,20 @@ export const executeRelayBatchCommand = async (
     const finalizeBatchItem = async (
       decoded: DecodedBatchItemResponse,
     ): Promise<RelayBatchCommandItemResult> => {
+      assertResponseAgentIdentity(decoded.data, input.agentId);
+      assertRpcResponseIdentity(
+        decoded.data,
+        { id: decoded.clientRequestId },
+        decoded.acceptedItem?.requestId,
+      );
       const streamId = getStreamIdFromNormalizedResponse(decoded.data);
+      if (!streamId) {
+        assertSocketBufferWithinLimits(limits, {
+          bufferedRows: countResultRows(decoded.data),
+          bufferedBytes: decoded.frame.originalSize,
+          chunkCount: 0,
+        });
+      }
       let responsePayload = decoded.data;
       let chunkPayloads: JsonObject[] = [];
       let rawChunkFrames: PayloadFrameEnvelope[] = [];
@@ -635,6 +660,7 @@ export const executeRelayBatchCommand = async (
         });
 
         const streamOutcome = await waitForRelayStreamAggregation({
+          agentId: input.agentId,
           transport: input.transport,
           canReceive: wireSession.canReceive,
           drainDelivery: wireSession.drain,

@@ -54,7 +54,7 @@ const buildCommandSuccessResponse = (requestId: string) => ({
     type: "single",
     success: true,
     item: {
-      id: "rpc-1",
+      id: requestId,
       success: true,
       result: {
         policy: "approved",
@@ -258,7 +258,7 @@ class StreamingConsumerTransport implements ConsumerSocketTransport {
             type: "single",
             success: true,
             item: {
-              id: "rpc-1",
+              id: this.requestId,
               success: true,
               result: {
                 rows: [{ id: 1, name: "Alpha" }],
@@ -380,7 +380,7 @@ class LargeChunkConsumerTransport implements ConsumerSocketTransport {
             type: "single",
             success: true,
             item: {
-              id: "rpc-1",
+              id: "request-1",
               success: true,
               result: {
                 rows: [],
@@ -474,7 +474,7 @@ class InvalidStreamPullTransport implements ConsumerSocketTransport {
             type: "single",
             success: true,
             item: {
-              id: "rpc-1",
+              id: "request-1",
               success: true,
               result: {
                 rows: [{ id: 1 }],
@@ -557,7 +557,7 @@ class MidStreamAppErrorTransport implements ConsumerSocketTransport {
             type: "single",
             success: true,
             item: {
-              id: "rpc-1",
+              id: "request-1",
               success: true,
               result: {
                 rows: [{ id: 1 }],
@@ -824,6 +824,54 @@ const session: PlugSession = {
 };
 
 describe("executeConsumerCommand", () => {
+  it.each([
+    { agentId: "other-agent", id: "cmd", valid: false },
+    { agentId: "agent", id: "other-command", valid: false },
+    { agentId: "agent", id: "cmd", valid: true },
+    { agentId: undefined, id: "hub", valid: true },
+    { agentId: undefined, id: undefined, valid: true },
+  ])(
+    "validates identities inside a correlated envelope (%j)",
+    async ({ agentId, id, valid }) => {
+      const controlled = createControlledTransport();
+      vi.mocked(controlled.transport.emit).mockImplementation((event) => {
+        if (event === "agents:command")
+          queueMicrotask(() =>
+            controlled.dispatch("agents:command_response", {
+              success: true,
+              clientRequestId: "cmd",
+              requestId: "hub",
+              agentId,
+              response: {
+                type: "single",
+                success: true,
+                item: { id, success: true, result: { rows: [] } },
+              },
+            }),
+          );
+      });
+      const result = executeConsumerCommand({
+        transport: controlled.transport,
+        session,
+        agentId: "agent",
+        command: {
+          jsonrpc: "2.0",
+          id: "cmd",
+          method: "sql.execute",
+          params: { sql: "SELECT 1" },
+        },
+        responseMode: "aggregatedJson",
+        timeoutMs: 1000,
+      });
+      if (valid) await expect(result).resolves.toMatchObject({ requestId: "hub" });
+      else
+        await expect(result).rejects.toMatchObject({
+          code: "PLUG_VALIDATION_ERROR",
+          retryable: false,
+        });
+      expect(controlled.listenerCount()).toBe(0);
+    },
+  );
   it("should finish an active stream before a lost pull ack without an absolute deadline", async () => {
     vi.useFakeTimers();
     const controlled = createControlledTransport();

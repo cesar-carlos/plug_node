@@ -15,6 +15,11 @@ import { plugLogger } from "../logging/plugLogger";
 import { extractServerTimings } from "../socket/relaySessionNormalization";
 import { isRecord } from "../utils/json";
 import { buildApiUrl } from "../utils/url";
+import {
+  assertResponseAgentIdentity,
+  assertRpcResponseType,
+  assertRpcResponseIdentity,
+} from "../contracts/rpcIdentity";
 
 const commandPath = "/agents/commands";
 
@@ -96,6 +101,11 @@ export const executeRestCommand = async (
   }
 
   const parsed = assertRestBridgeResponse(response.body);
+  assertResponseAgentIdentity(parsed, commandRequest.agentId);
+  assertRpcResponseType(isNotificationResponse(parsed), commandRequest.command);
+  if (!isNotificationResponse(parsed)) {
+    assertRpcResponseIdentity(parsed.response, commandRequest.command, parsed.requestId);
+  }
   plugLogger.debug("transport.rest.response", {
     agentId: parsed.agentId,
     requestId: parsed.requestId,

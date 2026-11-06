@@ -107,7 +107,7 @@ class MockSocket {
             type: "single",
             success: true,
             item: {
-              id: "rpc-1",
+              id: requestId,
               success: true,
               result: {
                 policy: "approved",

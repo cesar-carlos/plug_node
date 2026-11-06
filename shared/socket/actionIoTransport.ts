@@ -1,6 +1,7 @@
 import {
   ActionIoError,
   currentActionIoEncoding,
+  commandMayHaveEffects,
   type ActionIoTransport,
 } from "../contracts/actionIo/client";
 import { decodePayloadFrame, encodeJsonPayloadFrame } from "./payloadFrameCodec";
@@ -18,15 +19,6 @@ export interface ActionIoSocket {
   emit(event: string, payload: unknown): unknown;
 }
 export type ActionIoSocketTransport = ActionIoTransport & { dispose(): void };
-// Other protocols share this transport; keep unknown methods conservative.
-const readOnlyActionMethods = new Set([
-  "agent.action.validateRun",
-  "agent.action.listAvailable",
-  "agent.action.getExecution",
-  "agent.action.findExecution",
-  "agent.action.readIo",
-  "agent.action.getInputStatus",
-]);
 interface Pending {
   waitingRead: boolean;
   mayHaveEffects: boolean;
@@ -219,7 +211,7 @@ export const createSocketActionIoTransport = (options: {
       (options.maxRequestBytes ?? 512 * 1024)
     )
       throw new ActionIoError("SOCKET_REQUEST_TOO_LARGE", false);
-    const mayHaveEffects = !readOnlyActionMethods.has(command.method);
+    const mayHaveEffects = commandMayHaveEffects(command.method);
     const waitingRead =
       command.method === "agent.action.readIo" &&
       typeof command.params.wait_ms === "number" &&

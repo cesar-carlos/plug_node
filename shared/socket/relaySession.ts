@@ -75,6 +75,7 @@ const waitForRelayAcceptedFailure = (
 export const executeRelayCommand = async (
   input: ExecuteRelayCommandInput,
 ): Promise<PlugCommandTransportResult> => {
+  input.signal?.throwIfAborted();
   const timeouts = resolveCommandTimeoutPolicy({
     timeoutMs: input.timeoutMs,
     command: input.command,
@@ -131,6 +132,7 @@ export const executeRelayCommand = async (
       ...(connectionReady ? { socketId: connectionReady.id } : { reused: true }),
     });
 
+    signal.throwIfAborted();
     if (!conversationId) {
       const conversationPromise = waitForRelaySingleEvent(
         input.transport,
@@ -172,6 +174,8 @@ export const executeRelayCommand = async (
       omitTraceId: true,
     });
 
+    signal.throwIfAborted();
+
     const acceptedStatePromise = fastPath
       ? Promise.resolve(buildSyntheticAcceptedState(conversationId, clientRequestId))
       : waitForRelaySingleEvent(
@@ -183,6 +187,7 @@ export const executeRelayCommand = async (
         ).then((payload) => assertRelayAcceptedPayload(payload));
 
     const streamAggregationPromise = waitForRelayStreamAggregation({
+      agentId: input.agentId,
       transport: input.transport,
       canReceive: wireSession.canReceive,
       drainDelivery: wireSession.drain,

@@ -30,6 +30,27 @@ const createContext = (
   }) as unknown as IExecuteFunctions;
 
 describe("plugToolsUtilityHandlers", () => {
+  it.each(["encode", "decode"])(
+    "preserves base64 text byte limits in %s mode",
+    async (base64Mode) => {
+      const text =
+        base64Mode === "encode" ? "ação 🌱" : Buffer.from("ação 🌱").toString("base64");
+      const size = Buffer.byteLength(text, "utf8");
+      const parameters = { base64Mode, text, maxInputSizeBytes: size };
+      await expect(
+        executeUtilityOperation(createContext(parameters), 0, "base64"),
+      ).resolves.toBe(
+        base64Mode === "encode" ? Buffer.from(text).toString("base64") : "ação 🌱",
+      );
+      await expect(
+        executeUtilityOperation(
+          createContext({ ...parameters, maxInputSizeBytes: size - 1 }),
+          0,
+          "base64",
+        ),
+      ).rejects.toThrow("Base64 input size must be less than or equal to");
+    },
+  );
   it("exposes a handler for every utility operation", () => {
     const operations = [
       plugToolGenerateUuidOperation,

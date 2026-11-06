@@ -9,22 +9,30 @@ export const runWithBoundedConcurrency = async <T>(
 
   const results = new Array<T>(total);
   let nextIndex = 0;
+  let failed = false;
+  let firstError: unknown;
 
   const runners = Array.from(
     { length: Math.min(concurrency, total) },
     async (): Promise<void> => {
-      while (true) {
+      while (!failed) {
         const index = nextIndex;
         nextIndex += 1;
         if (index >= total) {
           return;
         }
 
-        results[index] = await worker(index);
+        try {
+          results[index] = await worker(index);
+        } catch (error) {
+          if (!failed) firstError = error;
+          failed = true;
+        }
       }
     },
   );
 
   await Promise.all(runners);
+  if (failed) throw firstError;
   return results;
 };

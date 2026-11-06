@@ -23,6 +23,64 @@ import { supportsActionIo } from "../../packages/n8n-nodes-plug-database/generat
 import { callSqlExtension } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/sqlOperation/client";
 import { matchesActionIoExpectation } from "../../packages/n8n-nodes-plug-database/generated/shared/contracts/actionIo/expectation";
 
+it.each([
+  ["agent.action.listAvailable", false],
+  ["agent.action.readIo", false],
+  ["agent.action.validateRun", false],
+  ["agent.getHealth", false],
+  ["sql.operation.get", false],
+  ["sql.describeSource", false],
+  ["sql.describeSchema", false],
+  ["agent.action.run", true],
+  ["agent.action.sendInput", true],
+  ["sql.operation.execute", true],
+  ["sql.operation.cancel", true],
+  ["unknown.method", true],
+] as const)("classifies REST response failures for %s", async (method, effects) => {
+  const cases = [
+    { body: null, status: 204, code: "EMPTY_HTTP_RESPONSE" },
+    { body: "invalid JSON", status: 502, code: "INVALID_HTTP_JSON" },
+    { body: "{}", status: 200, code: "HTTP_200_INVALID_ENVELOPE" },
+    {
+      body: JSON.stringify({ agentId: "a", response: { type: "single", item: {} } }),
+      status: 200,
+      code: "INVALID_HTTP_RESULT",
+    },
+    {
+      body: JSON.stringify({ success: false, error: { code: "REFUSED" } }),
+      status: 403,
+      code: "REFUSED",
+    },
+  ];
+  for (const fixture of cases) {
+    const transport = createRestActionIoTransport({
+      endpoint: "https://fixture.invalid",
+      agentId: "a",
+      bearerToken: () => "fixture",
+      fetch: async () => new Response(fixture.body, { status: fixture.status }),
+    });
+    await expect(
+      transport({ jsonrpc: "2.0", id: "x", method, params: {} }),
+    ).rejects.toMatchObject({
+      code: fixture.code,
+      details: { effects_possible: effects, outcome_unknown: effects },
+    });
+  }
+  const limited = createRestActionIoTransport({
+    endpoint: "https://fixture.invalid",
+    agentId: "a",
+    bearerToken: () => "fixture",
+    maxResponseBytes: 1,
+    fetch: async () => new Response("{}"),
+  });
+  await expect(
+    limited({ jsonrpc: "2.0", id: "x", method, params: {} }),
+  ).rejects.toMatchObject({
+    code: "HTTP_RESPONSE_TOO_LARGE",
+    details: { effects_possible: effects },
+  });
+});
+
 it("accepts exactly canonical base64 blocks within the decoded byte budget", () => {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   const cases = ["", "AAA", "AA==\n", "AA\n=", "AA-_", "=AAA", "AAAA===="];

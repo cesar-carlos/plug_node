@@ -23,6 +23,7 @@ export const shouldCoalesceBatchInputItems = (
   context: IExecuteFunctions,
   itemIndex: number,
 ): boolean => {
+  if (context.continueOnFail()) return false;
   const operation = context.getNodeParameter("operation", itemIndex) as string;
   if (operation !== "executeBatch") {
     return false;
@@ -77,9 +78,42 @@ export const buildCoalescedBatchRequest = (input: {
   const batchOptions = toCollection(input.context, "batchOptions", 0);
   const requireWhereForUpdateDelete =
     toOptionalBoolean(batchOptions.requireWhereForUpdateDelete) ?? true;
+  const executionContext = input.resolveExecutionContext(
+    input.context,
+    0,
+    input.credentialDefaults,
+    "executeBatch",
+  );
+  const channel = input.config.supportsSocket
+    ? input.context.getNodeParameter("channel", 0, "rest")
+    : "rest";
 
   for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
+    if (
+      input.context.getNodeParameter("operation", itemIndex) !== "executeBatch" ||
+      input.context.getNodeParameter("inputMode", itemIndex, "guided") !== "guided" ||
+      (input.config.supportsSocket &&
+        input.context.getNodeParameter("channel", itemIndex, "rest") !== channel)
+    ) {
+      throw new PlugValidationError(
+        "Coalesce Input Items requires guided Execute Batch with the same channel on every item. Disable coalescing for mixed items.",
+      );
+    }
     if (itemIndex > 0) {
+      const itemContext = input.resolveExecutionContext(
+        input.context,
+        itemIndex,
+        input.credentialDefaults,
+        "executeBatch",
+      );
+      if (
+        itemContext.resolvedAgentId !== executionContext.resolvedAgentId ||
+        itemContext.resolvedClientToken !== executionContext.resolvedClientToken
+      ) {
+        throw new PlugValidationError(
+          "Coalesce Input Items requires the same agent and client credential on every item. Disable coalescing for different destinations or credentials.",
+        );
+      }
       const itemOptions = serializeBatchOptions(itemIndex);
       if (itemOptions !== referenceOptions) {
         throw new PlugValidationError(
@@ -99,23 +133,16 @@ export const buildCoalescedBatchRequest = (input: {
       );
     }
 
+    if (mergedCommands.length + commands.length > MAX_COALESCED_BATCH_COMMANDS) {
+      throw new PlugValidationError(
+        `Coalesced batch exceeds ${MAX_COALESCED_BATCH_COMMANDS} commands. Split the workflow or disable Coalesce Input Items.`,
+      );
+    }
     mergedCommands.push(
       ...mapGuidedBatchCommandItems(commands, requireWhereForUpdateDelete),
     );
   }
 
-  if (mergedCommands.length > MAX_COALESCED_BATCH_COMMANDS) {
-    throw new PlugValidationError(
-      `Coalesced batch exceeds ${MAX_COALESCED_BATCH_COMMANDS} commands. Split the workflow or disable Coalesce Input Items.`,
-    );
-  }
-
-  const executionContext = input.resolveExecutionContext(
-    input.context,
-    0,
-    input.credentialDefaults,
-    "executeBatch",
-  );
   const builtRequest = buildGuidedBatchCommand(
     input.context,
     0,

@@ -4,6 +4,73 @@ import { executePerInputItem } from "../../packages/n8n-nodes-plug-database/gene
 import { createMockExecuteContext } from "../helpers/mockExecuteFunctions";
 
 describe("executePerInputItem", () => {
+  it("stops scheduling after failure and waits for active work before rejecting", async () => {
+    const context = createMockExecuteContext({
+      credentials: {
+        user: "fixture",
+        password: "fixture",
+        baseUrl: "https://fixture.invalid",
+      },
+      parameters: {},
+      responses: [],
+      inputData: Array.from({ length: 6 }, () => ({ json: {} })),
+    });
+    const gate = Promise.withResolvers<void>();
+    const started: number[] = [];
+    let settled = false;
+    const result = executePerInputItem(
+      context,
+      async (index) => {
+        started.push(index);
+        if (index === 0) throw new Error("first failure");
+        await gate.promise;
+        throw new Error("later failure");
+      },
+      { maxConcurrency: 2 },
+    );
+    const checked = expect(result).rejects.toThrow("first failure");
+    void result.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const settledBeforeRelease = settled;
+    gate.resolve();
+    await checked;
+    expect(settledBeforeRelease).toBe(false);
+    expect(started).toEqual([0, 1]);
+  });
+
+  it.each([1, 2])(
+    "delivers large output arrays in order with concurrency %s",
+    async (maxConcurrency) => {
+      const context = createMockExecuteContext({
+        credentials: {
+          user: "fixture",
+          password: "fixture",
+          baseUrl: "https://fixture.invalid",
+        },
+        parameters: {},
+        responses: [],
+        inputData: [{ json: {} }, { json: {} }],
+      });
+      const rows = Array.from({ length: 150000 }, (_, id) => ({ json: { id } }));
+      const result = await executePerInputItem(
+        context,
+        async (index) => (index === 0 ? rows : [{ json: { id: 150000 } }]),
+        { maxConcurrency },
+      );
+      expect(result[0]).toHaveLength(150001);
+      expect(result[0].every((item, index) => item.json.id === index)).toBe(true);
+      expect(rows).toHaveLength(150000);
+      expect(result[0]).not.toBe(rows);
+    },
+  );
+
   it("runs items sequentially by default and preserves output order", async () => {
     const callOrder: number[] = [];
     const context = createMockExecuteContext({

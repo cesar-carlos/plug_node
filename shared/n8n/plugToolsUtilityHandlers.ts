@@ -1,5 +1,3 @@
-import { Buffer } from "node:buffer";
-
 import type { IExecuteFunctions } from "n8n-workflow";
 
 import { readBarcode } from "../tools/barcode";
@@ -70,7 +68,11 @@ import {
   plugToolValidateCpfCnpjOperation,
   plugToolValidateJsonSchemaOperation,
 } from "./plugToolsDescription";
-import { assertBufferSize, normalizePositiveIntegerLimit } from "./plugToolsCommon";
+import {
+  assertBufferSize,
+  assertTextSize,
+  normalizePositiveIntegerLimit,
+} from "./plugToolsCommon";
 
 export type UtilityOperation =
   | typeof plugToolReadBarcodeOperation
@@ -225,7 +227,7 @@ export const utilityOperationHandlers: Record<UtilityOperation, UtilityOperation
       }
 
       const text = context.getNodeParameter("text", itemIndex, "") as string;
-      assertBufferSize(Buffer.from(text, "utf8"), maxInputSizeBytes, "Base64 input");
+      assertTextSize(text, maxInputSizeBytes, "Base64 input");
       return mode === "decode" ? base64DecodeToText(text) : base64Encode(text);
     },
     [plugToolJwtDecodeOperation]: (context, itemIndex) =>

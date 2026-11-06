@@ -259,6 +259,28 @@ describe("Plug tools execution", () => {
     );
   });
 
+  it.each(["YQ==", "ação 🌱"])(
+    "enforces UTF-8 input byte limits for binary base64 decoding (%s)",
+    async (text) => {
+      const context = createToolContext({
+        parameters: {
+          base64Mode: "decode",
+          base64DecodeOutput: "binary",
+          text,
+          maxInputSizeBytes: Buffer.byteLength(text, "utf8") - 1,
+        },
+      });
+      await expect(
+        executePlugToolsUtilityNode(
+          context,
+          { nodeDisplayName: "Plug Database" },
+          "base64",
+        ),
+      ).rejects.toThrow("Base64 input size must be less than or equal to");
+      expect(context.prepareBinaryDataMock).not.toHaveBeenCalled();
+    },
+  );
+
   it("encodes and decodes Base64 binary data", async () => {
     const binaryPayload = Buffer.from([0, 1, 2, 3, 255]);
     const encodeContext = createToolContext({
@@ -288,7 +310,7 @@ describe("Plug tools execution", () => {
         base64DecodeOutput: "binary",
         text: binaryPayload.toString("base64"),
         outputBinaryProperty: "decoded",
-        maxInputSizeBytes: 100,
+        maxInputSizeBytes: binaryPayload.toString("base64").length,
       },
     });
 

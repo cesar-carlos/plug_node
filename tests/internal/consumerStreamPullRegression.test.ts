@@ -82,7 +82,7 @@ class StreamPullFailureTransport implements ConsumerSocketTransport {
             type: "single",
             success: true,
             item: {
-              id: "rpc-1",
+              id: requestId,
               success: true,
               result: {
                 rows: [],

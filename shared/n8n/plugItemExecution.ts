@@ -18,7 +18,7 @@ export interface ExecutePerInputItemOptions {
 
 const toNodeItems = (
   results: INodeExecutionData | INodeExecutionData[],
-): INodeExecutionData[] => (Array.isArray(results) ? [...results] : [results]);
+): INodeExecutionData[] => (Array.isArray(results) ? results : [results]);
 
 export const executePerInputItem = async (
   context: IExecuteFunctions,
@@ -66,7 +66,7 @@ export const executePerInputItem = async (
 
   if (maxConcurrency <= 1 || items.length <= 1) {
     for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-      outputItems.push(...(await processItem(itemIndex)));
+      for (const result of await processItem(itemIndex)) outputItems.push(result);
     }
   } else {
     const slotResults = await runWithBoundedConcurrency(
@@ -75,7 +75,7 @@ export const executePerInputItem = async (
       processItem,
     );
     for (const slot of slotResults) {
-      outputItems.push(...slot);
+      for (const result of slot) outputItems.push(result);
     }
   }
 

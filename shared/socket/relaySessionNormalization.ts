@@ -233,6 +233,20 @@ export const normalizeRelayBatchAcceptedPayload = (
         "relay:rpc.batch_accepted success payload must include items[]",
       );
     }
+    const clientIds = new Set<string>();
+    const requestIds = new Set<string>();
+    for (const item of payload.items) {
+      if (
+        clientIds.has(item.clientRequestId) ||
+        ("requestId" in item && requestIds.has(item.requestId))
+      ) {
+        throw new PlugValidationError(
+          "Relay batch acceptance must use unique clientRequestId and requestId values.",
+        );
+      }
+      clientIds.add(item.clientRequestId);
+      if ("requestId" in item) requestIds.add(item.requestId);
+    }
   } else if (
     !isRecord(payload.error) ||
     !isNonEmptyString(payload.error.code) ||

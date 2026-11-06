@@ -6,11 +6,28 @@ import {
   isLikelyReadOnlySql,
   isLikelyUnboundedSelectSql,
   plugBulkInsertMaxRows,
+  plugBulkInsertMaxJsonBytes,
   resolveAutoMaxParallelReadOnlyBatchItems,
   shouldAutoPreferDbStreaming,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugSqlPerformanceHints";
 
 describe("plugSqlPerformanceHints", () => {
+  it.each([
+    "SELECT id INTO InventoryCopy FROM Inventory",
+    "SELECT TOP 1000 id\nINTO #InventoryCopy FROM Inventory",
+    "SELECT id /* comment */ INTO InventoryCopy FROM Inventory",
+    "SELECT id/**/INTO/**/InventoryCopy FROM Inventory",
+  ])("does not automatically parallelize SELECT INTO (%s)", (sql) => {
+    expect(isLikelyReadOnlySql(sql)).toBe(false);
+    expect(shouldAutoPreferDbStreaming(sql)).toBe(false);
+    expect(
+      resolveAutoMaxParallelReadOnlyBatchItems([{ sql }], undefined, true),
+    ).toBeUndefined();
+  });
+
+  it("ignores INTO in literals and comments", () => {
+    expect(isLikelyReadOnlySql("SELECT 'INTO' AS label /* INTO ignored */")).toBe(true);
+  });
   it("detects read-only SELECT statements conservatively", () => {
     expect(isLikelyReadOnlySql("SELECT * FROM Cliente")).toBe(true);
     expect(isLikelyReadOnlySql("  select top 10 codCliente from Cliente  ")).toBe(true);
@@ -78,7 +95,7 @@ describe("plugSqlPerformanceHints", () => {
     );
   });
 
-  it("estimates bulk insert byte limits without serializing every row", () => {
+  it("rejects bulk insert payloads exceeding the byte budget", () => {
     const columns = [{ name: "payload", type: "string" }];
     const rows = Array.from({ length: 200 }, () => ["x".repeat(60_000)]);
 
@@ -87,6 +104,46 @@ describe("plugSqlPerformanceHints", () => {
     );
     expect(() => assertBulkInsertWithinHubLimits("dbo.Example", columns, rows)).toThrow(
       /exceeds the hub limit/i,
+    );
+  });
+
+  it("counts unsampled large rows and accepts uneven payloads within budget", () => {
+    const columns = [{ name: "payload", type: "string" }];
+    const rows = Array.from({ length: 100 }, () => ["x"]);
+    rows[1] = ["x".repeat(11 * 1024 * 1024)];
+    expect(() => assertBulkInsertWithinHubLimits("Fixture", columns, rows)).toThrow(
+      /exceeds the hub limit/,
+    );
+    rows[1] = ["x"];
+    rows[0] = ["x".repeat(1024 * 1024)];
+    expect(() => assertBulkInsertWithinHubLimits("Fixture", columns, rows)).not.toThrow();
+  });
+
+  it("preserves the exact JSON byte boundary with Unicode and escaping", () => {
+    const table = "ação";
+    const columns = [{ name: "payload", type: "string" }];
+    const rows = Array.from({ length: 100 }, () => ['🌱\n"']);
+    const bytes = Buffer.byteLength(JSON.stringify({ table, columns, rows }));
+    rows[99][0] += "x".repeat(plugBulkInsertMaxJsonBytes - bytes);
+    expect(Buffer.byteLength(JSON.stringify({ table, columns, rows }))).toBe(
+      plugBulkInsertMaxJsonBytes,
+    );
+    expect(() => assertBulkInsertWithinHubLimits(table, columns, rows)).not.toThrow();
+    rows[99][0] += "x";
+    expect(() => assertBulkInsertWithinHubLimits(table, columns, rows)).toThrow(
+      /exceeds the hub limit/,
+    );
+  });
+
+  it("stops counting after exceeding the byte limit", () => {
+    const rows = [["x".repeat(plugBulkInsertMaxJsonBytes)], ["unread"]];
+    Object.defineProperty(rows, 1, {
+      get: () => {
+        throw new Error("read past limit");
+      },
+    });
+    expect(() => assertBulkInsertWithinHubLimits("Fixture", [], rows)).toThrow(
+      /exceeds the hub limit/,
     );
   });
 });

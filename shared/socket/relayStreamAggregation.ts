@@ -15,6 +15,10 @@ import type {
   PayloadFrameSigningOptions,
 } from "../contracts/payload-frame";
 import { plugLogger } from "../logging/plugLogger";
+import {
+  assertRpcResponseIdentity,
+  assertResponseAgentIdentity,
+} from "../contracts/rpcIdentity";
 import { decodePayloadFrameAsync, encodePayloadFrame } from "./payloadFrameCodec";
 import { createLazyParallelChunkDecodeQueue } from "./parallelChunkDecode";
 import {
@@ -67,6 +71,7 @@ export interface RelayStreamAggregationSeededResponse {
 }
 
 export interface RelayStreamAggregationInput {
+  readonly agentId?: string;
   readonly transport: RelaySocketTransport;
   readonly conversationId: string;
   readonly clientRequestId: string;
@@ -326,6 +331,9 @@ export const waitForRelayStreamAggregation = (
         frame: PayloadFrameEnvelope,
         data: unknown,
       ): Promise<void> => {
+        await ensureAcceptedHubRequestId();
+        if (input.agentId !== undefined) assertResponseAgentIdentity(data, input.agentId);
+        assertRpcResponseIdentity(data, { id: input.clientRequestId }, hubRequestId);
         if (typeof frame.requestId === "string" && frame.requestId) {
           activeRequestId = frame.requestId;
           hubRequestId = frame.requestId;

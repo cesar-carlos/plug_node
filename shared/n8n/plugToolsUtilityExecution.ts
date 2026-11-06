@@ -1,10 +1,8 @@
-import { Buffer } from "node:buffer";
-
 import type { IExecuteFunctions, INodeExecutionData } from "n8n-workflow";
 
 import { plugToolBase64Operation } from "./plugToolsDescription";
 import {
-  assertBufferSize,
+  assertTextSize,
   normalizeOutputBinaryProperty,
   normalizeOutputJsonProperty,
   normalizePositiveIntegerLimit,
@@ -30,7 +28,7 @@ const executeBase64BinaryDecode = async (
     "Max Input Size Bytes",
   );
   const text = context.getNodeParameter("text", itemIndex, "") as string;
-  assertBufferSize(Buffer.from(text, "utf8"), maxInputSizeBytes, "Base64 input");
+  assertTextSize(text, maxInputSizeBytes, "Base64 input");
   const outputBinaryProperty = normalizeOutputBinaryProperty(
     context.getNodeParameter("outputBinaryProperty", itemIndex, "data"),
   );

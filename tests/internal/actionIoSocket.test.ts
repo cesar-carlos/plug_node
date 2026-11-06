@@ -20,6 +20,29 @@ class SocketFixture extends EventEmitter {
 afterEach(() => vi.useRealTimers());
 describe.each([false, true])("single-dispatch Socket relay=%s", (relay) => {
   it.each([
+    ["agent.getHealth", false],
+    ["sql.operation.get", false],
+    ["sql.describeSource", false],
+    ["sql.describeSchema", false],
+    ["sql.operation.execute", true],
+    ["sql.operation.cancel", true],
+    ["unknown.method", true],
+  ] as const)("classifies extension disconnects for %s", async (method, effects) => {
+    const socket = new SocketFixture();
+    const transport = createSocketActionIoTransport({
+      socket,
+      agentId: "a",
+      relayConversationId: relay ? "c" : undefined,
+    });
+    const result = transport({ id: "cmd", jsonrpc: "2.0", method, params: {} });
+    socket.emit("disconnect");
+    await expect(result).rejects.toMatchObject({
+      code: "SOCKET_DISCONNECTED",
+      details: { effects_possible: effects, outcome_unknown: effects },
+    });
+    transport.dispose();
+  });
+  it.each([
     ["validateRun", false],
     ["getExecution", false],
     ["findExecution", false],

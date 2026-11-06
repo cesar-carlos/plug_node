@@ -56,7 +56,13 @@ describe("REST command deadlines", () => {
         body: {
           agentId: "agent",
           requestId: "request",
-          response: { jsonrpc: "2.0", id: "result", result: { rows: [] } },
+          response: Array.isArray(command)
+            ? command.map((item) => ({
+                jsonrpc: "2.0",
+                id: item.id,
+                result: { rows: [] },
+              }))
+            : { jsonrpc: "2.0", id: command.id, result: { rows: [] } },
         },
       });
       const before = structuredClone(command);

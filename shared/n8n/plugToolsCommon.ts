@@ -138,6 +138,18 @@ export const assertBufferSize = (
   }
 };
 
+export const assertTextSize = (
+  text: string,
+  maxSizeBytes: number,
+  label: string,
+): void => {
+  if (Buffer.byteLength(text, "utf8") > maxSizeBytes) {
+    throw new PlugValidationError(
+      `${label} size must be less than or equal to ${maxSizeBytes} bytes`,
+    );
+  }
+};
+
 export const parseAdvancedOptions = (value: unknown): unknown => {
   const text = typeof value === "string" ? value.trim() : "";
   if (text === "") {

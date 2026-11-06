@@ -126,7 +126,7 @@ Hints do **not** override explicit **Prefer DB Streaming**, **Max Parallel Read-
 
 ## Bulk Insert limits
 
-Bulk Insert is validated client-side before dispatch: at most **50,000** rows and ~**10 MiB** of serialized `table`/`columns`/`rows` JSON (hub `AGENT_SQL_BULK_INSERT_MAX_ROWS` / `AGENT_SQL_BULK_INSERT_MAX_JSON_BYTES`). Split larger loads into multiple node runs or batches manually; the node does not auto-chunk.
+Bulk Insert validates at most **50,000** rows and **10 MiB** of serialized `table`/`columns`/`rows` JSON before dispatch (hub `AGENT_SQL_BULK_INSERT_MAX_ROWS` / `AGENT_SQL_BULK_INSERT_MAX_JSON_BYTES`). Validation counts exact UTF-8 JSON bytes one row at a time and stops when the limit is exceeded. Split larger loads into multiple node runs or batches manually.
 
 ## Timeouts and cancellation
 
@@ -184,9 +184,10 @@ Review the implementation in three groups: timeout policy and pull cancellation;
 Enable **Coalesce Input Items** under batch **Additional Options** to merge `Batch Commands JSON` from every input item into **one** `sql.executeBatch` hub call.
 
 - **Additional Options** must be identical on all items (compared to item 0).
+- Every item must use guided Execute Batch, the same channel, and the same resolved agent and client credential. Incompatible items are rejected before dispatch. Disable coalescing to route items independently.
 - Maximum **32** commands after merge (same cap as a single relay/hub batch).
 - The node returns **one** output item; `__plug.coalescedItemCount` records how many input items were merged.
-- Failures apply to the whole batch (not per-item `continueOnFail` granularity).
+- With `continueOnFail` enabled, items execute individually so each error can be returned alongside successful items.
 - **Max Parallel Read-Only Items** and **Auto Performance Hints** control `max_parallel_read_only_batch_items` for read-only batches (see Auto Performance Hints above).
 
 ## Hub alignment

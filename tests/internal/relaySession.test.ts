@@ -17,6 +17,7 @@ import {
 } from "../../packages/n8n-nodes-plug-database/generated/shared/socket/payloadFrameCodec";
 
 class MockRelayTransport implements RelaySocketTransport {
+  constructor(private readonly responseId = "relay-request-1") {}
   connected = false;
   readonly emittedEvents: Array<{ readonly event: string; readonly payload?: unknown }> =
     [];
@@ -88,7 +89,7 @@ class MockRelayTransport implements RelaySocketTransport {
           encodePayloadFrame(
             {
               jsonrpc: "2.0",
-              id: "relay-request-1",
+              id: this.responseId,
               result: {
                 rows: [{ id: 1, name: "Alpha" }],
                 stream_id: "stream-1",
@@ -765,6 +766,29 @@ const session: PlugSession = {
 };
 
 describe("executeRelayCommand", () => {
+  it("rejects a foreign RPC ID even when the frame matches the accepted hub ID", async () => {
+    const transport = new MockRelayTransport("foreign-command");
+    await expect(
+      executeRelayCommand({
+        transport,
+        session,
+        agentId: "agent-1",
+        command: {
+          jsonrpc: "2.0",
+          id: "client-request-1",
+          method: "sql.execute",
+          params: { sql: "SELECT 1" },
+        },
+        responseMode: "aggregatedJson",
+        timeoutMs: 1000,
+      }),
+    ).rejects.toMatchObject({ code: "PLUG_VALIDATION_ERROR", retryable: false });
+    expect(transport.streamPullRequests).toBe(0);
+    expect(
+      transport.emittedEvents.filter((entry) => entry.event === "relay:rpc.request"),
+    ).toHaveLength(1);
+    expect(transport.connected).toBe(false);
+  });
   it("should remove connection waiters when connect throws synchronously", async () => {
     const handlers = new Map<string, Set<(payload: unknown) => void>>();
     const transport: RelaySocketTransport = {
