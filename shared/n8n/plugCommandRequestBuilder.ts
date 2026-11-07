@@ -80,7 +80,7 @@ const mapRawPlugCredentials = (rawCredentials: IDataObject): PlugCredentialDefau
 });
 
 export const readPlugEmailPasswordCredentials = async (
-  context: IExecuteFunctions,
+  context: Pick<IExecuteFunctions, "getCredentials">,
   credentialName = "plugDatabaseAccountApi",
 ): Promise<PlugClientAuthCredentials> => {
   const rawCredentials = (await context.getCredentials(credentialName)) as IDataObject;
@@ -93,7 +93,7 @@ export const readPlugEmailPasswordCredentials = async (
 };
 
 export const readPlugCredentialDefaults = async (
-  context: IExecuteFunctions,
+  context: Pick<IExecuteFunctions, "getCredentials">,
   credentialName = "plugDatabaseAccountApi",
 ): Promise<PlugCredentialDefaults> => {
   const rawCredentials = (await context.getCredentials(credentialName)) as IDataObject;
@@ -101,14 +101,14 @@ export const readPlugCredentialDefaults = async (
 };
 
 export const readPlugClientCredentials = async (
-  context: IExecuteFunctions,
+  context: Pick<IExecuteFunctions, "getCredentials">,
   config: PlugClientNodeExecutionConfig,
 ): Promise<PlugCredentialDefaults> =>
   readPlugCredentials(context, config.credentialName ?? "plugDatabaseAccountApi");
 
 /** Canonical credential reader for access, tools, and SQL execution modules. */
 export const readPlugCredentials = async (
-  context: IExecuteFunctions,
+  context: Pick<IExecuteFunctions, "getCredentials">,
   credentialName = "plugDatabaseAccountApi",
 ): Promise<PlugCredentialDefaults> => readPlugCredentialDefaults(context, credentialName);
 

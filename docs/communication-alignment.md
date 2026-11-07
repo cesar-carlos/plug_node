@@ -27,14 +27,14 @@ remains compatible; new bridge calls let the Hub select its current version.
 
 ## Workflow use and safety
 
-Select **Agent Action I/O** or **SQL Extensions** in Plug Database. The existing
-Account credential authenticates the Hub; the additional **Plug Agent API**
-credential supplies agent ID and the current locally provisioned token. The
-account's legacy client-token default is not used by these resources. A local
-token cannot be tested independently of Hub authentication and operation grants;
-use **Validate Run** for a read-only check. The credential lint exception is
-scoped to this one class and tested; remove it when two-credential testing is
-available in n8n.
+Select **Agent Action I/O** or **SQL Extensions** in Plug Database. The account credential always authenticates the Hub. **Agent Credential Source** selects where the agent ID and locally provisioned token come from:
+
+- **Use Separate Agent Credential** (default, including existing workflows without this setting): use **Plug Agent API**. Account agent/token defaults are ignored.
+- **Use Account Credential Only**: use **Default Agent ID** and **Default Client Token** from the account credential. Both are required; **Plug Agent API** is hidden and is not read, even if an old binding remains in the workflow.
+
+The selection applies equally to REST, Socket and relay. It never mixes fields from different credentials or falls back after missing fields or authorization failures. Use the same source and target on all nodes of an action lifecycle. Changing credential storage does not grant scopes or change single dispatch, checkpoints or retries. Existing workflows need no migration; switching to account mode is explicit. Keep separate credentials for independently managed tokens or multiple agents sharing a Hub account.
+
+The account connection test checks Hub login only, not agent token scopes or action permissions. Use **Validate Run** for a read-only action check. The separate agent credential lint exception is scoped to this one class and tested; remove it when two-credential testing is available in n8n.
 
 Persist the action key, message ID and intended sequence before submitting.
 **List Available Actions** returns one authorized page per input item, including an empty page. It requires negotiated I/O v1 and `agentActions.catalogVersion: 1`, plus the agent's list, run and I/O grants and action allowlist. Set Page Size to 1–50 (default 20). Leave Cursor empty on the first call, pass `next_cursor` unchanged to the next call with the same agent and client, and stop at `null`. A cursor invalidated by restart or a deleted boundary requires a fresh listing. Capability or authorization errors remain errors. Use Validate Run to check a selected action and trigger before launch.
@@ -226,3 +226,25 @@ No production access, publication or feature activation is authorized. Local
 fixtures/simulated transports are separate evidence from a real agent run.
 Previous Hub/agent acceptance is not substituted for the node-specific evidence
 above. The default-disabled production feature policy remains unchanged.
+
+## Installed n8n acceptance for account credentials (2026-11-07)
+
+The unreleased account-source change was tested from its npm tarball in an isolated n8n **2.45.7** container. The tarball still carries the development manifest version **3.8.2**; this evidence does not mean the published 3.8.2 package contains the new option. Changesets will assign the release version.
+
+Eight Plug nodes executed through the real n8n CLI and encrypted credential store: Action I/O catalog and SQL Extensions health, each with account-only credentials, an ignored stale separate binding, an old workflow without the source parameter, and explicit separate credentials. All passed over REST. A synthetic TLS Hub was bound to the package's fixed hostname; the container's external network was disconnected before execution. No staging or Campo e Lavoura credentials were used.
+
+The two [account-only importable examples](./workflow-examples.md#account-only-credentials-new-package-capability) also passed in that installed runtime. The echo fixture splits the emoji across two Read I/O pages and verifies unchanged inputBase64, all 11 UTF-8 input bytes, output_complete and exit code 0. The SQL example reads health and source identity. Socket/relay credential selection and failure diagnostics are covered by automated transport-boundary tests, not by this REST-only installed-runtime fixture.
+
+Reproduce with npm run test:n8n:credentials. Requires Docker, OpenSSL and registry access for installation. It creates and removes its own container, never reads .env or config.local.json, and writes a safe report to tmp/credential-source-n8n/report.json. The default image is n8nio/n8n:2.45.7; PLUG_N8N_TEST_IMAGE can select an already cached image, and the report records its actual n8n version. PLUG_FIXTURE_OPENSSL selects the OpenSSL executable when needed.
+
+The connected n8n instance did not expose Agent Credential Source at review time. A new manual example draft was created with an explicit update blocker; the original remote-action workflow was not modified. The legacy MCP may automatically attach a separate credential while creating a draft: after updating the package, account mode ignores that binding. Remove the blocker only after the new field is available and the account's local token grants have been checked.
+
+The 2026-11-07 usability acceptance also executed the echo example with `actionInputFormat: text` and a saved catalog resource locator, while the hidden manual Action ID deliberately pointed elsewhere. The installed n8n 2.45.7 runtime used the selected catalog ID and sent the exact 11 UTF-8 bytes of `ação 🌱`; full output and exit code 0 passed. The original Base64 example and legacy credential modes still passed. Dropdown pagination, empty pages, denial, connection cleanup and REST/Socket/relay selection are covered separately by regression tests; this installed-runtime check exercises the saved selection, not the browser dropdown UI.
+
+### Draining Action I/O pages
+
+Continue Read I/O using `next_sequence` and `next_offsets` until the `completed` event is consumed. Page-level `terminal` and `output_complete` describe process/capture state on the agent, not whether all output has been delivered. Require `completed.output_complete === true` and no `failure`; an incomplete completion is an error, not a reason to poll forever. An empty terminal page without a previously consumed completion must fail closed. Preserve byte order and decode UTF-8 only after joining the bytes.
+
+On 2026-11-07, a manual run of the report workflow consumed 148,179 stdout bytes across 10 pages through sequence 24 (`completed`), with continuous offsets and exit code 0. Its response JSON parsed successfully and returned one PDF of 80,734 bytes; Poppler parsed and rendered all three pages. This validates delivery, not request correlation: the external generator logged a different request ID and one provider despite three providers in the workflow input, and separately reported failure to generate another layout. Those upstream discrepancies are not evidence of transport truncation. Temporary test nodes were removed.
+
+The opt-in Read Complete Output operation was verified on 2026-11-07 in an isolated n8n 2.45.7 with the locally built package, synthetic Hub and filesystem binary storage. It consumed pages after capture had finished and recovered the exact UTF-8 echo from external binary references. REST, Socket and relay boundary regressions cover the additive output_drained field, separate completion pages, failed capture, missing completion, invalid checkpoint, byte/time budgets, cancellation, transport rejection and storage failure. An 8 MiB fixture verifies storage writes of at most 64 KiB and a returned reference manifest below 50,000 serialized characters; this is a bounded-buffer test, not a live TCP load benchmark. No production workflow was migrated to the new operation.

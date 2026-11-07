@@ -9,7 +9,7 @@ Choose the transport by resource. Authentication, catalog and access management 
 
 ### REST flow
 
-Legacy commands use the execution's client session. For login, refresh conditions and retry limits, see [Session refresh and retry behavior](./error-and-authorization-contracts.md#session-refresh-and-retry-behavior). Action I/O and SQL Extensions use the Hub account credential plus **Plug Agent API** for the agent ID and local credential. Discovery describes the catalog. The authenticated registration determines whether the feature is available.
+Legacy commands use the execution's client session. For login, refresh conditions and retry limits, see [Session refresh and retry behavior](./error-and-authorization-contracts.md#session-refresh-and-retry-behavior). Action I/O and SQL Extensions always use the Hub account login; **Agent Credential Source** selects either the account’s default agent ID/token or a separate **Plug Agent API** (the compatibility default). There is no fallback between sources. See [credential selection](./communication-alignment.md#workflow-use-and-safety). Discovery describes the catalog. The authenticated registration determines whether the feature is available.
 
 ### Socket command flow
 

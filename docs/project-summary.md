@@ -1,6 +1,6 @@
 # Project Summary
 
-The published `n8n-nodes-plug-database` package connects n8n to the Plug Hub and agents. The **Plug Database** node exposes six resources: SQL, Agent Action I/O, SQL Extensions, Client Access, User Access and Tools. The account credential authenticates with the Hub. Agent Action I/O and SQL Extensions also use a Plug Agent API credential for the target computer.
+The published `n8n-nodes-plug-database` package connects n8n to the Plug Hub and agents. The **Plug Database** node exposes six resources: SQL, Agent Action I/O, SQL Extensions, Client Access, User Access and Tools. The account credential authenticates with the Hub. Agent Action I/O and SQL Extensions can use the account’s default agent ID and token, or a separate Plug Agent API credential (the compatibility default), selected through Agent Credential Source.
 
 ## Nodes shipped
 

@@ -1,5 +1,18 @@
 # Workflow Examples
 
+## Account-only credentials (new package capability)
+
+These examples require a package build that exposes **Agent Credential Source**. They cannot run in account-only mode on older installed versions. Import them and select your account credential on every Plug node; no credential IDs or tokens are embedded.
+
+- [UTF-8 echo with one account credential](./socket/examples/action-account-echo-workflow.json): configure the saved echo Action ID in Referencia. Validate Run and Run send inputBase64 directly. The final check requires complete output, exit code 0 and exactly the 11 bytes of ação 🌱 after the script's PLUG_REMOTE_ECHO= prefix, joining chunks before decoding UTF-8. The example expects empty stderr and limits output verification to 8 MiB. A workflow timeout does not cancel the remote process; retain execution_id for reconciliation.
+- [SQL Extensions with one account credential](./socket/examples/sql-extensions-account-workflow.json): reads agent health and source identity. Replace SUBSTITUA_BANCO before execution; it performs no SQL writes.
+
+For a plain-text variant of the echo example, select **Input Format → Text UTF-8** in Validate Run and Run and set **Input Text** to `ação 🌱`. To choose the saved action interactively, select **Choose Action → Select From Authorized Catalog** in both nodes; keep the same action and idempotency key. The original Base64/ID example remains unchanged for compatibility.
+
+Both explicitly select **Use Account Credential Only**, use REST initially and disable Retry On Fail. Change Channel consistently to Socket or relay when testing those transports. The account must contain a locally authorized Default Agent ID / Default Client Token pair. Hub login success does not validate those local grants.
+
+The catalog acceptance workflow below intentionally retains separate credentials: its allowed, empty and denied roles exercise different authorization policies. Existing workflows without Agent Credential Source keep the separate mode.
+
 ## Authorized action catalog
 
 Import [the catalog acceptance workflow](./socket/examples/catalog-acceptance-workflow.json) into n8n. Select your Hub account and map each agent credential by role. **Allowed** can list the two fixture actions. **Empty** can list actions but its allowlist contains no matching ID. **Denied** has a valid token without the list scope. The example uses REST and Page Size 1.
@@ -395,3 +408,11 @@ Use `Plug Database > Tools > CSV to JSON` for CSV inputs that may have rows of v
 - options: `header = true`, `skipEmptyLines = true`
 
 Since 3.0.0 the tool tolerates `FieldMismatch` warnings (rows with more or fewer fields than the header). Only fatal Papa Parse errors abort the parse, so real-world CSVs with stray rows still come through.
+
+### Draining Action I/O pages
+
+Continue Read I/O using `next_sequence` and `next_offsets` until the `completed` event is consumed. Page-level `terminal` and `output_complete` describe process/capture state on the agent, not whether all output has been delivered. Require `completed.output_complete === true` and no `failure`; an incomplete completion is an error, not a reason to poll forever. An empty terminal page without a previously consumed completion must fail closed. Preserve byte order and decode UTF-8 only after joining the bytes.
+
+### Complete output with bounded binary storage
+
+Import [the complete-output example](./socket/examples/action-complete-output-workflow.json) with the new package installed. It preserves preflight and uses only the account credential. Read Complete Output replaces the page loop and returns ordered binary references plus a checkpoint. Configure external binary storage first; inspect stop_reason, output_drained and output_complete before consuming the result. Persist partial binary data and its checkpoint together before resuming the same execution. This example does not automatically restart the process or persist checkpoints for you.

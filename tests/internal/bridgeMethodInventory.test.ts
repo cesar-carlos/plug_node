@@ -13,7 +13,11 @@ const operations = (fields: INodeProperties[]): string[] =>
     String("value" in o ? o.value : ""),
   );
 it("exposes the entire bridge method inventory, including each action with request validation", () => {
-  const actions = operations(buildActionIoProperties());
+  const exposed = operations(buildActionIoProperties());
+  expect(exposed).toContain("readAll");
+  // Local pagination reuses readIo; it must never invent a remote RPC method.
+  const actions = exposed.filter((operation) => operation !== "readAll");
+  expect(actionIoParamsSchemas).not.toHaveProperty("readAll");
   expect(actions.sort()).toEqual(Object.keys(actionIoParamsSchemas).sort());
   const methods = [
     ...advancedJsonRpcCommandSchema.options.map((s) => s.shape.method.value),

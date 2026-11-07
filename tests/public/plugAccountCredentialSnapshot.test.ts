@@ -30,14 +30,14 @@ describe("Plug account credential snapshot", () => {
         },
         {
           "default": "",
-          "description": "Optional default Plug agent identifier used by SQL operations when the node does not override Agent ID.",
+          "description": "Optional default Plug agent identifier used by SQL operations and by Action I/O or SQL Extensions when Agent Credential Source is Account Credential.",
           "displayName": "Default Agent ID",
           "name": "agentId",
           "type": "string",
         },
         {
           "default": "",
-          "description": "Optional default client token used by SQL operations when the node does not override Client Token.",
+          "description": "Optional default client token used by SQL operations and by Action I/O or SQL Extensions when Agent Credential Source is Account Credential. Must allow the selected operation on the agent.",
           "displayName": "Default Client Token",
           "name": "clientToken",
           "type": "string",

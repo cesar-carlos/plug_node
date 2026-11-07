@@ -1,6 +1,9 @@
+import { getAuthorizedActions } from "../../generated/shared/n8n/actionCatalogOptions";
 import { toNodeExecutionError } from "../../generated/shared/n8n/nodeExecutionError";
 import type {
   IExecuteFunctions,
+  ILoadOptionsFunctions,
+  INodeListSearchResult,
   INodeExecutionData,
   INodeType,
   INodeTypeDescription,
@@ -39,6 +42,33 @@ export class PlugDatabase implements INodeType {
     },
     codex: {
       alias: ["Plug Database Advanced", "Plug SQL", "Plug Socket", "Plug Tools"],
+    },
+  };
+
+  methods = {
+    listSearch: {
+      async getAuthorizedActions(
+        this: ILoadOptionsFunctions,
+        _filter?: string,
+        paginationToken?: string,
+      ): Promise<INodeListSearchResult> {
+        try {
+          return await getAuthorizedActions(
+            this,
+            (input) =>
+              openActionIoConnection(
+                createSocketIoTransport(input),
+                input.agentId,
+                input.relay,
+                input.signing,
+                input,
+              ),
+            paginationToken,
+          );
+        } catch (error: unknown) {
+          throw toNodeExecutionError(this.getNode(), error, 0);
+        }
+      },
     },
   };
 

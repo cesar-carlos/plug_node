@@ -1,0 +1,326 @@
+{
+  "name": "Plug — eco UTF-8 com credencial de conta",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c9c12d57-c756-4f5a-95ec-eef66a2bcaee",
+      "name": "Clique para rodar",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-16, -16],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "action-id",
+              "name": "actionId",
+              "value": "SUBSTITUA_ACTION_ID",
+              "type": "string"
+            },
+            {
+              "id": "echo",
+              "name": "echo",
+              "value": "ação 🌱",
+              "type": "string"
+            },
+            {
+              "id": "key",
+              "name": "idempotencyKey",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "input",
+              "name": "inputBase64",
+              "value": "YcOnw6NvIPCfjLE=",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "92bf11b4-0534-40cb-8609-204669ce81a1",
+      "name": "Referencia",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [208, 144]
+    },
+    {
+      "parameters": {
+        "resource": "actionIo",
+        "actionId": "={{ $('Referencia').item.json.actionId }}",
+        "actionKey": "={{ $('Referencia').item.json.idempotencyKey }}",
+        "actionInitial": true,
+        "actionClose": true,
+        "actionBase64": "={{ $('Referencia').item.json.inputBase64 }}",
+        "agentCredentialSource": "account",
+        "actionChannel": "rest",
+        "operation": "validateRun"
+      },
+      "id": "3b370c0c-bbc5-4992-a510-a9e83e4f60eb",
+      "name": "Validar acao",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [448, 144],
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid",
+              "leftValue": "={{ $json.valid }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "rightValue": true
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dffd460d-e5a1-44dd-a3ef-461754a5acdc",
+      "name": "Pode iniciar",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [672, 128]
+    },
+    {
+      "parameters": {
+        "resource": "actionIo",
+        "operation": "run",
+        "actionId": "={{ $('Referencia').item.json.actionId }}",
+        "actionKey": "={{ $('Referencia').item.json.idempotencyKey }}",
+        "actionInitial": true,
+        "actionClose": true,
+        "actionBase64": "={{ $('Referencia').item.json.inputBase64 }}",
+        "agentCredentialSource": "account",
+        "actionChannel": "rest"
+      },
+      "id": "d0d9c49b-46cd-4136-bf3e-030bfb93abf4",
+      "name": "Iniciar acao",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [912, 0],
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "resource": "actionIo",
+        "operation": "readIo",
+        "actionExecutionId": "={{ $('Iniciar acao').item.json.execution_id }}",
+        "actionAfterSequence": "={{ $json.next_sequence ?? 0 }}",
+        "actionStdoutOffset": "={{ $json.next_offsets?.stdout ?? 0 }}",
+        "actionStderrOffset": "={{ $json.next_offsets?.stderr ?? 0 }}",
+        "actionMaxBytes": 65536,
+        "actionWaitMs": 2000,
+        "agentCredentialSource": "account",
+        "actionChannel": "rest"
+      },
+      "id": "f9027926-7122-4fe5-a44a-a650a3b931b9",
+      "name": "Ler saida",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [1120, 0],
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const state = $input.item.json;\nif (state.status !== 'succeeded' || state.process?.exit_code !== 0) throw new Error('A ação terminou sem código 0');\nconst streams = {stdout: [], stderr: []};\nconst offsets = {stdout: 0, stderr: 0};\nlet complete = false;\nfor (let index = 0; index < 120; index++) {\n  const page = $('Ler saida').all(0, index)[0]?.json;\n  if (!page || page.execution_id !== state.execution_id) throw new Error('Página ausente ou execução divergente');\n  for (const event of page.events) {\n    if (complete) throw new Error('Evento após completed');\n    if (event.type === 'completed') {\n      if (!event.output_complete || event.failure) throw new Error('Falha na captura da saída');\n      complete = true;\n    }\n    if (event.type === 'output') {\n      if (!(event.stream in streams) || event.offset !== offsets[event.stream]) throw new Error('Descontinuidade na saída');\n      const bytes = Buffer.from(event.data_base64, 'base64');\n      offsets[event.stream] += bytes.length;\n      if (offsets.stdout + offsets.stderr > 8 * 1024 * 1024) throw new Error('Saída do exemplo excede 8 MiB');\n      streams[event.stream].push(bytes);\n    }\n  }\n  if (complete) break;\n  if (page.terminal && page.events.length === 0) throw new Error('Saída sem evento completed');\n}\nif (!complete) throw new Error('Saída incompleta');\nconst stdoutBytes = Buffer.concat(streams.stdout);\nconst stdout = stdoutBytes.toString('utf8');\nif (!Buffer.from(stdout, 'utf8').equals(stdoutBytes)) throw new Error('UTF-8 inválido');\nconst prefix = 'PLUG_REMOTE_ECHO=';\nconst lines = stdout.split(/\\r?\\n/).filter(line => line.startsWith(prefix));\nconst expected = Buffer.from($('Referencia').first().json.inputBase64, 'base64');\nif (lines.length !== 1 || !Buffer.from(lines[0].slice(prefix.length), 'utf8').equals(expected)) throw new Error('Eco divergente');\nif (offsets.stderr !== 0) throw new Error('O exemplo de eco retornou stderr');\nreturn {json: {execution_id: state.execution_id, status: state.status, exit_code: state.process.exit_code, output_complete: true, echo: expected.toString('utf8'), echo_bytes: expected.length, input_base64: expected.toString('base64'), stdout, stderr: ''}};"
+      },
+      "id": "b03b04b1-36a1-4808-a3ff-4045c3470cfd",
+      "name": "Saida da execucao",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1680, 176]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "complete",
+              "leftValue": "={{ $json.events.some(event => event.type === 'completed') || ($json.terminal && $json.events.length === 0) }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6432e346-2c11-45a1-9ad8-ac5a5f499e2f",
+      "name": "Leitura completa",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1376, 192]
+    },
+    {
+      "parameters": {
+        "resource": "actionIo",
+        "operation": "getExecution",
+        "actionExecutionId": "={{ $json.execution_id }}",
+        "agentCredentialSource": "account",
+        "actionChannel": "rest"
+      },
+      "id": "5b1a20f7-9eef-4a41-8dba-059a482d1a8e",
+      "name": "Estado final",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [1664, -96],
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "errorMessage": "Preflight recusado. Confira a origem Account Credential, os escopos e a ação permitida no agente."
+      },
+      "id": "d56170aa-a54b-46ee-b062-9d8100eac750",
+      "name": "Validacao recusada",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [848, 240]
+    },
+    {
+      "id": "instructions",
+      "name": "Como usar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -400],
+      "parameters": {
+        "content": "## Conta única — eco UTF-8\nRequer pacote com Agent Credential Source. Selecione a mesma credencial de conta em todos os nós Plug, com Default Agent ID e Default Client Token autorizados. Configure Action ID no nó Referencia. Entrada base64 direta, sem recodificar. Este exemplo exige uma ação que imprime PLUG_REMOTE_ECHO=<entrada> e termina com código 0 após EOF. Troque rest por socket ou relay em todos os nós para testar outro canal. Timeout de 120s limita o exemplo, mas não cancela automaticamente o processo remoto; preserve execution_id para recuperação/cancelamento.",
+        "height": 300,
+        "width": 900
+      }
+    }
+  ],
+  "connections": {
+    "Clique para rodar": {
+      "main": [
+        [
+          {
+            "node": "Referencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Referencia": {
+      "main": [
+        [
+          {
+            "node": "Validar acao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar acao": {
+      "main": [
+        [
+          {
+            "node": "Pode iniciar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pode iniciar": {
+      "main": [
+        [
+          {
+            "node": "Iniciar acao",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validacao recusada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Iniciar acao": {
+      "main": [
+        [
+          {
+            "node": "Ler saida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler saida": {
+      "main": [
+        [
+          {
+            "node": "Leitura completa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leitura completa": {
+      "main": [
+        [
+          {
+            "node": "Estado final",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ler saida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Estado final": {
+      "main": [
+        [
+          {
+            "node": "Saida da execucao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 120
+  }
+}

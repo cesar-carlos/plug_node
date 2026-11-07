@@ -65,7 +65,10 @@ export const buildPlugClientNodeDescription = (
         {
           name: "plugAgentApi",
           required: true,
-          displayOptions: { show: { resource: ["actionIo", "sqlExtension"] } },
+          displayOptions: {
+            show: { resource: ["actionIo", "sqlExtension"] },
+            hide: { agentCredentialSource: ["account"] },
+          },
         },
         {
           name: options.credentialName,
@@ -73,6 +76,53 @@ export const buildPlugClientNodeDescription = (
         },
       ],
       properties: [
+        {
+          displayName: "Agent Credential Source",
+          name: "agentCredentialSource",
+          type: "options",
+          noDataExpression: true,
+          default: "separate",
+          displayOptions: { show: { resource: ["actionIo", "sqlExtension"] } },
+          options: [
+            {
+              name: "Use Separate Agent Credential",
+              value: "separate",
+              description: "Use Agent ID and Local Client Token from Plug Agent API",
+            },
+            {
+              name: "Use Account Credential Only",
+              value: "account",
+              description:
+                "Use Default Agent ID and Default Client Token from the account credential",
+            },
+          ],
+          description:
+            "Where to read the agent ID and locally provisioned token. Hub login always uses the account credential. No automatic fallback between credentials.",
+        },
+        {
+          displayName:
+            "Using Default Agent ID and Default Client Token from the account credential. The connection test checks Hub login only; Validate Run checks action permissions.",
+          name: "accountAgentCredentialNotice",
+          type: "notice",
+          default: "",
+          displayOptions: {
+            show: {
+              resource: ["actionIo", "sqlExtension"],
+              agentCredentialSource: ["account"],
+            },
+          },
+        },
+        {
+          displayName:
+            "Using Agent ID and Local Client Token from Plug Agent API. Account agent/token defaults are ignored. Select Use Account Credential Only above to use one credential.",
+          name: "separateAgentCredentialNotice",
+          type: "notice",
+          default: "",
+          displayOptions: {
+            show: { resource: ["actionIo", "sqlExtension"] },
+            hide: { agentCredentialSource: ["account"] },
+          },
+        },
         {
           displayName: "Resource",
           name: "resource",

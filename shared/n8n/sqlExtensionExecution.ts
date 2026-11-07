@@ -1,3 +1,7 @@
+import {
+  readAgentCredential,
+  withAgentCredentialDiagnostics,
+} from "./agentCredentialSource";
 import type { IExecuteFunctions, INodeExecutionData, IDataObject } from "n8n-workflow";
 import { loginClient } from "../auth/session";
 import { ActionIoError, type ActionIoTransport } from "../contracts/actionIo/client";
@@ -17,16 +21,15 @@ export const executeSqlExtensionNode = async (
 ): Promise<INodeExecutionData[][]> => {
   if (context.getNode().retryOnFail) throw new ActionIoError("DISABLE_NODE_RETRY", false);
   const hub = await readPlugCredentials(context, config.credentialName);
-  const agent = await context.getCredentials("plugAgentApi");
-  if (
-    typeof agent.agentId !== "string" ||
-    !agent.agentId ||
-    typeof agent.clientToken !== "string" ||
-    !agent.clientToken
-  )
-    throw new ActionIoError("MISSING_AGENT_CREDENTIAL", false);
-  const agentId = agent.agentId;
-  const token = agent.clientToken;
+  const {
+    agentId,
+    clientToken: token,
+    source,
+  } = await readAgentCredential(
+    context,
+    hub,
+    context.getNodeParameter("agentCredentialSource", 0, "separate"),
+  );
   const session = await loginClient(buildN8nHttpRequester(context), hub);
   const transports = new Map<string, ActionIoTransport & { dispose(): void }>();
   try {
@@ -77,7 +80,9 @@ export const executeSqlExtensionNode = async (
         transport = socket;
       }
       return {
-        json: (await callSqlExtension(transport, method, params, token)) as IDataObject,
+        json: (await withAgentCredentialDiagnostics(source, () =>
+          callSqlExtension(transport, method, params, token),
+        )) as IDataObject,
         pairedItem: { item: index },
       };
     });

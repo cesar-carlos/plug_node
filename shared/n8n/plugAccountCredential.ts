@@ -34,7 +34,7 @@ export const plugDatabaseAccountCredentialProperties: INodeProperties[] = [
     type: "string",
     default: "",
     description:
-      "Optional default Plug agent identifier used by SQL operations when the node does not override Agent ID.",
+      "Optional default Plug agent identifier used by SQL operations and by Action I/O or SQL Extensions when Agent Credential Source is Account Credential.",
   },
   {
     displayName: "Default Client Token",
@@ -45,7 +45,7 @@ export const plugDatabaseAccountCredentialProperties: INodeProperties[] = [
     },
     default: "",
     description:
-      "Optional default client token used by SQL operations when the node does not override Client Token.",
+      "Optional default client token used by SQL operations and by Action I/O or SQL Extensions when Agent Credential Source is Account Credential. Must allow the selected operation on the agent.",
   },
   {
     displayName: "Payload Signing Key",

@@ -6,6 +6,7 @@ import { actionIoParamsSchemas } from "./params";
 import { captureActionIoExpectation } from "./expectation";
 import { isValidActionIoResponse } from "./results";
 import { featureUnavailablePresentation } from "../featureAvailability";
+import { actionIoDeadlinePresentation } from "./deadlinePresentation";
 
 export interface ActionIoCommand {
   readonly jsonrpc: "2.0";
@@ -54,6 +55,45 @@ export const dispatchEncodedCommand = (
     sending.delete(command);
   }
 };
+const recoveryDescription = (operation?: string): string => {
+  switch (operation) {
+    case "listAvailable":
+      return "A consulta ao catálogo não inicia uma ação remota. Verifique a conexão com o agente e tente novamente somente List Available Actions após corrigir a causa. A repetição automática está desativada.";
+    case "validateRun":
+      return "Validate Run apenas valida a solicitação; não inicia o processo. Após corrigir a causa, execute novamente somente Validate Run e prossiga para Run apenas se a validação passar. A repetição automática está desativada.";
+    case "getExecution":
+      return "Consulte novamente Get Execution com o mesmo Execution ID após corrigir a causa. Essa consulta não reinicia nem cancela o processo. A repetição automática está desativada.";
+    case "findExecution":
+      return "Consulte novamente Find Execution com o Action ID e a Idempotency Key originais. Não execute Run novamente para procurar um processo existente. A repetição automática está desativada.";
+    case "getInputStatus":
+      return "Consulte novamente Get Input Status com o Execution ID e Message ID originais. Não reenvie a entrada sem confirmar seu estado. A repetição automática está desativada.";
+    case "run":
+      return "Antes de executar Run novamente, use Find Execution com o Action ID e a Idempotency Key originais. Se encontrar a execução, consulte Get Execution e retome Read I/O do último checkpoint consumido. Não gere outra chave para tentar recuperar a mesma ação. A repetição automática está desativada.";
+    case "sendInput":
+    case "closeInput":
+      return "Use Get Input Status com o Execution ID e Message ID originais para confirmar o recebimento antes de decidir sobre o envio. Preserve a sequência original e não duplique a entrada. A repetição automática está desativada.";
+    case "readIo":
+      return "Retome Read I/O com o mesmo Execution ID e o último checkpoint consumido: After Sequence e offsets em bytes de stdout e stderr. Leia até o evento completed e confirme output_complete sem falha nesse evento. Não execute Run novamente para recuperar a saída; a falha de leitura não confirma o término do processo.";
+    case "cancel":
+      return "Consulte Get Execution com o Execution ID original para confirmar o cancelamento. A perda da resposta não confirma que o processo terminou. A repetição automática está desativada.";
+    default:
+      return "Confira o estado usando a chave da ação, Execution ID ou Message ID original antes de repetir qualquer comando que altere a execução. A repetição automática está desativada.";
+  }
+};
+
+const inputDescriptions: Readonly<Record<string, string>> = {
+  INVALID_INPUT_TEXT:
+    "Enter valid Unicode text in Input Text. UTF-8 encoding does not accept isolated surrogate code units.",
+  INPUT_TOO_LARGE:
+    "Each input block is limited to 64 KiB in decoded bytes. Accents and emoji can use multiple UTF-8 bytes; send larger input in ordered blocks.",
+  INVALID_INPUT_FORMAT:
+    "Select Text UTF-8, Base64 or n8n Binary. Base64 input must already be encoded.",
+  MISSING_CATALOG_ACTION:
+    "Select an Authorized Action, or choose Enter ID or Expression and provide the Action ID. No fallback to the hidden ID is performed.",
+  INVALID_ACTION_SELECTION:
+    "Choose Enter ID or Expression, or Select From Authorized Catalog.",
+};
+
 export class ActionIoError extends PlugError {
   constructor(
     code: string,
@@ -65,6 +105,12 @@ export class ActionIoError extends PlugError {
     const availability = featureUnavailablePresentation(code, details);
     if (availability?.methodNotExecuted) outcomeUnknown = false;
     let presentation: { message: string; description: string } | undefined = availability;
+    presentation ??= actionIoDeadlinePresentation(
+      code,
+      details,
+      operation,
+      recoveryDescription(operation),
+    );
     if (
       !presentation &&
       (code === "ACTION_IO_UNAUTHORIZED" ||
@@ -91,7 +137,7 @@ export class ActionIoError extends PlugError {
       presentation = {
         message: "Recurso não encontrado ao validar a ação (NOT_FOUND).",
         description:
-          "Confira o Agent ID da credencial Plug Agent API, o Action ID e, se informado, o Trigger ID nesse agente. O preflight não inicia o processo.",
+          "Confira o Agent ID da credencial selecionada em Agent Credential Source, o Action ID e, se informado, o Trigger ID nesse agente. O preflight não inicia o processo.",
       };
     }
     super(presentation?.message ?? `Plug command failed (${code}).`, {
@@ -99,7 +145,8 @@ export class ActionIoError extends PlugError {
       retryable: false,
       description:
         presentation?.description ??
-        "Reconcile using the original action key, execution or message ID before any new mutation. Automatic replay is disabled.",
+        inputDescriptions[code] ??
+        recoveryDescription(operation),
       details: {
         ...actionIoErrorDetails(details),
         outcome_unknown: outcomeUnknown,
@@ -168,11 +215,14 @@ export const callActionIo = async (
     response = await dispatchEncodedCommand(transport, command, json, bytes);
   } catch (error) {
     if (error instanceof ActionIoError) {
-      if (operation === "validateRun")
-        throw new ActionIoError(error.code, false, error.details, operation);
-      throw error;
+      throw new ActionIoError(
+        error.code,
+        operation === "validateRun" ? false : error.details?.outcome_unknown === true,
+        error.details,
+        operation,
+      );
     }
-    throw new ActionIoError("TRANSPORT_UNCONFIRMED", mutation);
+    throw new ActionIoError("TRANSPORT_UNCONFIRMED", mutation, {}, operation);
   }
   if (
     !isRecord(response) ||
@@ -183,7 +233,7 @@ export const callActionIo = async (
       faithfulIo: true,
     })
   ) {
-    throw new ActionIoError("INVALID_RESPONSE", mutation);
+    throw new ActionIoError("INVALID_RESPONSE", mutation, {}, operation);
   }
   if (Object.prototype.hasOwnProperty.call(response, "error")) {
     if (
@@ -192,7 +242,7 @@ export const callActionIo = async (
       typeof response.error.message !== "string" ||
       (response.error.data !== undefined && !isRecord(response.error.data))
     )
-      throw new ActionIoError("INVALID_RESPONSE", mutation);
+      throw new ActionIoError("INVALID_RESPONSE", mutation, {}, operation);
     const details = actionIoErrorDetails(response.error.data);
     throw new ActionIoError(
       String(details.code ?? details.failure_code ?? `RPC_${response.error.code}`),
@@ -203,7 +253,8 @@ export const callActionIo = async (
       operation,
     );
   }
-  if (!isRecord(response.result)) throw new ActionIoError("INVALID_RESPONSE", mutation);
+  if (!isRecord(response.result))
+    throw new ActionIoError("INVALID_RESPONSE", mutation, {}, operation);
   return response.result;
 };
 

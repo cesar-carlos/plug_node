@@ -1,0 +1,233 @@
+{
+  "name": "Plug — leitura completa com checkpoint e armazenamento binário",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "c9c12d57-c756-4f5a-95ec-eef66a2bcaee",
+      "name": "Clique para rodar",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-16, -16],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "action-id",
+              "name": "actionId",
+              "value": "SUBSTITUA_ACTION_ID",
+              "type": "string"
+            },
+            {
+              "id": "echo",
+              "name": "echo",
+              "value": "ação 🌱",
+              "type": "string"
+            },
+            {
+              "id": "key",
+              "name": "idempotencyKey",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "input",
+              "name": "inputBase64",
+              "value": "YcOnw6NvIPCfjLE=",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "92bf11b4-0534-40cb-8609-204669ce81a1",
+      "name": "Referencia",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [208, 144]
+    },
+    {
+      "parameters": {
+        "resource": "actionIo",
+        "actionId": "={{ $('Referencia').item.json.actionId }}",
+        "actionKey": "={{ $('Referencia').item.json.idempotencyKey }}",
+        "actionInitial": true,
+        "actionClose": true,
+        "actionBase64": "={{ $('Referencia').item.json.inputBase64 }}",
+        "agentCredentialSource": "account",
+        "actionChannel": "rest",
+        "operation": "validateRun"
+      },
+      "id": "3b370c0c-bbc5-4992-a510-a9e83e4f60eb",
+      "name": "Validar acao",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [448, 144],
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "valid",
+              "leftValue": "={{ $json.valid }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "rightValue": true
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dffd460d-e5a1-44dd-a3ef-461754a5acdc",
+      "name": "Pode iniciar",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [672, 128]
+    },
+    {
+      "parameters": {
+        "resource": "actionIo",
+        "operation": "run",
+        "actionId": "={{ $('Referencia').item.json.actionId }}",
+        "actionKey": "={{ $('Referencia').item.json.idempotencyKey }}",
+        "actionInitial": true,
+        "actionClose": true,
+        "actionBase64": "={{ $('Referencia').item.json.inputBase64 }}",
+        "agentCredentialSource": "account",
+        "actionChannel": "rest"
+      },
+      "id": "d0d9c49b-46cd-4136-bf3e-030bfb93abf4",
+      "name": "Iniciar acao",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [912, 0],
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "resource": "actionIo",
+        "operation": "readAll",
+        "actionExecutionId": "={{ $('Iniciar acao').item.json.execution_id }}",
+        "actionAfterSequence": 0,
+        "actionStdoutOffset": 0,
+        "actionStderrOffset": 0,
+        "actionMaxBytes": 65536,
+        "actionWaitMs": 2000,
+        "agentCredentialSource": "account",
+        "actionChannel": "rest",
+        "actionTotalBytes": 8388608,
+        "actionReadTimeout": 30000
+      },
+      "id": "f9027926-7122-4fe5-a44a-a650a3b931b9",
+      "name": "Ler saida",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [1120, 0],
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "errorMessage": "Preflight recusado. Confira a origem Account Credential, os escopos e a ação permitida no agente."
+      },
+      "id": "d56170aa-a54b-46ee-b062-9d8100eac750",
+      "name": "Validacao recusada",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [848, 240]
+    },
+    {
+      "id": "read-all-guide",
+      "name": "Como retomar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1400, -200],
+      "parameters": {
+        "content": "Read Complete Output exige armazenamento binário externo. A saída contém parts e binary.event_N, ordenados por sequência. Só aceite sucesso com output_drained e output_complete verdadeiros. Se stop_reason indicar limite ou falha, salve os binários junto com next_sequence e next_offsets; retome Read Complete Output com o mesmo execution_id. Não execute Run novamente. Cancelar a leitura não cancela o processo remoto.",
+        "width": 420,
+        "height": 300
+      }
+    }
+  ],
+  "connections": {
+    "Clique para rodar": {
+      "main": [
+        [
+          {
+            "node": "Referencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Referencia": {
+      "main": [
+        [
+          {
+            "node": "Validar acao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar acao": {
+      "main": [
+        [
+          {
+            "node": "Pode iniciar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pode iniciar": {
+      "main": [
+        [
+          {
+            "node": "Iniciar acao",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validacao recusada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Iniciar acao": {
+      "main": [
+        [
+          {
+            "node": "Ler saida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 120
+  }
+}

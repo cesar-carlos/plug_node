@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 The package changelog (`packages/n8n-nodes-plug-database/CHANGELOG.md`) is canonical for published releases (via Changesets). This root file is a workspace summary.
 
+## [3.9.0] - 2026-11-07
+
+- Allow Action I/O and SQL Extensions to use only the account credential, while retaining separate credentials and existing workflow defaults.
+- Add explicit UTF-8 text input, authorized-action catalog selection and account-only workflow examples.
+- Add `output_drained` and opt-in Read Complete Output with bounded external binary storage, cancellation and resumable checkpoints. Require the completed event before accepting complete output.
+- Improve Action I/O diagnostics in Portuguese with operation-specific recovery and connection, version and clock checks, without automatic replay.
+
 ## [3.8.1] - 2026-11-05
 
 - Action I/O preflight errors identify the permissions or identifiers to check. Disconnect diagnostics distinguish read-only calls from dispatched mutations.

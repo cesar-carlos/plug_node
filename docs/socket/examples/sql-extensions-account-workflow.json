@@ -1,0 +1,83 @@
+{
+  "name": "Plug — SQL Extensions com credencial de conta",
+  "nodes": [
+    {
+      "id": "start",
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "health",
+      "name": "Saude do agente",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [240, 0],
+      "parameters": {
+        "resource": "sqlExtension",
+        "operation": "agent.getHealth",
+        "agentCredentialSource": "account",
+        "actionChannel": "rest"
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "source",
+      "name": "Identificar fonte",
+      "type": "n8n-nodes-plug-database.plugDatabase",
+      "typeVersion": 2,
+      "position": [480, 0],
+      "parameters": {
+        "resource": "sqlExtension",
+        "operation": "sql.describeSource",
+        "agentCredentialSource": "account",
+        "actionChannel": "rest",
+        "extensionParams": "{\"contractVersion\":1,\"database\":\"SUBSTITUA_BANCO\"}"
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "instructions",
+      "name": "Como usar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, -300],
+      "parameters": {
+        "content": "## SQL Extensions — conta única\nRequer pacote com Agent Credential Source. Selecione a mesma credencial de conta nos dois nós Plug. Preencha Default Agent ID e Default Client Token com as permissões locais para saúde e descoberta da fonte. Substitua SUBSTITUA_BANCO em Identificar fonte. Estas operações são de leitura; nenhuma escrita SQL é executada. Escolha rest, socket ou relay nos dois nós.",
+        "height": 240,
+        "width": 750
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Saude do agente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Saude do agente": {
+      "main": [
+        [
+          {
+            "node": "Identificar fonte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 60
+  }
+}

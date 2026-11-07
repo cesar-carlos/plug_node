@@ -204,10 +204,21 @@ describe("consolidated Plug node descriptions", () => {
       expect.objectContaining({
         name: "plugAgentApi",
         required: true,
-        displayOptions: { show: { resource: ["actionIo", "sqlExtension"] } },
+        displayOptions: {
+          show: { resource: ["actionIo", "sqlExtension"] },
+          hide: { agentCredentialSource: ["account"] },
+        },
       }),
       expect.objectContaining({ name: "plugDatabaseAccountApi", required: true }),
     ]);
+    expect(node.description.properties).toContainEqual(
+      expect.objectContaining({
+        name: "agentCredentialSource",
+        default: "separate",
+        noDataExpression: true,
+        displayOptions: { show: { resource: ["actionIo", "sqlExtension"] } },
+      }),
+    );
     expect(trigger.description.credentials).toEqual([
       expect.objectContaining({ name: "plugDatabaseAccountApi", required: true }),
     ]);
