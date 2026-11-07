@@ -123,4 +123,6 @@ Pull request CI compares the built npm tarball against the base revision and rep
 
 ## Installed n8n credential-source acceptance
 
+For live acceptance after the operator confirmed the 3.9.0 package update, see the [UTF-8 echo results](./guia-acoes-remotas-n8n.md#evidência-de-eco-utf-8-nos-três-canais--versão-390). On 2026-11-07, the existing remote-action workflow passed over REST, Socket and relay: valid preflight, consumed completion, `output_drained = true`, complete output, exit code 0 and an exact 11-byte UTF-8 echo. Socket and relay required a second Read I/O page to consume completion. This manual acceptance uses the existing separate credentials and is independent of the isolated account-source fixture below; it is not a publication gate or a load/reconnection test.
+
 Run npm run test:n8n:credentials to build and install the current tarball in a disposable n8n container, import encrypted synthetic credentials, and execute account-only and legacy workflows. See [evidence and prerequisites](./communication-alignment.md#installed-n8n-acceptance-for-account-credentials-2026-11-07). This opt-in test also executes the two account-only examples, including a UTF-8 sequence split across read pages. It uses a local synthetic TLS Hub and does not depend on the staging agent, production tokens or release publication.

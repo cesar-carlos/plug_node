@@ -70,17 +70,23 @@ O plug_node valida e encaminha o Base64 em `io.initial_input_base64`; o plug_age
 
 Para comparar o eco em bytes, extraia do stdout acumulado apenas o conteúdo após `PLUG_REMOTE_ECHO=` e antes do CRLF adicionado pelo script, e compare com `Buffer.from(inputBase64, 'base64')`. Os metadados e a quebra de linha produzidos pelo script não fazem parte da entrada original.
 
-### Evidência de eco UTF-8 nos três canais
+### Evidência de eco UTF-8 nos três canais — versão 3.9.0
 
-Testes manuais reais realizados em **6 de novembro de 2026**, no workflow **Plug teste de ação remota**, usando a credencial Campo e Lavoura. Em cada teste, **Validate Run**, **Run**, **Read I/O** e **Get Execution** usaram o canal indicado, com uma chave de idempotência nova para a execução pretendida. A entrada foi `YcOnw6NvIPCfjLE=` nos três casos, sem recodificação.
+Testes manuais reais realizados em **7 de novembro de 2026**, após o responsável confirmar a atualização do pacote para **3.9.0**, no workflow **Plug teste de ação remota**, usando as credenciais existentes de conta e agente da Campo e Lavoura. Em cada teste, **Validate Run**, **Run**, **Read I/O** e **Get Execution** usaram o canal indicado, com uma chave de idempotência nova baseada no ID da execução n8n. A entrada foi `YcOnw6NvIPCfjLE=` nos três casos, sem recodificação, com fechamento da entrada inicial.
 
 | Canal  | Execução n8n                                                                               | Preflight      | Bytes do eco  | Saída completa | Código de saída | stderr |
 | ------ | ------------------------------------------------------------------------------------------ | -------------- | ------------- | -------------- | --------------- | ------ |
-| REST   | [100696](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/100696) | `valid = true` | 11, idênticos | `true`         | `0`             | vazio  |
-| Socket | [100699](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/100699) | `valid = true` | 11, idênticos | `true`         | `0`             | vazio  |
-| Relay  | [100700](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/100700) | `valid = true` | 11, idênticos | `true`         | `0`             | vazio  |
+| REST   | [101960](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/101960) | `valid = true` | 11, idênticos | `true`         | `0`             | vazio  |
+| Socket | [101961](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/101961) | `valid = true` | 11, idênticos | `true`         | `0`             | vazio  |
+| Relay  | [101962](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/101962) | `valid = true` | 11, idênticos | `true`         | `0`             | vazio  |
 
 Em todos os casos, o processo terminou com `status = succeeded` e `terminal = true`. O conteúdo do eco retornou exatamente `ação 🌱`, e sua representação Base64 voltou a ser `YcOnw6NvIPCfjLE=` na comparação dos bytes. Após os testes, os quatro nós foram restaurados para **REST**, mantendo o exemplo UTF-8 em `Referencia`.
+
+Cada execução entregou **291 bytes de stdout**, incluindo os metadados e o CRLF do script, e zero bytes de stderr. A contagem dos bytes recebidos coincidiu com `next_offsets.stdout = 291`. O eco isolado continha exatamente `61 c3 a7 c3 a3 6f 20 f0 9f 8c b1`, sem bytes extras antes do CRLF do script.
+
+REST precisou de uma página de Read I/O. Socket e relay precisaram de duas: a primeira trouxe a saída, ainda com `terminal = false` e `output_drained = false`; a segunda trouxe `process_exited` com código `0` e `completed` na sequência `3`. Nos três canais, a página final confirmou `output_drained = true`, `output_complete = true` e `completed.output_complete = true`, sem `failure`. Isso verifica também que o loop continua após receber o texto até consumir a conclusão.
+
+Esta rodada valida o workflow existente com **Read I/O**, Base64 e credenciais separadas. Não testa a operação Read Complete Output, o modo de credencial somente de conta nem um caractere UTF-8 dividido entre chunks. As execuções anteriores de 6 de novembro (`100696`, `100699` e `100700`) permanecem como histórico anterior à atualização.
 
 Os links exigem acesso à instância n8n e dependem da retenção das execuções. Esta evidência confirma os testes daquela data; não garante disponibilidade contínua do agente nem constitui teste de reconexão ou de carga.
 
