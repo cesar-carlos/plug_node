@@ -1,5 +1,25 @@
 # n8n-nodes-plug-database
 
+## 3.9.0
+
+### Minor Changes
+
+- f5916f8: Allow Action I/O and SQL Extensions to use the account credential's default agent ID and local client token through an explicit Agent Credential Source option. Preserve separate agent credentials as the default for existing workflows, with no fallback or mixing of credential sources across REST, Socket and relay.
+
+  Add source-aware configuration and authorization diagnostics, account-only importable examples, and a disposable installed-n8n acceptance harness covering legacy bindings and UTF-8 echo output.
+
+- f5916f8: Add explicit UTF-8 text input and a paginated authorized-action selector using the configured credential source and REST, Socket or relay channel. Preserve manual Action IDs, expressions and Base64 defaults for existing workflows. Clarify credential labels, byte limits, idempotency/checkpoint help and operation-specific recovery guidance without automatic replay.
+- f5916f8: Add the additive output_drained indicator to Read I/O and an opt-in Read Complete Output operation. Drain bounded pages into externally stored n8n binary chunks, return resumable checkpoints on limits, interruption or failure, and preserve existing operation defaults and transport contracts.
+
+### Patch Changes
+
+- f5916f8: Explain Action I/O request deadlines with actionable connection and version checks,
+  operation-specific recovery, and no execution reconciliation for catalog or
+  preflight validation. Preserve operation context for malformed responses and keep
+  technical codes, effect uncertainty and automatic replay policy unchanged.
+- f5916f8: Explain expired catalog requests with connection, queue/cancellation and possible server-agent clock synchronization guidance. Remove execution reconciliation advice from listAvailable while preserving mutation recovery and the no-replay policy.
+- f5916f8: Clarify that Action I/O readers must consume the completed event before accepting output. Fix the importable workflow example and cover capture completion before all output pages are delivered, including UTF-8 boundaries and incomplete capture.
+
 ## 3.8.2
 
 ### Patch Changes
