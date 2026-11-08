@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and the project currently uses a lightwe
 
 The package changelog (`packages/n8n-nodes-plug-database/CHANGELOG.md`) is canonical for published releases (via Changesets). This root file is a workspace summary.
 
+## [3.9.1] - 2026-11-08
+
+- Fix local SQL analysis so comments and quoted text cannot hide mutation keywords or required named parameters; preserve the original SQL sent to the agent.
+- Preserve the first cancellation or timeout reason while Read Complete Output finishes storing a chunk, keeping its checkpoint consistent across REST, Socket and relay.
+- Reduce repeated SQL hint analysis, binary input buffer copies and temporary allocations when admitting waiting Socket/relay readers, preserving existing limits and workflow compatibility.
+
 ## [3.9.0] - 2026-11-07
 
 - Allow Action I/O and SQL Extensions to use only the account credential, while retaining separate credentials and existing workflow defaults.
