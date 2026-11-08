@@ -66,7 +66,10 @@ export const withAgentCredentialDiagnostics = async <T>(
           "ACTION_IO_UNAUTHORIZED",
           "SQL_OPERATION_AUTHORIZATION_DENIED",
           "SQL_OPERATION_AUTHORIZATION_CHANGED",
-        ].includes(error.code) || error.details?.reason === "scope_or_action_denied"
+          "NOT_FOUND",
+        ].includes(error.code) ||
+        error.details?.reason === "scope_or_action_denied" ||
+        (error.code === "CONFIG_ERROR" && error.details?.reason === "unauthorized")
       )
     )
       throw error;

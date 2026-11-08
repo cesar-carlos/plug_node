@@ -57,6 +57,8 @@ export const dispatchEncodedCommand = (
 };
 const recoveryDescription = (operation?: string): string => {
   switch (operation) {
+    case "agent.getHealth":
+      return "Get Agent Health apenas consulta a saúde do agente; não inicia nem altera uma execução. Confira a configuração e a autorização da credencial local e repita somente essa consulta após corrigir a causa. A repetição automática está desativada.";
     case "listAvailable":
       return "A consulta ao catálogo não inicia uma ação remota. Verifique a conexão com o agente e tente novamente somente List Available Actions após corrigir a causa. A repetição automática está desativada.";
     case "validateRun":
@@ -138,6 +140,13 @@ export class ActionIoError extends PlugError {
         message: "Recurso não encontrado ao validar a ação (NOT_FOUND).",
         description:
           "Confira o Agent ID da credencial selecionada em Agent Credential Source, o Action ID e, se informado, o Trigger ID nesse agente. O preflight não inicia o processo.",
+      };
+    }
+    if (!presentation && operation === "listAvailable" && code === "NOT_FOUND") {
+      presentation = {
+        message: "Recurso não encontrado ao consultar o catálogo (NOT_FOUND).",
+        description:
+          "Confira o Agent ID, o vínculo e a validade da credencial local e a disponibilidade do catálogo nesse agente. O código sozinho não identifica o recurso ausente. A consulta não inicia uma ação; repita somente List Available Actions após corrigir a causa.",
       };
     }
     super(presentation?.message ?? `Plug command failed (${code}).`, {

@@ -142,8 +142,14 @@ export const callSqlExtension = async (
       prefix.length + paramsBytes + 1,
     );
   } catch (error) {
-    if (error instanceof ActionIoError) throw error;
-    throw new ActionIoError("TRANSPORT_UNCONFIRMED", mutation);
+    if (error instanceof ActionIoError)
+      throw new ActionIoError(
+        error.code,
+        error.details?.outcome_unknown === true,
+        error.details,
+        method,
+      );
+    throw new ActionIoError("TRANSPORT_UNCONFIRMED", mutation, {}, method);
   }
   if (
     !isRecord(response) ||
@@ -166,6 +172,7 @@ export const callSqlExtension = async (
         details.outcome_unknown === true ||
         (mutation && details.effects_possible !== false),
       { ...details, rpc_code: response.error.code },
+      method,
     );
   }
   const result = response.result;
