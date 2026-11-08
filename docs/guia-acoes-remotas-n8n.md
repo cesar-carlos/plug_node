@@ -1,6 +1,6 @@
-# Plug Database 3.9.0 no n8n — guia da equipe
+# Plug Database 3.9.1 no n8n — guia da equipe
 
-Este guia cobre o pacote `n8n-nodes-plug-database` **3.9.0**, incluindo os recursos introduzidos na versão 3.8.0. Escolha **Agent Action I/O** para descobrir e executar aplicações cadastradas pelo **Action ID** no computador de destino. Escolha **SQL Extensions** para consultar a saúde do agente, identificar uma fonte de dados, inspecionar tabelas e views ou acompanhar uma operação SQL durável.
+Este guia cobre o pacote `n8n-nodes-plug-database` **3.9.1**, incluindo os recursos introduzidos na versão 3.8.0. Escolha **Agent Action I/O** para descobrir e executar aplicações cadastradas pelo **Action ID** no computador de destino. Escolha **SQL Extensions** para consultar a saúde do agente, identificar uma fonte de dados, inspecionar tabelas e views ou acompanhar uma operação SQL durável.
 
 ## Preparar o computador e o n8n
 
@@ -69,6 +69,22 @@ O campo `inputBase64` já contém os bytes codificados. Passe-o diretamente nos 
 O plug_node valida e encaminha o Base64 em `io.initial_input_base64`; o plug_agente o decodifica para os bytes entregues ao stdin da aplicação. Na volta, **Read I/O** mantém `events[].data_base64` no JSON e disponibiliza os bytes decodificados em `binary.event_<sequence>`. O nó **Saida da execucao** do workflow de teste decodifica os eventos, concatena os buffers de cada stream na ordem recebida e só então converte para UTF-8. Não converta cada chunk isoladamente para texto: um caractere pode estar dividido entre chunks.
 
 Para comparar o eco em bytes, extraia do stdout acumulado apenas o conteúdo após `PLUG_REMOTE_ECHO=` e antes do CRLF adicionado pelo script, e compare com `Buffer.from(inputBase64, 'base64')`. Os metadados e a quebra de linha produzidos pelo script não fazem parte da entrada original.
+
+### Evidência de eco UTF-8 nos três canais — versão 3.9.1
+
+Testes manuais reais realizados em **8 de novembro de 2026**, após o responsável confirmar a atualização para **3.9.1**, no workflow **Plug teste de ação remota**, com as credenciais existentes de conta e agente da Campo e Lavoura. **Validate Run**, **Run**, **Read I/O** e **Get Execution** usaram o canal de cada rodada, com chave de idempotência nova baseada no ID da execução n8n. A entrada inicial foi `YcOnw6NvIPCfjLE=` (`ação 🌱`), sem recodificação e com fechamento da entrada.
+
+| Canal  | Execução n8n                                                                               | Preflight      | Bytes do eco  | Saída completa / drenada | Código de saída | stdout / stderr |
+| ------ | ------------------------------------------------------------------------------------------ | -------------- | ------------- | ------------------------ | --------------- | --------------- |
+| REST   | [102585](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/102585) | `valid = true` | 11, idênticos | `true` / `true`          | `0`             | 290 / 0 bytes   |
+| Socket | [102586](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/102586) | `valid = true` | 11, idênticos | `true` / `true`          | `0`             | 290 / 0 bytes   |
+| Relay  | [102587](https://n8n.se7esistemassinop.com.br/workflow/Em3d2MEo8U03ZYp4/executions/102587) | `valid = true` | 11, idênticos | `true` / `true`          | `0`             | 291 / 0 bytes   |
+
+As três execuções terminaram com `status = succeeded`. Cada canal precisou de **duas páginas de Read I/O**, consumindo o evento `completed`, sem `failure`, e confirmando `output_complete = true` e `output_drained = true` na página final. A sequência dos eventos e os offsets dos chunks foram conferidos para verificar continuidade da saída.
+
+O eco foi comparado nos bytes de stdout, entre `PLUG_REMOTE_ECHO=` e o CRLF acrescentado pelo script: exatamente `ação 🌱`, com os 11 bytes `61 c3 a7 c3 a3 6f 20 f0 9f 8c b1`, em uma única ocorrência. A contagem total de stdout inclui os metadados do script; não representa o tamanho do eco isolado. Não houve saída em stderr.
+
+Ao terminar, os parâmetros originais dos quatro nós foram restaurados para **REST**; conexões e configurações foram conferidas contra o estado anterior. Esta rodada valida **Read I/O**, entrada Base64 e credenciais separadas. Não cobre Read Complete Output, credencial somente de conta, UTF-8 dividido entre chunks, reconexão ou carga. É evidência manual complementar, não uma etapa obrigatória da publicação. Os links exigem acesso ao n8n e estão sujeitos à retenção das execuções.
 
 ### Evidência de eco UTF-8 nos três canais — versão 3.9.0
 
