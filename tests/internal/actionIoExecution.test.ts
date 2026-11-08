@@ -18,6 +18,60 @@ const setup = (parameters: Record<string, unknown>, count = 1) =>
     inputData: Array.from({ length: count }, () => ({ json: {} })),
   });
 describe("n8n faithful I/O", () => {
+  it.each([0, 1, 11, 65536])(
+    "preserves %i binary bytes across reused chunk buffers",
+    async (size) => {
+      const expected = Buffer.alloc(size);
+      for (let i = 0; i < size; i++) expected[i] = i % 251;
+      const scratch = new Uint8Array(263);
+      // Advance only when the consumer asks: the producer reuses a non-zero-offset view.
+      const stream = {
+        async *[Symbol.asyncIterator]() {
+          yield scratch.subarray(3, 3);
+          for (let offset = 0; offset < size; offset += 257) {
+            const length = Math.min(257, size - offset);
+            scratch.set(expected.subarray(offset, offset + length), 3);
+            yield scratch.subarray(3, 3 + length);
+            scratch.fill(255);
+          }
+        },
+        destroy: vi.fn(),
+      };
+      const context = setup({
+        operation: "sendInput",
+        actionExecutionId: "e",
+        actionMessageId: "m",
+        actionSequence: 0,
+        actionInputFormat: "binary",
+      });
+      context.helpers.assertBinaryData = vi
+        .fn()
+        .mockReturnValue({ id: "stored", data: "filesystem" });
+      context.helpers.getBinaryStream = vi.fn().mockResolvedValue(stream);
+      const send = vi.fn(async (command) => ({
+        jsonrpc: "2.0",
+        id: command.id,
+        result: {
+          execution_id: "e",
+          message_id: "m",
+          sequence: 0,
+          state: "accepted",
+          confirmed_bytes: 0,
+          next_input_sequence: 1,
+          stdin_state: "open",
+        },
+      }));
+      await executeActionIoNode(context, {
+        supportsSocket: true,
+        actionIoTransportFactory: async () => Object.assign(send, { dispose: vi.fn() }),
+      });
+      expect(send).toHaveBeenCalledOnce();
+      expect(Buffer.from(send.mock.calls[0][0].params.data_base64, "base64")).toEqual(
+        expected,
+      );
+      expect(stream.destroy).toHaveBeenCalledOnce();
+    },
+  );
   it.each(["", "opaque-next"])(
     'returns an authorized empty catalog page for cursor "%s"',
     async (cursor) => {

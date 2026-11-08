@@ -52,6 +52,7 @@ export const readAllActionIo = async (
   const controller = new AbortController();
   let reason = "completed";
   const stop = (why: string): void => {
+    if (controller.signal.aborted) return;
     reason = why;
     controller.abort();
     interrupt();

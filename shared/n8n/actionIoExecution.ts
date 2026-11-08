@@ -69,19 +69,31 @@ const readInput = async (context: IExecuteFunctions, index: number): Promise<str
     return binary.data;
   }
   const stream = await context.helpers.getBinaryStream(binary.id, 65536);
-  const blocks: Buffer[] = [];
+  let data: Buffer | undefined;
   let bytes = 0;
   try {
     for await (const block of stream) {
       if (!(block instanceof Uint8Array) || bytes + block.byteLength > 65536)
         throw new ActionIoError("INPUT_TOO_LARGE", false);
       bytes += block.byteLength;
-      blocks.push(Buffer.from(block));
+      // Copy immediately: stream producers may reuse their backing buffer.
+      // Allocate lazily and expose only initialized bytes to the encoder.
+      if (!data) data = Buffer.from(block);
+      else {
+        if (bytes > data.length) {
+          const expanded = Buffer.allocUnsafe(
+            Math.min(ACTION_IO_BLOCK_BYTES, Math.max(bytes, data.length * 2)),
+          );
+          expanded.set(data);
+          data = expanded;
+        }
+        data.set(block, bytes - block.byteLength);
+      }
     }
   } finally {
     stream.destroy();
   }
-  return Buffer.concat(blocks, bytes).toString("base64");
+  return data ? data.toString("base64", 0, bytes) : "";
 };
 
 export const executeActionIoNode = async (

@@ -17,6 +17,8 @@ alwaysApply: true
 - Avoid spreading one compatibility concern across multiple layers.
 - Prefer static enforcement in CI for architectural boundaries using ESLint import rules, dependency-cruiser, or equivalent tooling.
 - Work on the current git branch by default. Do not create, switch, or delete branches unless the user explicitly asks for that branch operation in the current task.
+- Apply the evidence requirements in `testing.mdc` to every review, bug fix, and improvement, regardless of task size. Follow `performance.mdc` when claiming performance gains.
+- Before declaring a correction or improvement validated, identify the affected behavior, the regression tests or existing checks that prove it, and their actual results. In the handoff, summarize commands run and material limitations; do not present unexecuted tests or review hypotheses as confirmed results.
 - Before concluding a long or multi-file task, run `npm run lint` plus the relevant automated tests, and resolve reported errors and warnings when they are caused by the current work.
 - Before concluding a refactor, run `npm run lint` plus the relevant automated tests; escalate to `npm run test` when shared contracts, core infrastructure, or cross-cutting behavior changed.
 - Run `npm run typecheck` when shared types, transport contracts, tsconfig-sensitive behavior, or broad refactors change TypeScript assumptions across files.

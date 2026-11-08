@@ -13,6 +13,30 @@ import {
 
 describe("plugSqlPerformanceHints", () => {
   it.each([
+    "SELECT 1 -- '\nINTO target FROM source -- '",
+    "SELECT 1 /* ' */ INTO target /* ' */ FROM source",
+    "SELECT 1 /* -- ignored */ INTO target FROM source",
+  ])("does not hide SELECT INTO behind comment delimiters: %s", (sql) => {
+    expect(isLikelyReadOnlySql(sql)).toBe(false);
+    expect(
+      resolveAutoMaxParallelReadOnlyBatchItems([{ sql }], undefined, true),
+    ).toBeUndefined();
+  });
+  it.each([
+    ["SELECT /* note */ TOP (1000) 'ação 🌱; INTO' AS label", true, false],
+    ["SELECT TOP 999 x FROM t", false, false],
+    ["SELECT TOP 1000 x FROM t WHERE 1 = 0", false, false],
+    ["SELECT TOP 1000 x INTO t FROM s", false, false],
+    ["SELECT TOP 1000 x FROM t; DELETE FROM t", false, false],
+    ["SELECT '🌱' AS label -- TOP 1000\n FROM t", false, true],
+  ])(
+    "preserves streaming and unbounded classification for %s",
+    (sql, streaming, unbounded) => {
+      expect(shouldAutoPreferDbStreaming(String(sql))).toBe(streaming);
+      expect(isLikelyUnboundedSelectSql(String(sql))).toBe(unbounded);
+    },
+  );
+  it.each([
     "SELECT id INTO InventoryCopy FROM Inventory",
     "SELECT TOP 1000 id\nINTO #InventoryCopy FROM Inventory",
     "SELECT id /* comment */ INTO InventoryCopy FROM Inventory",

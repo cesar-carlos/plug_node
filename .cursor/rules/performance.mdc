@@ -13,4 +13,6 @@ alwaysApply: true
 - Reuse shared serializers, validators, and transport helpers on hot paths instead of rebuilding equivalent logic per feature.
 - Avoid accidental quadratic work in node execution code, response normalizers, serializers, and mappers when processing rows or chunks.
 - Enforce the documented `PayloadFrame` guardrails: size checks, inflation ratio limits, and explicit chunk aggregation behavior.
-- When a change targets performance-sensitive behavior, document the assumption being optimized and verify the result with measurement or profiling.
+- When a change targets performance-sensitive behavior, document the assumption being optimized and verify the result with a reproducible before/after benchmark or profile under equivalent conditions. Record the command, workload, runtime/environment, repetitions, and relevant metrics such as latency, throughput, allocations, or peak memory; distinguish measurement noise from a demonstrated gain.
+- Pair performance measurements with the behavioral and compatibility checks required by `testing.mdc`. Preserve limits, cancellation, ordering, and output correctness; a faster result alone is not evidence of a correct optimization.
+- Keep timing-sensitive benchmarks separate from deterministic regression tests. Do not introduce flaky wall-clock assertions into the ordinary test suite or claim a measurable gain when the evidence is inconclusive.

@@ -6,7 +6,7 @@ alwaysApply: true
 
 # Testing Standards
 
-- This is a universal rule file. Transport-specific test requirements live in `architecture.mdc`, `security.mdc`, and `performance.mdc`.
+- This is a universal rule file. It owns behavioral validation and regression evidence; use `architecture.mdc` and `security.mdc` for invariants and `performance.mdc` for measurement requirements.
 - Follow the testing pyramid: many unit tests, targeted integration tests, plus transport-level tests for critical public interfaces.
 - Mirror the source structure in `tests/` or package-local test folders so the target module is obvious.
 - Unit-test shared auth, transport, normalization, and codec helpers in isolation.
@@ -14,7 +14,13 @@ alwaysApply: true
 - Add contract tests for critical public interfaces and compatibility shims.
 - Mock infrastructure boundaries in unit tests, but prefer real typed payload shapes over hand-wavy stubs.
 - Every intentional compatibility alias or migration shim must have a regression test so the exception stays localized.
-- Update or add tests whenever behavior, contracts, or compatibility shims change.
+- Every implemented improvement must have automated tests that demonstrate the intended behavior and protect affected contracts. Reuse relevant existing tests for behavior-preserving refactors; add or update tests when behavior, contracts, edge cases, or compatibility shims change.
+- Every bug fix must include an automated regression test in the same change. Reproduce the reported trigger and assert the observable correct result; a happy-path test or a snapshot unrelated to the failure is not sufficient.
+- Demonstrate that the regression test fails because of the bug before the fix and passes after it, whenever the original behavior can be reproduced safely. Do not revert unrelated work or use production mutations to obtain this evidence. If reproduction is unavailable, document the missing evidence and reason instead of claiming a verified reproduction.
+- Assert public outcomes and invariants rather than mirroring implementation details. Cover relevant failure and boundary cases, such as limits, cancellation, ordering, identity, and compatibility. For shared transport changes, cover every affected transport and preserve supported legacy behavior.
+- Keep regression tests deterministic and runnable with isolated fixtures in the normal automated suite. Use controlled clocks and synchronization for deadline or concurrency defects; do not rely on arbitrary sleeps or live staging availability.
+- Manual checks and live E2E results supplement automated regression tests; they do not replace them. Record skipped, blocked, and failed checks separately from passing checks, and never treat unavailable infrastructure as proof of success.
+- Review-only findings must distinguish reproduced defects from hypotheses and state the evidence or proposed reproduction. Documentation-only and rule-only changes require relevant structural, link, or formatting checks rather than artificial runtime tests.
 - Use AAA naming and structure: `should return 404 when user does not exist`.
 - Reset data and mocks between tests; no test may depend on execution order.
 - When capturing local e2e or long-suite stdout/stderr to a file, write under `tmp/e2e-logs/` (for example `tmp/e2e-logs/tmp-e2e-run.log`). Never leave `*.log` captures in the repository root.

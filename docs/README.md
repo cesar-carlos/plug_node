@@ -2,7 +2,7 @@
 
 | Objetivo                                                             | Onde começar                                                                                                                                                     |
 | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Configurar o n8n e usar ações remotas, SQL durável e saúde do agente | [Guia da equipe — versão 3.8.0](./guia-acoes-remotas-n8n.md)                                                                                                     |
+| Configurar o n8n e usar ações remotas, SQL durável e saúde do agente | [Guia da equipe — versão 3.9.0](./guia-acoes-remotas-n8n.md)                                                                                                     |
 | Conhecer o pacote e seus nós                                         | [Resumo do projeto](./project-summary.md) e [arquitetura](./architecture.md)                                                                                     |
 | Montar workflows e configurar permissões                             | [Exemplos](./workflow-examples.md), [acesso do cliente](./client-access.md) e [administração do agente](./user-access.md)                                        |
 | Escolher um canal e tratar falhas                                    | [Padrões de comunicação](./communication-patterns.md), [contratos de erro](./error-and-authorization-contracts.md) e [guia Socket](./socket/README.md)           |

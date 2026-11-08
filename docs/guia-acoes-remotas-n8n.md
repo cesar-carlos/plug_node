@@ -1,6 +1,6 @@
-# Plug Database 3.8.0 no n8n — guia da equipe
+# Plug Database 3.9.0 no n8n — guia da equipe
 
-O pacote `n8n-nodes-plug-database` **3.8.0** oferece dois recursos novos no nó **Plug Database**. Escolha **Agent Action I/O** para descobrir e executar aplicações cadastradas pelo **Action ID** no computador de destino. Escolha **SQL Extensions** para consultar a saúde do agente, identificar uma fonte de dados, inspecionar tabelas e views ou acompanhar uma operação SQL durável.
+Este guia cobre o pacote `n8n-nodes-plug-database` **3.9.0**, incluindo os recursos introduzidos na versão 3.8.0. Escolha **Agent Action I/O** para descobrir e executar aplicações cadastradas pelo **Action ID** no computador de destino. Escolha **SQL Extensions** para consultar a saúde do agente, identificar uma fonte de dados, inspecionar tabelas e views ou acompanhar uma operação SQL durável.
 
 ## Preparar o computador e o n8n
 
@@ -215,6 +215,7 @@ A operação **Read Complete Output** é opcional e usa as mesmas credenciais e 
 - Configure Execution ID, After Sequence e os dois offsets. Na primeira leitura use zero; na retomada use exatamente o checkpoint salvo.
 - Max Total Bytes limita os bytes entregues nesta chamada (padrão 8 MiB, teto 64 MiB). Nenhum chunk é dividido: um orçamento menor que o próximo chunk retorna sem avançar; use pelo menos 64 KiB para garantir espaço para um chunk.
 - Read Time Limit limita a leitura a 30 segundos por padrão, com teto de 300 segundos. O relógio começa após autenticação e criação do transporte. A chamada interrompe leituras de rede; uma gravação binária já iniciada precisa terminar antes de devolver seu checkpoint.
+- Se cancelamento e timeout ocorrerem durante essa gravação, `stop_reason` preserva a primeira causa. O chunk gravado com sucesso integra o checkpoint retornado; os eventos seguintes não são consumidos.
 - Há limites adicionais de 4.096 páginas e 4.096 chunks por chamada. Os limites existentes do agente continuam valendo.
 - É necessário armazenamento binário externo do n8n (por exemplo filesystem, ou um backend externo suportado pela instalação). O modo inline é recusado com `EXTERNAL_BINARY_STORAGE_REQUIRED` após, no máximo, um chunk; não há fallback que acumule o arquivo em Base64.
 

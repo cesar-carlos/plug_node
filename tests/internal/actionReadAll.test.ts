@@ -93,6 +93,58 @@ const setup = (
 };
 
 describe.each(["rest", "socket", "relay"])("%s Action I/O output draining", (channel) => {
+  it.each(["cancelled", "time_limit"])(
+    "preserves the first %s interruption while storage finishes",
+    async (first) => {
+      vi.useFakeTimers();
+      const abort = new AbortController();
+      const test = setup(channel, { actionReadTimeout: 10 }, async () => page(events));
+      test.context.getExecutionCancelSignal = () => abort.signal;
+      const original = test.context.helpers.prepareBinaryData;
+      test.context.helpers.prepareBinaryData = vi.fn(async (...args) => {
+        if (first === "cancelled") abort.abort();
+        await vi.advanceTimersByTimeAsync(11);
+        if (first === "time_limit") abort.abort();
+        return original(...args);
+      });
+      const [[item]] = await test.run();
+      expect(item.json).toMatchObject({
+        stop_reason: first,
+        next_sequence: 1,
+        next_offsets: { stdout: 8, stderr: 0 },
+        bytes_read: 8,
+        output_drained: false,
+      });
+      expect(test.saved).toHaveLength(1);
+      expect(test.send).toHaveBeenCalledOnce();
+    },
+  );
+  it.each(["offset", "sequence", "next_sequence", "after_completed"])(
+    "rejects a late %s defect before storing any part of the page",
+    async (defect) => {
+      const items = [output(1, 0, bytes), output(2, bytes.length, bytes)];
+      const result = page(items);
+      if (defect === "offset") items[1].offset++;
+      if (defect === "sequence") items[1].sequence++;
+      if (defect === "next_sequence") result.next_sequence = 99;
+      if (defect === "after_completed")
+        result.events = [
+          items[0],
+          { sequence: 2, type: "completed", output_complete: true },
+          output(3, bytes.length, bytes),
+        ];
+      const test = setup(channel, {}, async () => result);
+      const [[item]] = await test.run();
+      expect(item.json).toMatchObject({
+        stop_reason: "read_failed",
+        next_sequence: 0,
+        next_offsets: { stdout: 0, stderr: 0 },
+        bytes_read: 0,
+      });
+      expect(test.saved).toHaveLength(0);
+      expect(test.context.helpers.prepareBinaryData).not.toHaveBeenCalled();
+    },
+  );
   it("keeps only references while draining 8 MiB with bounded storage writes", async () => {
     const block = Buffer.alloc(65536, 65);
     const test = setup(channel, {}, async (c) => {

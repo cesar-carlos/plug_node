@@ -1,5 +1,6 @@
 import type { SqlExecuteBatchCommandItem } from "../contracts/api";
 import { PlugValidationError } from "../contracts/errors";
+import { stripSqlCommentsAndStrings } from "../utils/sqlText";
 
 export const plugBulkInsertMaxRows = 50_000;
 export const plugBulkInsertMaxJsonBytes = 10 * 1024 * 1024;
@@ -8,35 +9,31 @@ export const plugMaxParallelReadOnlyBatchItems = 8;
 
 const mutationKeywordPattern = /(^|\s)(insert|update|delete|merge|exec|execute)\s/i;
 
-const stripSqlCommentsAndStrings = (sql: string): string =>
-  sql
-    .replace(/'([^']|'')*'/g, "''")
-    .replace(/"([^"]|"")*"/g, '""')
-    .replace(/--.*$/gm, " ")
-    .replace(/\/\*[\s\S]*?\*\//g, " ");
-
 const splitSqlStatements = (sql: string): string[] =>
   stripSqlCommentsAndStrings(sql)
     .split(";")
     .map((statement) => statement.trim())
     .filter((statement) => statement !== "");
 
-export const isLikelyReadOnlySql = (sql: string): boolean => {
+const readOnlyStatement = (sql: string): string | undefined => {
   const statements = splitSqlStatements(sql);
   if (statements.length !== 1) {
-    return false;
+    return undefined;
   }
 
   const normalizedStatement = statements[0].replace(/\s+/g, " ");
   if (!/^\s*select\b/i.test(normalizedStatement)) {
-    return false;
+    return undefined;
   }
 
-  return (
-    !mutationKeywordPattern.test(normalizedStatement) &&
+  return !mutationKeywordPattern.test(normalizedStatement) &&
     !/\binto\b/i.test(normalizedStatement)
-  );
+    ? normalizedStatement
+    : undefined;
 };
+
+export const isLikelyReadOnlySql = (sql: string): boolean =>
+  readOnlyStatement(sql) !== undefined;
 
 /**
  * True for a single-statement SELECT without TOP (or with an explicit empty
@@ -45,11 +42,11 @@ export const isLikelyReadOnlySql = (sql: string): boolean => {
  * relay:rpc.accepted can anchor stream.pull requestIds.
  */
 export const isLikelyUnboundedSelectSql = (sql: string): boolean => {
-  if (!isLikelyReadOnlySql(sql)) {
+  const cleanSql = readOnlyStatement(sql);
+  if (cleanSql === undefined) {
     return false;
   }
 
-  const cleanSql = splitSqlStatements(sql)[0].replace(/\s+/g, " ");
   if (/\bwhere\s+1\s*=\s*0\b/i.test(cleanSql)) {
     return false;
   }
@@ -58,11 +55,11 @@ export const isLikelyUnboundedSelectSql = (sql: string): boolean => {
 };
 
 export const shouldAutoPreferDbStreaming = (sql: string): boolean => {
-  if (!isLikelyReadOnlySql(sql)) {
+  const cleanSql = readOnlyStatement(sql);
+  if (cleanSql === undefined) {
     return false;
   }
 
-  const cleanSql = splitSqlStatements(sql)[0].replace(/\s+/g, " ");
   if (/\bwhere\s+1\s*=\s*0\b/i.test(cleanSql)) {
     return false;
   }

@@ -14,7 +14,8 @@ Windows validation passed with the native watch smoke. Linux validation in Docke
 
 ## Local quality gates
 
-- `npm run verify` — full gate: prettier, surface checks, doc links, workflow examples, lint, typecheck, all tests, build
+- `npm run verify` — default full gate: formatting, rule metadata, toolchain and compiler watch, package surface, doc links, workflow examples, dependency boundaries, lint, typecheck, coverage, package tests and build
+- `npm run verify:rules` — validate rule frontmatter and local rule references
 - `npm run test:e2e` — live integration tests (skipped without credentials)
 - `npm run pack:check` — tarball validation plus smoke install
 - `npm run lint` — workspace lint via `n8n-node lint`
@@ -22,7 +23,7 @@ Windows validation passed with the native watch smoke. Linux validation in Docke
 
 ## Test suite size
 
-The migration validation runs **749 root tests and 377 package tests** with `PLUG_TEST_REAL_PDF=1`, for **1,126 passing tests**. Without that flag, the real PDF smoke is skipped; that skip does not establish browser compatibility. Run `npm test` for the full tree.
+The dependency migration recorded **749 root tests and 377 package tests** with `PLUG_TEST_REAL_PDF=1`, for **1,126 passing tests**. These are historical counts, not the current suite size or a fixed acceptance threshold. Report the counts from the actual run for the revision under review. Without that flag, the real PDF smoke is skipped; that skip does not establish browser compatibility. Run `npm test` for the full tree.
 
 - root tests (`tests/`): unit, integration, contract, and `plugSqlGuidedCommands.test.ts`
 - package tests (`packages/n8n-nodes-plug-database/tests/`): node description, execution, and snapshot files
@@ -89,9 +90,25 @@ See [tests/e2e/README.md](../tests/e2e/README.md) and [Hub contract alignment](.
 
 Some E2E tests can skip when the agent or hub is temporarily unavailable. This avoids false negatives caused by external infrastructure instability rather than code regressions. See `tests/e2e/helpers/environmentSkips.ts` for the skip rules.
 
+A skipped check is not a passing check or evidence of compatibility. Keep deterministic regression coverage in the normal automated suite; report unavailable live validation separately. The optional staging smoke fails on missing configuration or unavailable infrastructure and does not gate publication.
+
 ## Regression policy
 
-Every behavior change captured by an audit, bug fix, or contract change must be paired with a regression test. The R1 + R2 + R3 audits that produced 3.0.0 added 23 regression tests across shared validators, page guards, stream pull fail-fast, custom event REST parsing, and relay conversation validation.
+SQL lexical-analysis regressions cover quotes inside comments, line-comment markers inside block comments, nested block comments, named parameters and comment-separated mutation keywords. Guided validation and performance hints share the masking helper; dispatched SQL remains unchanged. Read Complete Output tests also cover cancellation followed by timeout during binary storage on REST, Socket and relay, requiring the first stop reason and a checkpoint matching only successfully stored chunks. These defects were reproduced before the fixes; the focused suites passed afterward.
+
+The source of truth is [testing.mdc](../.cursor/rules/testing.mdc), with completion requirements in [governance.mdc](../.cursor/rules/governance.mdc) and measurement requirements in [performance.mdc](../.cursor/rules/performance.mdc). Apply the following workflow to reviews, fixes and improvements:
+
+1. Identify the trigger, expected public behavior and affected contracts. In review-only findings, distinguish reproduced defects from hypotheses and describe the evidence or proposed reproduction.
+2. Include an automated regression test with every bug fix. Reproduce the original failure safely and confirm that the test fails because of that bug before applying the fix, then passes afterward. If the original behavior cannot be reproduced, record why and what evidence is missing; do not claim a verified reproduction.
+3. For improvements, add or update tests for changed behavior and relevant boundaries. Existing relevant tests can demonstrate behavior preservation for refactors. Assert observable outcomes rather than implementation details.
+4. Cover every affected transport and supported legacy path for shared changes. Select relevant invariants: response identity, row/byte limits, cancellation, deadlines, chunk order, complete output, and absence of duplicate dispatch or input.
+5. Run focused tests while developing, then the applicable quality gates. Use isolated fixtures, controlled clocks and explicit synchronization for concurrency defects. Live E2E and manual checks supplement automated regression coverage; they do not replace it.
+
+Documentation-only and rule-only changes use structural, link and formatting checks rather than artificial runtime tests. No package changeset is needed when package behavior and metadata are unchanged.
+
+For the handoff or PR description, record the affected behavior, test files/cases, commands and actual results. State whether the regression failed before the fix and passed after it, and list skipped, blocked or failed checks with their impact. Never report a planned or unexecuted check as passing. Do not include credentials, tokens or sensitive payloads in evidence; local raw captures belong under `tmp/e2e-logs/`.
+
+For performance claims, retain a reproducible before/after command and workload, runtime/environment, repetitions and relevant latency, throughput or memory results. Compare equivalent conditions and distinguish noise from a demonstrated gain. Timing benchmarks remain separate from deterministic regression tests; correctness, limits and compatibility must still pass. See [performance and reliability](./performance-and-reliability.md#validation-of-performance-changes).
 
 Performance-sensitive PayloadFrame changes must also keep `npm run bench:payload-frame:check` green against `scripts/benchmarks/payload-frame-baseline.json` (sync + async decode paths; CI uses a 50% `avgMs` gate with `PLUG_BENCH_ITERATIONS=100`). The unsafe gzip rejection case uses one warm-up batch and reports the median of five measured batches of the same size. Calibrate the baseline on **Linux CI** (`ubuntu-latest`, Node 24.18.0), not Windows:
 

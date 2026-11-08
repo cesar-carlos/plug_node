@@ -1,5 +1,11 @@
 # Performance and Reliability
 
+## Validation of performance changes
+
+Follow [performance.mdc](../.cursor/rules/performance.mdc) and the [regression policy](./testing-strategy.md#regression-policy) for every optimization. Identify the bottleneck first, preserve a baseline revision or build, and compare it with the candidate under equivalent workloads and environments. Record commands, runtime versions, warm-up, repetitions and the relevant latency, throughput, allocation or peak-memory metrics. Keep sanitized summaries in the change description and local raw reports under `tmp/e2e-logs/`.
+
+An optimization is validated only when behavioral checks also pass, including affected transport contracts, limits, cancellation, ordering and compatibility. Do not put unstable wall-clock assertions into ordinary regression tests or adjust baselines merely to hide regressions. If a gain is within measurement noise, report it as inconclusive. The dated results below describe their specific workloads; they do not prove current live-server performance.
+
 ## Dependency refresh — 2026-10-30
 
 Stable npm registry metadata was checked for every direct dependency. Updated versions include CLI 0.54.6, ESLint 10.14.0, n8n-workflow 2.45.4 (`stable`; its `latest` tag still points to 2.16.0), Vitest/coverage 5.0.5, dependency-cruiser 18.7.0, dotenv 18.0.9, Playwright/Chromium 1.64.1, jose 6.2.14, marked 18.1.2, to-words 7.4.1, Zod 4 alias 4.6.7, Prettier 3.9.10, release-it 21.1.2, Node 24 types 24.19.2, and npm 12.2.1. Libraries already at their newest stable version retain their pins.
@@ -193,6 +199,25 @@ Enable **Coalesce Input Items** under batch **Additional Options** to merge `Bat
 ## Hub alignment
 
 See [Hub contract alignment](./hub-contract-alignment.md) and [Workflow examples](./workflow-examples.md).
+
+## SQL hints, binary input and waiting readers — 2026-11-08
+
+`node scripts/benchmark-action-hot-paths.mjs <baseline-shared-directory>` compares saved unminified build output with the current `packages/n8n-nodes-plug-database/dist/generated/shared` directory. Before applying changes, run `npm run build` and copy its `dist/generated/shared` to a fresh directory under `tmp/`; rebuild the candidate before comparing. The default baseline path is `tmp/hot-path-baseline/shared`. The script measures three alternating isolated process pairs, with one warm-up and seven measured batches per process, and reports medians plus individual process results. It exposes the existing private binary reader and extracts the reader-admission block only inside the measurement process.
+
+On Windows / Node 24.18.0, against revision `457f90f`, the retained optimizations measured:
+
+These measurements precede the subsequent SQL lexical-order correctness fix described in the [regression policy](./testing-strategy.md#regression-policy). The SQL timings are historical evidence for normalization reuse, not a benchmark of that later masking helper.
+
+| Workload per batch                                                          | Before (ms) | After (ms) | Reduction |
+| --------------------------------------------------------------------------- | ----------: | ---------: | --------: |
+| 10,000 SQL streaming hints with an approximately 8 KiB comment              |      664.97 |     288.95 |     56.5% |
+| 500 binary inputs of 64 KiB, one chunk each                                 |       94.23 |      60.38 |     35.9% |
+| 500 binary inputs of 64 KiB, 256-byte chunks                                |      187.14 |     178.12 |      4.8% |
+| 200,000 reader admissions with 15 waiting readers among 31 pending requests |       96.30 |      59.56 |     38.2% |
+
+SQL hints reuse the normalized read-only statement within each call. Binary input copies producer-owned bytes immediately and grows its private buffer geometrically only when necessary, avoiding a final concatenation and retaining the 64 KiB input limit without allocating the full limit for small fragmented inputs. Reader admission iterates the pending map without temporary arrays; the 16 waiting-reader and 32 total-request caps remain unchanged. These measurements isolate local work, exclude network, filesystem storage and agent execution, and do not imply equivalent end-to-end gains. Absolute timings varied substantially between processes. The unchanged page-preflight control varied by 5.3% in its aggregate median, so the 4.8% fragmented-input difference is inconclusive. A small 11-byte input measured 4.66 to 2.94 ms per 500 calls; the absolute difference is too small to generalize.
+
+The proposed combined output-page validation measured 286.85 ms versus 249.11 ms for 100,000 preflights of 128 one-byte events and was discarded. The original separate passes remain. Regression checks cover SQL classification, reused binary buffers and exact bytes, waiting-reader capacity, and malformed late-page events without writes or checkpoint advancement across REST, Socket and relay. This is behavior-preserving optimization evidence, not a newly reproduced production bug or live staging acceptance.
 
 ## Action I/O block validation
 

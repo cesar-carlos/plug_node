@@ -10,6 +10,8 @@ Thanks for contributing to the Plug Database workspace.
 4. Run `npm run test:e2e` when your change affects transport, authentication, or output behavior (requires `.env`; see [tests/e2e/README.md](tests/e2e/README.md)).
 5. Add a changeset with `npm run changeset` when package behavior changes.
 
+Read the project rules indexed by [AGENTS.md](AGENTS.md) before changing architecture. Follow the [regression policy](docs/testing-strategy.md#regression-policy): every bug fix includes an automated regression test, improvements need behavioral evidence, and performance claims need reproducible before/after measurements. Include commands, actual results and any missing validation in the PR description. Manual checks and skipped E2E tests do not replace automated regression coverage. For documentation-only changes, run the relevant formatting and link checks; for rule changes, also run `npm run verify:rules`.
+
 Hub contract notes for maintainers: [docs/hub-contract-alignment.md](docs/hub-contract-alignment.md).
 
 ## Scope checklist
@@ -21,8 +23,8 @@ Hub contract notes for maintainers: [docs/hub-contract-alignment.md](docs/hub-co
 
 ## Rules
 
-- shared imports stay within `shared/`; package code must not reach into sibling package paths (enforced by review; `import/no-restricted-paths` may be added later)
-- keep all public documentation in English
+- preserve dependency boundaries enforced by `npm run verify:deps` and `.dependency-cruiser.js`: shared code must not import package code, and package code consumes shared modules through `generated/shared`
+- preserve the language of each existing document: maintainer documentation is primarily English, while the team guide and documentation index are Portuguese
 - do not commit `dist/`, `generated/`, `.env`, credential material, or contents of `tmp/` (local scratch / e2e log captures)
 - keep runtime dependencies scoped to the package features that require them
 - preserve the simple credential experience:

@@ -19,6 +19,35 @@ class SocketFixture extends EventEmitter {
 }
 afterEach(() => vi.useRealTimers());
 describe.each([false, true])("single-dispatch Socket relay=%s", (relay) => {
+  it("limits waiting readers independently and releases capacity after disconnect", async () => {
+    const socket = new SocketFixture();
+    const transport = createSocketActionIoTransport({
+      socket,
+      agentId: "a",
+      relayConversationId: relay ? "c" : undefined,
+    });
+    const send = (id: string, wait: number) =>
+      transport({
+        id,
+        jsonrpc: "2.0",
+        method: "agent.action.readIo",
+        params: { wait_ms: wait },
+      });
+    const pending = Array.from({ length: 16 }, (_, i) =>
+      send(String(i), 1).catch((e: unknown) => e),
+    );
+    await expect(send("overflow", 1)).rejects.toMatchObject({
+      code: "SOCKET_READER_CAPACITY",
+    });
+    pending.push(send("poll", 0).catch((e: unknown) => e));
+    expect(socket.sent).toHaveLength(17);
+    socket.emit("disconnect");
+    await Promise.all(pending);
+    const resumed = send("new", 1).catch((e: unknown) => e);
+    expect(socket.sent).toHaveLength(18);
+    transport.dispose();
+    expect(await resumed).toMatchObject({ code: "SOCKET_TRANSPORT_DISPOSED" });
+  });
   it.each([
     ["agent.getHealth", false],
     ["sql.operation.get", false],

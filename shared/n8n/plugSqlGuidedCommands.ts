@@ -10,6 +10,7 @@ import type {
 } from "../contracts/api";
 import { PlugValidationError } from "../contracts/errors";
 import { isRecord, parseOptionalJsonArray, parseOptionalJsonObject } from "../utils/json";
+import { stripSqlCommentsAndStrings } from "../utils/sqlText";
 import { applyCommandDefaults } from "./plugCommandDefaults";
 import {
   toCollection,
@@ -31,13 +32,6 @@ const sqlTemplateMarkers = [
 ] as const;
 
 const sqlNamedParameterPattern = /(?<!:):([A-Za-z_][A-Za-z0-9_]*)/g;
-
-const stripSqlCommentsAndStrings = (sql: string): string =>
-  sql
-    .replace(/'([^']|'')*'/g, "''")
-    .replace(/"([^"]|"")*"/g, '""')
-    .replace(/--.*$/gm, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "");
 
 const findTemplateMarker = (sql: string): string | undefined => {
   const normalizedSql = sql.toLowerCase();

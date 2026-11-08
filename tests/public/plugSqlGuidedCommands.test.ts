@@ -7,6 +7,9 @@ import {
   buildGuidedBulkInsertCommand,
   buildGuidedCancelCommand,
   buildGuidedSqlCommand,
+  listNamedSqlParameters,
+  assertSqlIsReadOnly,
+  validateGuidedSql,
 } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugSqlGuidedCommands";
 import { finalizeBuiltCommandRequest } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugCommandRequestBuilder";
 import { plugBulkInsertMaxRows } from "../../packages/n8n-nodes-plug-database/generated/shared/n8n/plugSqlPerformanceHints";
@@ -21,6 +24,50 @@ const executionContext: PlugResolvedExecutionContext = {
 };
 
 describe("plugSqlGuidedCommands", () => {
+  it.each([
+    "SELECT 1 -- '\nWHERE id = :id -- '",
+    "SELECT 1 /* ' */ WHERE id = :id /* ' */",
+    "SELECT 1 /* -- comment */ WHERE id = :id",
+  ])("finds required parameters outside comments: %s", (sql) => {
+    expect(listNamedSqlParameters(sql)).toEqual(["id"]);
+    expect(() =>
+      validateGuidedSql(
+        sql,
+        {},
+        { fieldLabel: "SQL", requireWhereForUpdateDelete: true },
+      ),
+    ).toThrow(/:id/);
+  });
+  it("rejects a mutation hidden by quotes inside line comments", () => {
+    const sql = "SELECT 1 -- '\n; DELETE FROM Inventory -- '";
+    expect(() => assertSqlIsReadOnly(sql, "SQL")).toThrow(/read-only/);
+    expect(() =>
+      validateGuidedSql(
+        sql,
+        {},
+        { fieldLabel: "SQL", requireWhereForUpdateDelete: true },
+      ),
+    ).toThrow(/without WHERE/);
+  });
+  it("ignores nested block comments and quoted comment markers without merging SQL tokens", () => {
+    const sql =
+      "SELECT/* outer /* inner */ ':ignored' */ :id, 'it''s -- :hidden', \"a\"\"/*:hidden*/\" FROM t";
+    expect(listNamedSqlParameters(sql)).toEqual(["id"]);
+    expect(() =>
+      validateGuidedSql(
+        "DELETE/* comment */FROM t",
+        {},
+        { fieldLabel: "SQL", requireWhereForUpdateDelete: true },
+      ),
+    ).toThrow(/without WHERE/);
+    expect(() =>
+      validateGuidedSql(
+        "DELETE FROM t /* -- */ WHERE id = :id",
+        { id: 1 },
+        { fieldLabel: "SQL", requireWhereForUpdateDelete: true },
+      ),
+    ).not.toThrow();
+  });
   it("builds sql.execute with execution_mode preserve", () => {
     const context = createMockExecuteContext({
       credentials: {

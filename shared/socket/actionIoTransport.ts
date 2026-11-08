@@ -216,11 +216,12 @@ export const createSocketActionIoTransport = (options: {
       command.method === "agent.action.readIo" &&
       typeof command.params.wait_ms === "number" &&
       command.params.wait_ms > 0;
-    if (
-      waitingRead &&
-      [...pending.values()].filter((item) => item.waitingRead).length >= 16
-    ) {
-      throw new ActionIoError("SOCKET_READER_CAPACITY", false);
+    if (waitingRead) {
+      let readers = 0;
+      for (const item of pending.values()) {
+        if (item.waitingRead && ++readers >= 16)
+          throw new ActionIoError("SOCKET_READER_CAPACITY", false);
+      }
     }
     // Frame before reserving a waiter; preparation failure cannot have effects.
     const payload = relay
