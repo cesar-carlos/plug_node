@@ -1,5 +1,11 @@
 # n8n-nodes-plug-database
 
+## 3.9.2
+
+### Patch Changes
+
+- 552e157: Clarify account credential checks for unauthorized agent health queries and missing catalog resources. Preserve remote error codes and effect metadata without suggesting action execution recovery for health reads.
+
 ## 3.9.1
 
 ### Patch Changes
